@@ -1,9 +1,0 @@
-HTTP/1.1 200 OK
-server: nginx/1.29.4
-date: Sat, 17 Oct 2026 08:07:45 GMT
-content-type: application/json; charset=UTF-8
-transfer-encoding: chunked
-connection: keep-alive
-vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers
-
-{"code":500,"msg":"请求参数类型不匹配，参数[socialId]要求类型为：'java.lang.Long'，但输入值为：'no_such_user_9x8z'","data":null}

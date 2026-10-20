@@ -1,42 +1,0 @@
-=== [01] /prod-api/actuator;.js
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [02] /prod-api/actuator;.js/env
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [03] /prod-api/actuator;.js/health
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [04] /prod-api/actuator;.js/heapdump
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [05] /prod-api/actuator;.js/configprops
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [06] /prod-api/actuator;.js/mappings
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [07] /prod-api/actuator/env;.js
-  HTTP/1.1 403 Forbidden | len=555 | content-type: text/html | server: nginx/1.29.4 |  | 
-  body: <html> <head><title>403 Forbidden</title></head> <body> <center><h1>403 Forbidden</h1></center> <hr><center>nginx/1.29.4</center> </body> </html> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome frie
-=== [08] /prod-api/actuator/env.js
-  HTTP/1.1 403 Forbidden | len=555 | content-type: text/html | server: nginx/1.29.4 |  | 
-  body: <html> <head><title>403 Forbidden</title></head> <body> <center><h1>403 Forbidden</h1></center> <hr><center>nginx/1.29.4</center> </body> </html> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome frie
-=== [09] /prod-api/actuator;.html/env
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [10] /prod-api/actuator;.css/env
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [11] /prod-api/%61ctuator;.js/env
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [12] /prod-api/actuator%3B.js/env
-  HTTP/1.1 401 Unauthorized | len=51 | content-type: text/plain;charset=utf-8 | server: nginx/1.29.4 |  | www-authenticate: Basic Realm=Sa-Token
-  body: {"code": 401, "msg": "no basic auth", "data": null}
-=== [13] /prod-api/actuator/..;/actuator;.js/env
-  HTTP/1.1 403 Forbidden | len=555 | content-type: text/html | server: nginx/1.29.4 |  | 
-  body: <html> <head><title>403 Forbidden</title></head> <body> <center><h1>403 Forbidden</h1></center> <hr><center>nginx/1.29.4</center> </body> </html> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome frie
-=== [14] /prod-api/actuator
-  HTTP/1.1 403 Forbidden | len=555 | content-type: text/html | server: nginx/1.29.4 |  | 
-  body: <html> <head><title>403 Forbidden</title></head> <body> <center><h1>403 Forbidden</h1></center> <hr><center>nginx/1.29.4</center> </body> </html> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome friendly error page --> <!-- a padding to disable MSIE and Chrome frie

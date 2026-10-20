@@ -1,1 +1,0 @@
-{"req": {"tenantId": "000000", "username": "test", "password": "admin123", "code": "12", "uuid": "7d961b776f2e467a825f5965e3508186", "clientId": "7882175c171521a945ee6bdd5580377f", "grantType": "password"}, "status": 200, "resp": "{\"code\":500,\"msg\":\"对不起, 您的账号：test 不存在.\",\"data\":null}"}

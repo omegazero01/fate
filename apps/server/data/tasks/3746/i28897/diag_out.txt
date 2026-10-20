@@ -1,9 +1,0 @@
-== POST /system/user [application/json] -> HTTP200
-{"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-
-== POST /system/notice [application/json] -> HTTP200
-{"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-
-== POST /system/user/profile/avatar [multipart/form-data; boundary=----wb1234567890] -> HTTP200
-{"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-

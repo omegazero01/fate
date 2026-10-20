@@ -1,1 +1,0 @@
-import{_ as o}from"./index.vue_vue_type_script_setup_true_lang-Cs6O4AM7.js";import{d as a,r as t,c,b as l,q as _,V as m,h as f}from"./index-BbGssDPT.js";const x=a({__name:"index",setup(i){const e=t("/snail-job");return(p,n)=>{const s=o;return l(),c("div",null,[_(s,{src:f(e),"onUpdate:src":n[0]||(n[0]=r=>m(e)?e.value=r:null)},null,8,["src"])])}}});export{x as default};

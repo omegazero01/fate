@@ -1,9 +1,0 @@
-== PUT /system/user/profile/updatePwd -> HTTP200 :: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-== PUT /monitor/logininfor/unlock -> HTTP200 :: {"code":405,"msg":"Request method 'PUT' is not supported","data":null}
-== PUT /system/role/authUser/cancel -> HTTP200 :: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-== DELETE /resource/oss/0 -> HTTP200 :: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-== DELETE /monitor/operlog/0 -> HTTP200 :: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-== DELETE /monitor/logininfor/0 -> HTTP200 :: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-== POST /auth/smsLogin -> HTTP200 :: {"code":404,"msg":"No endpoint POST /auth/smsLogin.","data":null}
-== POST /auth/emailLogin -> HTTP200 :: {"code":404,"msg":"No endpoint POST /auth/emailLogin.","data":null}
-== POST /resource/sms/code -> HTTP200 :: {"code":405,"msg":"Request method 'POST' is not supported","data":null}

@@ -1,1 +1,0 @@
-import{g as a,u as c,c as n,b as u}from"./index-BbGssDPT.js";const i={__name:"index",setup(p){const e=a(),t=c(),{params:o,query:r}=e,{path:s}=o;return t.replace({path:"/"+s,query:r}),(_,m)=>(u(),n("div"))}};export{i as default};

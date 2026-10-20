@@ -1,1 +1,0 @@
-{"req": {"tenantId": "000000", "username": "admin", "password": "admin@123", "code": "18", "uuid": "800f9cb439a34e24a03677aff5f7de31", "clientId": "7882175c171521a945ee6bdd5580377f", "grantType": "password"}, "status": 200, "resp": "{\"code\":500,\"msg\":\"密码输入错误5次，帐户锁定10分钟\",\"data\":null}"}

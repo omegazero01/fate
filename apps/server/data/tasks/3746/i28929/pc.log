@@ -1,3 +1,0 @@
-=== /prod-api/auth/../auth/tenant/list ===
-HTTP 200 len=78
-{"code":200,"msg":"操作成功","data":{"tenantEnabled":false,"voList":null}}

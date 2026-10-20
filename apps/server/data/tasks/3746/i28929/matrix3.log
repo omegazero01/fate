@@ -1,6 +1,0 @@
-URL: /prod-api/auth;/system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      73
-  BODY: {"code":404,"msg":"No endpoint GET /auth;/system/user/list.","data":null}
-URL: /prod-api/auth/..;/..;/system/user/list?pageNum=1&pageSize=1
-  HTTP=200 len=      45
-  BODY: 非法请求：/auth/..;/..;/system/user/list

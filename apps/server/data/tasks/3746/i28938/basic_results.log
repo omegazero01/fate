@@ -1,8 +1,0 @@
-[ruoyi:123456] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[ruoyi:ruoyi] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[ruoyi:admin] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[jydsj:123456] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[jydsj:Jydsj@2024] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[admin:ruoyi] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[sa-token:sa-token] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}
-[admin:sa-token] status|size=401|51 body={"code": 401, "msg": "no basic auth", "data": null}

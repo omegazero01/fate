@@ -1,1 +1,0 @@
-{"code":200,"msg":"操作成功","data":"http://sso.maxkey.top/sign/authz/oauth/v20/authorize?response_type=code&client_id=876892492581044224&redirect_uri=http://localhost:80/social-callback?source=maxkey&state=eyJkb21haW4iOiIxNDQuMTIzLjIyLjIzNCIsInRlbmFudElkIjoiMDAwMDAwIiwic3RhdGUiOiJjM2NjOGEwZWMwZGJhMWM2ZmJiYmQ1ZWNiMTgzNDVkYSJ9"}

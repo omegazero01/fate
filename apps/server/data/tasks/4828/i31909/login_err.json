@@ -1,1 +1,0 @@
-{"code":500,"msg":"com.fasterxml.jackson.core.JsonParseException: Unrecognized token 'not': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')\n at [Source: (String)\"not-json\"; line: 1, column: 4]","data":null}

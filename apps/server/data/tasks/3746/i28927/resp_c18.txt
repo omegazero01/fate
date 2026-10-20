@@ -1,1 +1,0 @@
-{"code":500,"msg":"No static resource js/app.js.","data":null}

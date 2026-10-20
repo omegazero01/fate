@@ -1,8 +1,0 @@
-HTTP/1.1 401 Unauthorized
-server: nginx/1.29.4
-date: Sat, 17 Oct 2026 08:33:12 GMT
-content-type: text/plain;charset=utf-8
-content-length: 51
-connection: keep-alive
-www-authenticate: Basic Realm=Sa-Token
-

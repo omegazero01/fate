@@ -1,3 +1,0 @@
-/auth/binding/1
-/auth/code
-/auth/tenant/list

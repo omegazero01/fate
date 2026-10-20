@@ -1,1 +1,0 @@
-{"req": {"tenantId": "000000", "username": "operator", "password": "Zx9!audit", "code": "2", "uuid": "577c83afe87a41f2af7f68e36a165ee1", "clientId": "7882175c171521a945ee6bdd5580377f", "grantType": "password"}, "status": 200, "resp": "{\"code\":500,\"msg\":\"对不起, 您的账号：operator 不存在.\",\"data\":null}"}

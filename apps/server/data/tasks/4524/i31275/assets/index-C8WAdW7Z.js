@@ -1,1 +1,0 @@
-import{ab as s}from"./index-BbGssDPT.js";const e=t=>s({url:"/tPostStatistics/page",method:"get",params:t});function r(t){return s({url:"/tPostStatistics/lastTenDays",method:"get",params:t})}export{e as a,r as l};

@@ -1,1 +1,0 @@
-{"code":200,"msg":"操作成功","data":"https://gitee.com/oauth/authorize?response_type=code&client_id=91436b7940090d09c72c7daf85b959cfd5f215d67eea73acbf61b6b590751a98&redirect_uri=http://localhost:80/social-callback?source=gitee&state=eyJkb21haW4iOiJldmlsLmV4YW1wbGUuY29tIiwidGVuYW50SWQiOiIwMDAwMDAiLCJzdGF0ZSI6ImY3NDYwOGFmMmIwMjcwYWQ0NjMwNDAzMmM3MjljYzRmIn0=&scope=user_info"}

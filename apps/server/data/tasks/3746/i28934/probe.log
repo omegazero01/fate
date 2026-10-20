@@ -1,3 +1,0 @@
-[base] CODE GET xff=10.173.120.208 -> 200 {"code":200,"msg":"操作成功","data":{"captchaEnabled":true,"uuid":"b0950302b4204617beb28054c3a9e369","img":"iVBORw0KGgoAAAANSUhEUgAAAKAAAAA8CAYAAADha7EVAAAI70lEQVR4Xu2c228VRRzHJ/rkmy8aE4M3MCreo1HxgpJ4iZd4
-[base] OCR beta='9+4' std='9+4' expr=9+4 ans=13 (0.1s)
-[base] REGISTER {"tenantId": "000000", "username": "pentest_aud_2461", "password": "Pt#2024aB9x", "confirmPassword": "Pt#2024aB9x", "code": "13", "uuid": "b0950302b4204617beb28054c3a9e369", "userType": "sys_user", "clientId": "7882175c171521a945ee6bdd5580377f", "grantType": "password"} -> HTTP 200 {"code":500,"msg":"当前系统没有开启注册功能！","data":null}

@@ -1,1 +1,0 @@
-import{ab as t}from"./index-BbGssDPT.js";const d=o=>t({url:"/tGoods/page",method:"get",params:o}),e=o=>t({url:"/tGoods/getone/"+o,method:"get"}),r=o=>t({url:"/tGoods/add",method:"post",data:o}),a=o=>t({url:"/tGoods/update",method:"post",data:o}),u=o=>t({url:"/tGoods/del/"+o,method:"post"});export{r as a,u as d,e as g,d as l,a as u};

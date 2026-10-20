@@ -1,1 +1,0 @@
-import{ab as e}from"./index-BbGssDPT.js";function t(s){return e({url:"/resource/oss/list",method:"get",params:s})}function o(s){return e({url:"/resource/oss/listByIds/"+s,method:"get"})}function u(s){return e({url:"/resource/oss/"+s,method:"delete"})}export{t as a,u as d,o as l};

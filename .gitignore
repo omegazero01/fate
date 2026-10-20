@@ -9,3 +9,10 @@
 # Use pnpm for the server workspace and npm for the standalone web app.
 /apps/server/package-lock.json
 /web/pnpm-lock.yaml
+
+# 本地运行态、密钥与生成文件
+/.runtime/
+/apps/server/config.json
+/apps/server/jwt.key
+/web/next-env.d.ts
+.env

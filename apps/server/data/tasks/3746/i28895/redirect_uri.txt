@@ -1,1 +1,0 @@
-http://localhost:80/social-callback?source=gitee

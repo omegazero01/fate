@@ -1,9 +1,0 @@
-HTTP/1.1 200 OK
-server: nginx/1.29.4
-date: Sat, 17 Oct 2026 08:08:42 GMT
-content-type: application/json; charset=UTF-8
-transfer-encoding: chunked
-connection: keep-alive
-vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers
-
-{"code":405,"msg":"Request method 'POST' is not supported","data":null}

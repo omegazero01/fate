@@ -1,1 +1,0 @@
-import{_ as r}from"./index.vue_vue_type_script_setup_true_lang-Cs6O4AM7.js";import{d as o,r as t,c,b as l,q as i,V as m,h as p}from"./index-BbGssDPT.js";const x=o({__name:"index",setup(_){const e=t("/admin/applications");return(f,n)=>{const s=r;return l(),c("div",null,[i(s,{src:p(e),"onUpdate:src":n[0]||(n[0]=a=>m(e)?e.value=a:null)},null,8,["src"])])}}});export{x as default};

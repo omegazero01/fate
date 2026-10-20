@@ -1,1 +1,0 @@
-{"code":404,"msg":"No endpoint GET /swagger-resources.","data":null}

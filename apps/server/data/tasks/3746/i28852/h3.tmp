@@ -1,1 +1,0 @@
-{"code":500,"msg":"请求参数类型不匹配，参数[configId]要求类型为：'java.lang.Long'，但输入值为：'list.html'","data":null}
