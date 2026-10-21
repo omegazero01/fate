@@ -22,6 +22,10 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
         signal.throwIfAborted();
         const model=ctx.model??opts.model;
         const request=async(context:Parameters<typeof opts.modelRuntime.completeSimple>[1],maxTokens:number)=>{
+        // Native split-turn summaries do not inherit compact() customInstructions.
+        // Apply retention requirements to every physical summary request as well.
+        if(opts.compactionInstructions&&!JSON.stringify(context.messages).includes(opts.compactionInstructions))
+          context={...context,messages:[{role:'system',content:opts.compactionInstructions,timestamp:Date.now()},...context.messages]};
         for(let attempt=0;attempt<3;attempt++){
           signal.throwIfAborted();
           if(remaining()<=0)throw new Error('模型请求预算已用尽，保留原始会话等待恢复');
@@ -53,7 +57,9 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
         }
           throw new Error('摘要重试耗尽');
         };
-        const p=event.preparation;
+        const p={...event.preparation,
+          messagesToSummarize:opts.projectMessages?.(event.preparation.messagesToSummarize)??event.preparation.messagesToSummarize,
+          turnPrefixMessages:opts.projectMessages?.(event.preparation.turnPrefixMessages)??event.preparation.turnPrefixMessages};
         if(mode==='native'){
           // Reuse the SDK's exact summary format/file tracking while auditing each physical request.
           const previous=[...event.branchEntries].reverse().find(e=>e.type==='compaction');
@@ -62,7 +68,8 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
             for(const file of details.readFiles??[])p.fileOps.read.add(file);
             for(const file of details.modifiedFiles??[])p.fileOps.written.add(file);
           }
-          const result=await compact(p,model,undefined,undefined,event.customInstructions,signal,undefined,
+          const instructions=[event.customInstructions,opts.compactionInstructions].filter(Boolean).join('\n\n')||undefined;
+          const result=await compact(p,model,undefined,undefined,instructions,signal,undefined,
             async(_model,context,options)=>{const response=await request(context,options?.maxTokens??2048);const stream=createAssistantMessageEventStream();stream.end(response);return stream;},
             undefined,{enabled:false,maxRetries:0,baseDelayMs:0});
           return {compaction:{...result,details:{...result.details as object,policy:'native',version:opts.platform?.policy.version}}};
@@ -73,7 +80,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
         const history=serializeConversation(convertToLlm([...p.messagesToSummarize,...p.turnPrefixMessages]));
         const content=`<host_snapshot>${stateJSON}</host_snapshot>\n<previous_summary>${p.previousSummary??''}</previous_summary>\n<conversation>${history}</conversation>`;
         const response=await request({messages:[{role:'system',content:INSTRUCTIONS,timestamp:Date.now()},
-          {role:'user',content,timestamp:Date.now()}]},2048);
+          {role:'user',content:(opts.compactionInstructions?opts.compactionInstructions+'\n\n':'')+content,timestamp:Date.now()}]},2048);
         const summary=response.content.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim(),usage=response.usage;
         if(!summary)throw new Error('摘要未生成');
         signal.throwIfAborted();

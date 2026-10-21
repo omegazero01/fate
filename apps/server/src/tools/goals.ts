@@ -4,6 +4,7 @@
 import { domainTool } from "./define.js";
 import type { ToolRunContext } from "./context.js";
 import { RelSpawns } from "../db/exploration.js";
+import {CONSTRAINT_TOOL_DESCRIPTION,groundConstraint,type ConstraintInput} from '../agent/constraint-policy.js';
 
 interface SetGoalsArgs { goals: { text: string; vulnclass?: string }[]; }
 
@@ -56,15 +57,13 @@ export function setGoalsTool(ctx: ToolRunContext) {
   );
 }
 
-interface SetConstraintsArgs { replace?: boolean; constraints: { kind: "allow" | "deny"; text: string }[]; }
+interface SetConstraintsArgs { replace?: boolean; constraints: ConstraintInput[]; }
 
 export function setConstraintsTool(ctx: ToolRunContext) {
   return domainTool<SetConstraintsArgs>(
     {
       name: "set_constraints",
-      description:
-        "登记任务操作约束（allow/deny 边界），注入 planner 与 worker 的最高优先级指令。" +
-        "约束必须自包含：把'当前目标'、'该端口'等指代替换成具体值。禁止臆造用户没说的约束。",
+      description: CONSTRAINT_TOOL_DESCRIPTION,
       promptSnippet: "登记操作约束（allow/deny）",
       parameters: {
         type: "object",
@@ -77,7 +76,8 @@ export function setConstraintsTool(ctx: ToolRunContext) {
               type: "object",
               properties: {
                 kind: { type: "string", enum: ["allow", "deny"] },
-                text: { type: "string" },
+                text: { type: "string", description: "完整原文段落，不改写；保留列表及例外" },
+                source_quote: { type: "string", description: "与 text 相同的用户原文段落；旧调用可省略，但 text 仍须通过原文核对" },
               },
               required: ["kind", "text"],
             },
@@ -87,18 +87,29 @@ export function setConstraintsTool(ctx: ToolRunContext) {
       },
       transactional: false,
       async run(args, c) {
-        await c.db.transaction(async tx=>{
+        if(c.role!=='goals'&&c.role!=='mainagent')throw new Error('只有 Goals 或处理用户请求的 Main 可以提取操作约束');
+        if(args.replace&&c.role!=='mainagent')throw new Error('Goals 只能追加用户原文要求，不能替换已有约束');
+        const ids=await c.db.transaction(async tx=>{
           await c.hooks.assertOwnership?.(tx);
           await tx.query("SELECT pg_advisory_xact_lock($1)", [c.expID]);
+          const task=await tx.tasks().getTask(c.taskID);
+          if(!task||task.exploration_id!==c.expID)throw new Error('约束所属任务不匹配');
+          const sources=c.role==='goals'?{goal:task.goal,description:task.description}:{user_message:c.userMessage};
+          // Validate the whole batch before replacement; an invalid call leaves existing rules intact.
+          const grounded=args.constraints.map(k=>groundConstraint(k,sources));
+          if(args.replace&&!grounded.length)throw new Error('不能通过空模型提取删除全部约束；请使用用户约束管理入口');
           if (args.replace) await tx.query(`DELETE FROM task_constraints WHERE exploration_id=$1`, [c.expID]);
-          for (const k of args.constraints) {
-            await tx.query(`INSERT INTO task_constraints(exploration_id,kind,text,origin)
-              SELECT $1,$2,$3,$4 WHERE NOT EXISTS (SELECT 1 FROM task_constraints WHERE exploration_id=$1 AND kind=$2 AND text=$3)`,
-              [c.expID,k.kind,k.text,c.role]);
+          const saved:number[]=[];
+          for (const k of grounded) {
+            const row=await tx.query(`INSERT INTO task_constraints(exploration_id,kind,text,origin,source)
+              SELECT $1,$2,$3,$4,$5::jsonb WHERE NOT EXISTS (SELECT 1 FROM task_constraints WHERE exploration_id=$1 AND kind=$2 AND text=$3) RETURNING id`,
+              [c.expID,k.kind,k.text,c.role,JSON.stringify(k.source)]);
+            if(row.rows[0])saved.push(Number(row.rows[0].id));
           }
+          return saved;
         });
-        c.hooks.constraintsChanged?.(c.expID);
-        return { saved: args.constraints.length };
+        if(ids.length)c.hooks.constraintsChanged?.(c.expID);
+        return { saved: ids.length, ids, source_verified:true };
       },
     },
     ctx,

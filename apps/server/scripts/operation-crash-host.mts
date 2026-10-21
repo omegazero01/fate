@@ -1,0 +1,12 @@
+import pg from 'pg';
+import {appendFileSync} from 'node:fs';
+import {Database} from '../src/db/index.js';
+import {WorkerOperationJournal} from '../src/db/operation-journal.js';
+import {runContext} from '../src/tools/context.js';
+const f=JSON.parse(process.env.FATE_OPERATION_FIXTURE!);
+const db=new Database(new pg.Pool({connectionString:process.env.SERIES_PG_DSN}));
+const journal=new WorkerOperationJournal(runContext(db,f.task,f.exp,'worker',{intentID:f.intent,workerName:'work#1'}));
+await journal.start();const operation=await journal.begin('bash','first',{command:'LOCAL append'});
+appendFileSync(f.file,'once\n');
+if(f.mode==='after_return')await journal.finish(operation.id,{content:[{type:'text',text:'LOCAL successful effect'}]},false);
+process.send?.({ready:true});setInterval(()=>{},1000);

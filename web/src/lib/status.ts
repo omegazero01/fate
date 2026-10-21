@@ -36,7 +36,7 @@ const intent: Record<string, StatusMeta> = {
   running: { label: "执行中", tone: "blue" },
   paused: { label: "已暂停", tone: "amber" },
   done: { label: "已完成", tone: "green" },
-  // blocked = 模型/API/网络故障重试用尽，这条意图基本没真正探成（非目标拦截）。
+  // blocked = 模型/API/网络故障重试用尽，这条意图未完成探索。
   blocked: { label: "执行出错", tone: "red" },
   // exhausted = 达到步数/时间预算被中途掐断、只写回部分结果（非方向已探尽）。
   exhausted: { label: "预算耗尽", tone: "violet" },
@@ -86,11 +86,6 @@ const goal: Record<string, StatusMeta> = {
   abandoned: { label: "已放弃", tone: "slate" },
 };
 
-const audit: Record<string, StatusMeta> = {
-  allow: { label: "放行", tone: "green" },
-  block: { label: "拦截", tone: "red" },
-};
-
 const node: Record<string, StatusMeta> = {
   observed: { label: "观测", tone: "slate" },
   confirmed: { label: "确认", tone: "green" },
@@ -104,7 +99,6 @@ const maps = {
   finding,
   engine,
   goal,
-  audit,
   node,
 } as const;
 

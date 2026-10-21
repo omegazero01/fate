@@ -3,6 +3,7 @@
 // 工具工厂闭包持有它——工具不感知 HTTP、不感知 pi，只依赖此接口（低耦合关键）。
 
 import type { Database } from "../db/index.js";
+import type { SessionEntry } from '@earendil-works/pi-coding-agent';
 
 export type AgentRole = "planner" | "worker" | "mainagent" | "goals" | "chat" | "auto" | "pentest" | "reporter" | "retester";
 
@@ -49,6 +50,12 @@ export interface EngineHooks {
 }
 
 export interface ToolRunContext {
+  /** Current native transcript, supplied by the host for read receipts, never by tool arguments. */
+  sessionEntries?:()=>readonly SessionEntry[];
+  /** Actual current human request, bound by the host; never supplied in tool arguments. */
+  userMessage?:string;
+  /** Host-bound current Planner session; never supplied by a model or an HTTP parameter. */
+  plannerSession?: {identity:()=>string;entries:()=>readonly SessionEntry[]};
   collaborationPolicy?: "blackboard-v1";
   planningRoundID?: string;
   conversationID?: number;

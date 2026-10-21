@@ -1,0 +1,942 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+(node:61979) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ migration-regression.test.ts (45 tests) 48291ms
+   ✓ migration invariants > enforces trigger role concurrency across two conversation executors at the next claim 5435ms
+   ✓ migration invariants > projects acknowledged pause and disabled coverage consistently in task list and detail 623ms
+   ✓ migration invariants > R1 UI dispatch must reactivate a paused task 434ms
+   ✓ migration invariants > R2 Worker resume cannot implicitly start its inactive task 366ms
+   ✓ migration invariants > pauses Goals during bootstrap and resumes with a new fenced decomposition and scheduler 5546ms
+   ✓ migration invariants > R3 selecting a task after restart must not execute a paused task 1244ms
+   ✓ migration invariants > R4 manual mode must not call the planner 2778ms
+   ✓ migration invariants > R7 cancellation must not mutate an intent in a different task 436ms
+   ✓ migration invariants > R8 graph overview must expose every hidden block or an expansion index 1428ms
+   ✓ migration invariants > R9 inherited source blackboard must be present in planner context 1941ms
+   ✓ migration invariants > R9 node_detail pages inherited graph edges with a persistent cursor 422ms
+   ✓ migration invariants > R9 HTTP graph and node pages expose only direct authorized sources as read-only 366ms
+   ✓ migration invariants > R10 UI feedback is retained without forwarding Worker prose to Main 366ms
+   ✓ migration invariants > R12 direct intent pause must abort its active pi session 2188ms
+   ✓ migration invariants > R21 cross-instance task pause waits for the task-lease owner to stop pi and acknowledge 2301ms
+   ✓ migration invariants > R22 explicit resume supersedes a pending cross-instance pause command 2084ms
+   ✓ migration invariants > G5 an admitted Planner actually executing a model request starts the task deadline 2045ms
+   ✓ migration invariants > R13 Main commits a new intent before the host issues its one-intent dispatch grant 2102ms
+   ✓ migration invariants > R13 Main can explicitly dispatch newly discovered assets 2136ms
+   ✓ migration invariants > R20 restarting a timed out task must reset its expired deadline 2067ms
+   ✓ restored feature contracts > retains every oversized tool result byte with a scoped continuation and raw download 458ms
+   ✓ restored feature contracts > prevents a second engine from resetting another owner’s running intent 2055ms
+   ✓ restored feature contracts > shares the worker concurrency limit across tasks 2302ms
+{"level":30,"time":1792547774802,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547774921,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":118.14199999999983,"msg":"request completed"}
+{"level":30,"time":1792547774922,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"POST","url":"/api/task-categories","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547774947,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":201},"responseTime":24.620292000000063,"msg":"request completed"}
+{"level":30,"time":1792547774948,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"POST","url":"/api/task-categories","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547774950,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":409},"responseTime":2.3068750000002183,"msg":"request completed"}
+{"level":30,"time":1792547774950,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"PATCH","url":"/api/task-categories/84","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547774958,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":7.159916000000067,"msg":"request completed"}
+{"level":30,"time":1792547774958,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/task-categories","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547774960,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":200},"responseTime":2.0137500000000728,"msg":"request completed"}
+{"level":30,"time":1792547774960,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775013,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":201},"responseTime":52.90562499999987,"msg":"request completed"}
+{"level":30,"time":1792547775014,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/tasks/category/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775025,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":200},"responseTime":11.249125000000276,"msg":"request completed"}
+{"level":30,"time":1792547775026,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775559,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":200},"responseTime":532.5832500000001,"msg":"request completed"}
+{"level":30,"time":1792547775560,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"POST","url":"/api/tasks/category/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775597,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":200},"responseTime":36.680917000000136,"msg":"request completed"}
+{"level":30,"time":1792547775597,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"POST","url":"/api/tasks/category/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775608,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":200},"responseTime":10.377582999999959,"msg":"request completed"}
+{"level":30,"time":1792547775608,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"POST","url":"/api/tasks/control/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775842,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":233.469834,"msg":"request completed"}
+{"level":30,"time":1792547775842,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"POST","url":"/api/tasks/control/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775842,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":400},"responseTime":0.2345829999999296,"msg":"request completed"}
+{"level":30,"time":1792547775843,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"POST","url":"/api/tasks/control/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547775884,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":200},"responseTime":41.76250000000027,"msg":"request completed"}
+{"level":30,"time":1792547775893,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"DELETE","url":"/api/task-categories/84","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776089,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":200},"responseTime":194.80812500000002,"msg":"request completed"}
+{"level":30,"time":1792547776091,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"GET","url":"/api/task-categories","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776132,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":200},"responseTime":40.59608399999979,"msg":"request completed"}
+{"level":30,"time":1792547776133,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-g","req":{"method":"POST","url":"/api/skills","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776134,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-g","res":{"statusCode":201},"responseTime":0.9290410000003249,"msg":"request completed"}
+{"level":30,"time":1792547776134,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-h","req":{"method":"PUT","url":"/api/skills/c-skill/files/notes/x.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776135,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-h","res":{"statusCode":200},"responseTime":0.4972499999998945,"msg":"request completed"}
+{"level":30,"time":1792547776135,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-i","req":{"method":"GET","url":"/api/skills/c-skill/files/notes/x.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776135,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-i","res":{"statusCode":200},"responseTime":0.19041599999991377,"msg":"request completed"}
+{"level":30,"time":1792547776135,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-j","req":{"method":"GET","url":"/api/skills/c-skill/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776135,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-j","res":{"statusCode":200},"responseTime":0.3833749999998872,"msg":"request completed"}
+{"level":30,"time":1792547776136,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-k","req":{"method":"PUT","url":"/api/skills/c-skill/files/..%2F..%2Fescape.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776136,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-k","res":{"statusCode":400},"responseTime":0.29341599999997925,"msg":"request completed"}
+{"level":30,"time":1792547776137,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-l","req":{"method":"GET","url":"/api/skills/c-skill/files/..%2F..%2F..%2Fetc%2Fpasswd","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776137,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-l","res":{"statusCode":400},"responseTime":0.13787500000034925,"msg":"request completed"}
+{"level":30,"time":1792547776137,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-m","req":{"method":"POST","url":"/api/skills/c-skill/dirs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776137,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-m","res":{"statusCode":200},"responseTime":0.5722909999999501,"msg":"request completed"}
+{"level":30,"time":1792547776138,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-n","req":{"method":"DELETE","url":"/api/skills/c-skill/files/notes","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776138,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-n","res":{"statusCode":200},"responseTime":0.6072500000000218,"msg":"request completed"}
+{"level":30,"time":1792547776139,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-o","req":{"method":"GET","url":"/api/skills/c-skill/files/notes/x.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776139,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-o","res":{"statusCode":404},"responseTime":0.30054100000006656,"msg":"request completed"}
+{"level":30,"time":1792547776140,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-p","req":{"method":"POST","url":"/api/skills/upload","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776147,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-p","res":{"statusCode":200},"responseTime":6.700917000000118,"msg":"request completed"}
+{"level":30,"time":1792547776147,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-q","req":{"method":"GET","url":"/api/skills/zipskill/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776148,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-q","res":{"statusCode":200},"responseTime":0.9023329999999987,"msg":"request completed"}
+{"level":30,"time":1792547776149,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-r","req":{"method":"GET","url":"/api/skills/zipskill/files/SKILL.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776149,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-r","res":{"statusCode":200},"responseTime":0.1588749999996253,"msg":"request completed"}
+{"level":30,"time":1792547776149,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-s","req":{"method":"POST","url":"/api/skills/upload","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776150,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-s","res":{"statusCode":409},"responseTime":1.446292000000085,"msg":"request completed"}
+{"level":30,"time":1792547776151,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-t","req":{"method":"POST","url":"/api/skills/upload?overwrite=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776154,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-t","res":{"statusCode":200},"responseTime":2.5901669999998376,"msg":"request completed"}
+{"level":30,"time":1792547776154,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-u","req":{"method":"POST","url":"/api/skills/upload","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776156,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-u","res":{"statusCode":400},"responseTime":1.6614580000000387,"msg":"request completed"}
+{"level":30,"time":1792547776156,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-v","req":{"method":"POST","url":"/api/skills/upload","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776158,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-v","res":{"statusCode":200},"responseTime":1.4379999999996471,"msg":"request completed"}
+{"level":30,"time":1792547776158,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-w","req":{"method":"PUT","url":"/api/skills/zipskill/meta","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776159,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-w","res":{"statusCode":200},"responseTime":0.9575419999996484,"msg":"request completed"}
+{"level":30,"time":1792547776159,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-x","req":{"method":"GET","url":"/api/skills/zipskill/files/SKILL.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776160,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-x","res":{"statusCode":200},"responseTime":0.29004200000008495,"msg":"request completed"}
+{"level":30,"time":1792547776176,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-y","req":{"method":"GET","url":"/api/skills/c-skill/usage?limit=10","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776184,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-y","res":{"statusCode":200},"responseTime":7.939290999999685,"msg":"request completed"}
+{"level":30,"time":1792547776184,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-z","req":{"method":"GET","url":"/api/skills/missing","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776206,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-z","res":{"statusCode":200},"responseTime":22.49762499999997,"msg":"request completed"}
+{"level":30,"time":1792547776233,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-10","req":{"method":"PUT","url":"/api/agents/planner/visibility","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776547,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-10","res":{"statusCode":200},"responseTime":313.82579199999964,"msg":"request completed"}
+{"level":30,"time":1792547776547,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-11","req":{"method":"GET","url":"/api/agents/planner/visibility","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776562,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-11","res":{"statusCode":200},"responseTime":15.15729199999987,"msg":"request completed"}
+{"level":30,"time":1792547776563,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-12","req":{"method":"GET","url":"/api/visibility/skill/c-skill","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776595,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-12","res":{"statusCode":200},"responseTime":32.09145800000033,"msg":"request completed"}
+{"level":30,"time":1792547776596,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-13","req":{"method":"GET","url":"/api/visibility/mcp/1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776602,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-13","res":{"statusCode":200},"responseTime":5.506249999999909,"msg":"request completed"}
+{"level":30,"time":1792547776602,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-14","req":{"method":"POST","url":"/api/visibility/toggle","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776613,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-14","res":{"statusCode":200},"responseTime":11.210999999999785,"msg":"request completed"}
+{"level":30,"time":1792547776614,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-15","req":{"method":"GET","url":"/api/visibility/mcp/1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776619,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-15","res":{"statusCode":200},"responseTime":5.13254199999983,"msg":"request completed"}
+{"level":30,"time":1792547776620,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-16","req":{"method":"GET","url":"/api/agents/no_such_agent/visibility","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776622,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-16","res":{"statusCode":404},"responseTime":2.567790999999943,"msg":"request completed"}
+{"level":30,"time":1792547776623,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-17","req":{"method":"PUT","url":"/api/agents/planner/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776632,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-17","res":{"statusCode":200},"responseTime":8.772415999999794,"msg":"request completed"}
+{"level":30,"time":1792547776633,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-18","req":{"method":"PUT","url":"/api/agents/planner/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776636,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-18","res":{"statusCode":400},"responseTime":2.940207999999984,"msg":"request completed"}
+{"level":30,"time":1792547776636,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-19","req":{"method":"PUT","url":"/api/agents/planner/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776637,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-19","res":{"statusCode":400},"responseTime":1.1221669999999904,"msg":"request completed"}
+{"level":30,"time":1792547776637,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1a","req":{"method":"PUT","url":"/api/agents/no_such_agent/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776639,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1a","res":{"statusCode":404},"responseTime":1.3877919999999904,"msg":"request completed"}
+{"level":30,"time":1792547776639,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1b","req":{"method":"PUT","url":"/api/agents/planner/wrapup","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776642,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1b","res":{"statusCode":200},"responseTime":3.5629170000001977,"msg":"request completed"}
+{"level":30,"time":1792547776643,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1c","req":{"method":"POST","url":"/api/agents/planner/wrapup/reset","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776645,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1c","res":{"statusCode":200},"responseTime":1.6369589999999334,"msg":"request completed"}
+{"level":30,"time":1792547776646,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1d","req":{"method":"PUT","url":"/api/agents/planner/wrapup/task-timeout","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776648,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1d","res":{"statusCode":200},"responseTime":2.706500000000233,"msg":"request completed"}
+{"level":30,"time":1792547776651,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1e","req":{"method":"POST","url":"/api/agents/planner/wrapup/task-timeout/reset","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776653,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1e","res":{"statusCode":200},"responseTime":2.658792000000176,"msg":"request completed"}
+{"level":30,"time":1792547776654,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1f","req":{"method":"POST","url":"/api/agents/planner/prompt/reset","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776676,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1f","res":{"statusCode":200},"responseTime":21.23587499999985,"msg":"request completed"}
+{"level":30,"time":1792547776678,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1g","req":{"method":"POST","url":"/api/agents/planner/prompt/preview","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776755,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1g","res":{"statusCode":200},"responseTime":77.19445799999994,"msg":"request completed"}
+{"level":30,"time":1792547776756,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1h","req":{"method":"POST","url":"/api/agents","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776762,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1h","res":{"statusCode":201},"responseTime":5.659458000000086,"msg":"request completed"}
+{"level":30,"time":1792547776762,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1i","req":{"method":"POST","url":"/api/agents/batchc_agent/triggers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776767,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1i","res":{"statusCode":201},"responseTime":5.0752080000002024,"msg":"request completed"}
+{"level":30,"time":1792547776769,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1j","req":{"method":"GET","url":"/api/agents/batchc_agent/triggers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776772,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1j","res":{"statusCode":200},"responseTime":3.380500000000211,"msg":"request completed"}
+{"level":30,"time":1792547776772,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1k","req":{"method":"PATCH","url":"/api/triggers/85","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776776,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1k","res":{"statusCode":200},"responseTime":3.752042000000074,"msg":"request completed"}
+{"level":30,"time":1792547776777,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1l","req":{"method":"DELETE","url":"/api/triggers/85","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776797,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1l","res":{"statusCode":200},"responseTime":19.487999999999374,"msg":"request completed"}
+{"level":30,"time":1792547776797,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1m","req":{"method":"DELETE","url":"/api/triggers/85","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776798,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1m","res":{"statusCode":404},"responseTime":0.919832999999926,"msg":"request completed"}
+{"level":30,"time":1792547776801,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1n","req":{"method":"GET","url":"/api/mcp/1/tools","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776803,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1n","res":{"statusCode":200},"responseTime":1.7654170000005251,"msg":"request completed"}
+{"level":30,"time":1792547776806,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1o","req":{"method":"GET","url":"/api/mcp/1/tools","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776808,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1o","res":{"statusCode":200},"responseTime":2.5624580000003334,"msg":"request completed"}
+{"level":30,"time":1792547776809,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1p","req":{"method":"GET","url":"/api/mcp/999999999/tools","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776810,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1p","res":{"statusCode":404},"responseTime":0.5637079999996786,"msg":"request completed"}
+{"level":30,"time":1792547776811,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1q","req":{"method":"POST","url":"/api/mcp/4481/refresh","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776812,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1q","res":{"statusCode":200},"responseTime":1.0707080000001952,"msg":"request completed"}
+{"level":30,"time":1792547776812,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1r","req":{"method":"GET","url":"/api/mcp/4481/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776813,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1r","res":{"statusCode":200},"responseTime":1.1164580000004207,"msg":"request completed"}
+{"level":30,"time":1792547776813,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1s","req":{"method":"GET","url":"/api/mcp/4481/usage","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776822,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1s","res":{"statusCode":200},"responseTime":8.51391700000022,"msg":"request completed"}
+{"level":30,"time":1792547776824,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1t","req":{"method":"POST","url":"/api/tools/custom","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776828,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1t","res":{"statusCode":201},"responseTime":3.7844160000004194,"msg":"request completed"}
+{"level":30,"time":1792547776828,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1u","req":{"method":"POST","url":"/api/tools/custom","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776830,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1u","res":{"statusCode":409},"responseTime":1.2101659999998446,"msg":"request completed"}
+{"level":30,"time":1792547776830,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1v","req":{"method":"POST","url":"/api/tools/custom","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776830,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1v","res":{"statusCode":400},"responseTime":0.20270799999980227,"msg":"request completed"}
+{"level":30,"time":1792547776830,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1w","req":{"method":"PUT","url":"/api/tools/custom/c_echo","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776832,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1w","res":{"statusCode":200},"responseTime":1.8579170000002705,"msg":"request completed"}
+{"level":30,"time":1792547776833,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1x","req":{"method":"PUT","url":"/api/tools/custom/bash","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776833,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1x","res":{"statusCode":400},"responseTime":0.5639999999993961,"msg":"request completed"}
+{"level":30,"time":1792547776833,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1y","req":{"method":"POST","url":"/api/tools/custom/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776840,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1y","res":{"statusCode":200},"responseTime":6.6322089999994205,"msg":"request completed"}
+{"level":30,"time":1792547776840,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1z","req":{"method":"POST","url":"/api/tools/custom/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776841,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-1z","res":{"statusCode":200},"responseTime":0.3387080000002243,"msg":"request completed"}
+{"level":30,"time":1792547776841,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-20","req":{"method":"POST","url":"/api/tools/custom/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776841,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-20","res":{"statusCode":200},"responseTime":0.1413750000001528,"msg":"request completed"}
+{"level":30,"time":1792547776841,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-21","req":{"method":"DELETE","url":"/api/tools/custom/c_echo","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776842,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-21","res":{"statusCode":200},"responseTime":1.3395829999999478,"msg":"request completed"}
+{"level":30,"time":1792547776842,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-22","req":{"method":"DELETE","url":"/api/tools/custom/c_echo","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776843,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-22","res":{"statusCode":404},"responseTime":0.5963749999991705,"msg":"request completed"}
+{"level":30,"time":1792547776846,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-23","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547776883,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-23","res":{"statusCode":201},"responseTime":36.989833000000544,"msg":"request completed"}
+{"level":30,"time":1792547777887,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-24","req":{"method":"POST","url":"/api/exploration/findings/7877/deepen","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547777975,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-24","res":{"statusCode":200},"responseTime":88.41670900000008,"msg":"request completed"}
+{"level":30,"time":1792547777985,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-25","req":{"method":"POST","url":"/api/exploration/findings/7877/deepen","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547777986,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-25","res":{"statusCode":400},"responseTime":0.30912499999976717,"msg":"request completed"}
+{"level":30,"time":1792547777986,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-26","req":{"method":"POST","url":"/api/exploration/findings/999999999/deepen","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547777992,"pid":62608,"hostname":"MacBook-Pro-3.local","reqId":"req-26","res":{"statusCode":404},"responseTime":6.254750000000058,"msg":"request completed"}
+ ✓ src/http/batch-c.test.ts (12 tests) 8335ms
+   ✓ 批次C：分类与批量控制 > CRUD + 批量移动分类 + 批量 pause/resume 1211ms
+   ✓ 批次C：skills 管理 > 用量 / 缺口 / 可见性 462ms
+(node:62656) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ context-coordination.test.ts (30 tests) 33903ms
+   ✓ context coordination > rejects unknown execution tool names before any intent in the batch is committed 489ms
+   ✓ context coordination > projects actual Worker tools and honors changed bindings instead of stale builtin rows 2596ms
+   ✓ context coordination > accepts enabled custom tools but not disabled ones without running them 728ms
+   ✓ context coordination > keeps MCP schemas deferred and rejects unbound namespaces without launching services 385ms
+   ✓ context coordination > keeps budget-omitted context changes pending for the next planning round 518ms
+   ✓ context coordination > runs native pi incremental writeback and ends on a final summary 4723ms
+   ✓ context coordination > allows a native pi Worker to end with no new facts or completion manifest 3007ms
+   ✓ context coordination > keeps a waiting planner idle until a durable graph change arrives 8203ms
+   ✓ context coordination > rejects stale completion evidence when recovering an already submitted result 2084ms
+   ✓ context coordination > keeps complete evidence pageable beyond the tool response budget 569ms
+   ✓ context coordination > preserves committed facts and records blocked when the final model response fails 2047ms
+(node:62726) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/engine/blackboard.test.ts (23 tests) 18420ms
+   ✓ ends on the final summary without a completion tool or extra model request 2146ms
+   ✓ refills one released slot from final graph results while the other two workers keep their intents 6134ms
+   ✓ reads legacy private observations and checkpoints without automatically publishing them 2074ms
+   ✓ does not audit a synthetic aborted pi continuation as another provider request 2055ms
+   ✓ lets Planner read a live Worker finding and wakes again after Worker release 2048ms
+   ✓ coalesces Worker asset registration and wakes on explicit association removal 398ms
+   ✓ keeps anchored facts immediately visible without treating tested metadata as asset discovery 399ms
+{"level":30,"time":1792547849346,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849427,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":81.12033299999985,"msg":"request completed"}
+{"level":30,"time":1792547849512,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"POST","url":"/api/chat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547849513,"pid":62792,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"缺少或无效的 task 查询参数","stack":"Error: 缺少或无效的 task 查询参数\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:290:75)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547849516,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":400},"responseTime":3.946042000000034,"msg":"request completed"}
+{"level":30,"time":1792547849517,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"POST","url":"/api/chat?task=99999999","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547849520,"pid":62792,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"task not found","stack":"Error: task not found\n    at taskExploration (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:227:36)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at chat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:275:19)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792547849520,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":404},"responseTime":3.4321659999995973,"msg":"request completed"}
+{"level":30,"time":1792547849521,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"POST","url":"/api/chat?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547849526,"pid":62792,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"message 不能为空","stack":"Error: message 不能为空\n    at chat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:281:117)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547849527,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":400},"responseTime":5.633124999999836,"msg":"request completed"}
+{"level":30,"time":1792547849527,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"POST","url":"/api/chat?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849531,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":200},"responseTime":3.9022079999999733,"msg":"request completed"}
+{"level":30,"time":1792547849532,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/chat?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547849535,"pid":62792,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"附件不存在或不属于本任务","stack":"Error: 附件不存在或不属于本任务\n    at Module.prepareAttachments (/Users/pphua/Documents/GitHub/fate/apps/server/src/evidence/attachments.ts:13:31)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at chat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:282:20)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792547849536,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":404},"responseTime":4.161999999999807,"msg":"request completed"}
+{"level":30,"time":1792547849537,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/chat?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547849539,"pid":62792,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"LLM profile 未配置（桩）","stack":"Error: LLM profile 未配置（桩）\n    at Engine.engine.mainChat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/batch-a.test.ts:172:15)\n    at chat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:285:38)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)"},"msg":"request failed"}
+{"level":30,"time":1792547849541,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":500},"responseTime":3.813292000000274,"msg":"request completed"}
+{"level":30,"time":1792547849548,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/exploration/activity/history?task=3003&session=main:1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849554,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":200},"responseTime":6.270207999999911,"msg":"request completed"}
+{"level":30,"time":1792547849555,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/exploration/activity?task=3003&limit=1000","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849559,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":200},"responseTime":4.393041000000267,"msg":"request completed"}
+{"level":30,"time":1792547849560,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"POST","url":"/api/tasks/3003/chat/stop","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849565,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":200},"responseTime":5.066083000000162,"msg":"request completed"}
+{"level":30,"time":1792547849566,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/tasks/3003/chat/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849568,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":2.6437089999999444,"msg":"request completed"}
+{"level":30,"time":1792547849569,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"GET","url":"/api/chat/mentions?task=3003&kind=&q=","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849574,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":200},"responseTime":5.521333000000141,"msg":"request completed"}
+{"level":30,"time":1792547849575,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"GET","url":"/api/chat/mentions?task=3003&q=%E6%B3%A8%E5%85%A5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849579,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":200},"responseTime":4.657541999999921,"msg":"request completed"}
+{"level":30,"time":1792547849580,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"GET","url":"/api/chat/mentions","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849580,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":400},"responseTime":0.13854099999980463,"msg":"request completed"}
+{"level":30,"time":1792547849606,"pid":62792,"hostname":"MacBook-Pro-3.local","msg":"Server listening at http://127.0.0.1:65254"}
+{"level":30,"time":1792547849614,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/exploration/activity/stream?task=3003&since=0&token=[redacted]","host":"127.0.0.1:65254","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849633,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/exploration/activity/stream?expID=3436&task=3003&since=0&token=[redacted]","host":"127.0.0.1:65254","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849640,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/exploration/activity/stream?task=99999999&token=[redacted]","host":"127.0.0.1:65254","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547849643,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":404},"responseTime":2.95699999999988,"msg":"request completed"}
+{"level":30,"time":1792547853650,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"PUT","url":"/api/tasks/3003/llm","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547853664,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":200},"responseTime":14.626917000000503,"msg":"request completed"}
+{"level":30,"time":1792547853666,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-g","req":{"method":"GET","url":"/api/tasks/3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547853920,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-g","res":{"statusCode":200},"responseTime":253.84887499999968,"msg":"request completed"}
+{"level":30,"time":1792547853921,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-h","req":{"method":"PUT","url":"/api/tasks/3003/llm","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547853951,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-h","res":{"statusCode":200},"responseTime":29.785208999999668,"msg":"request completed"}
+{"level":30,"time":1792547853952,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-i","req":{"method":"GET","url":"/api/tasks/3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547853991,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-i","res":{"statusCode":200},"responseTime":39.25270899999941,"msg":"request completed"}
+{"level":30,"time":1792547853995,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-j","req":{"method":"GET","url":"/api/tasks/3003/asset-refs?asset_id=4624","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854004,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-j","res":{"statusCode":200},"responseTime":8.66125000000011,"msg":"request completed"}
+{"level":30,"time":1792547854004,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-k","req":{"method":"GET","url":"/api/tasks/3003/asset-refs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854006,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-k","res":{"statusCode":400},"responseTime":2.5428750000000946,"msg":"request completed"}
+{"level":30,"time":1792547854007,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-l","req":{"method":"GET","url":"/api/tasks/3003/intent-assets?before=0&limit=300","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854014,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-l","res":{"statusCode":200},"responseTime":7.521249999999782,"msg":"request completed"}
+{"level":30,"time":1792547854015,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-m","req":{"method":"GET","url":"/api/assets?task_id=3003&tested=false&approval_state=approved&limit=50&offset=0","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854026,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-m","res":{"statusCode":200},"responseTime":11.406582999999955,"msg":"request completed"}
+{"level":30,"time":1792547854027,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-n","req":{"method":"GET","url":"/api/assets?task_id=3003&tested=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854031,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-n","res":{"statusCode":200},"responseTime":3.9420000000000073,"msg":"request completed"}
+{"level":30,"time":1792547854031,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-o","req":{"method":"GET","url":"/api/assets?dsl=batch-a-1792547849466-942077.example.com","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854042,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-o","res":{"statusCode":200},"responseTime":10.537749999999505,"msg":"request completed"}
+{"level":30,"time":1792547854042,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-p","req":{"method":"GET","url":"/api/assets?task_id=3003&dsl=batch-a-1792547849466-942077.example.com","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854047,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-p","res":{"statusCode":200},"responseTime":5.154582999999548,"msg":"request completed"}
+{"level":30,"time":1792547854048,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-q","req":{"method":"GET","url":"/api/assets?type=subdomain&limit=1&offset=0","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854055,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-q","res":{"statusCode":200},"responseTime":7.106667000000016,"msg":"request completed"}
+{"level":30,"time":1792547854057,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-r","req":{"method":"GET","url":"/api/exploration/activity/search?task=3003&session=main&q=SQL%20%E6%B3%A8%E5%85%A5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854103,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-r","res":{"statusCode":200},"responseTime":46.559957999999824,"msg":"request completed"}
+{"level":30,"time":1792547854104,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-s","req":{"method":"GET","url":"/api/exploration/activity/search?task=3003&session=plan&q=","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854107,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-s","res":{"statusCode":200},"responseTime":2.865125000000262,"msg":"request completed"}
+{"level":30,"time":1792547854107,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-t","req":{"method":"GET","url":"/api/exploration/activity/search?task=3003&session=intent:7883&q=work","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854111,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-t","res":{"statusCode":200},"responseTime":3.564875000000029,"msg":"request completed"}
+{"level":30,"time":1792547854111,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-u","req":{"method":"GET","url":"/api/exploration/activity/search?task=3003&session=main&q=%E7%BB%9D%E5%AF%B9%E4%B8%8D%E5%AD%98%E5%9C%A8%E7%9A%84%E5%85%B3%E9%94%AE%E8%AF%8Dxyz","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854113,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-u","res":{"statusCode":200},"responseTime":2.2810000000008586,"msg":"request completed"}
+{"level":30,"time":1792547854114,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-v","req":{"method":"GET","url":"/api/exploration/main-sessions?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854119,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-v","res":{"statusCode":200},"responseTime":5.637416999999914,"msg":"request completed"}
+{"level":30,"time":1792547854120,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-w","req":{"method":"POST","url":"/api/exploration/main-session/new?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854130,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-w","res":{"statusCode":200},"responseTime":9.958625000000211,"msg":"request completed"}
+{"level":30,"time":1792547854130,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-x","req":{"method":"GET","url":"/api/exploration/main-sessions?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854133,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-x","res":{"statusCode":200},"responseTime":2.4163330000001224,"msg":"request completed"}
+{"level":30,"time":1792547854136,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-y","req":{"method":"GET","url":"/api/exploration/tokens?task=3003","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854145,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-y","res":{"statusCode":200},"responseTime":8.9565419999999,"msg":"request completed"}
+{"level":30,"time":1792547854146,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-z","req":{"method":"POST","url":"/api/llm/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854147,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-z","res":{"statusCode":200},"responseTime":0.8507920000001832,"msg":"request completed"}
+{"level":30,"time":1792547854147,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-10","req":{"method":"POST","url":"/api/llm/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854147,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-10","res":{"statusCode":200},"responseTime":0.22162500000013097,"msg":"request completed"}
+{"level":30,"time":1792547854150,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-11","req":{"method":"POST","url":"/api/llm/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854184,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-11","res":{"statusCode":200},"responseTime":33.598957999999584,"msg":"request completed"}
+{"level":30,"time":1792547854184,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-12","req":{"method":"POST","url":"/api/llm/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854205,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-12","res":{"statusCode":200},"responseTime":21.30291600000055,"msg":"request completed"}
+{"level":30,"time":1792547854205,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-13","req":{"method":"POST","url":"/api/llm/test","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547854206,"pid":62792,"hostname":"MacBook-Pro-3.local","reqId":"req-13","res":{"statusCode":200},"responseTime":0.24729200000001583,"msg":"request completed"}
+ ✓ src/http/batch-a.test.ts (14 tests | 1 skipped) 5816ms
+   ✓ 批次A：主对话链 > SSE task→expID 换算：?task= 回放该任务 exploration 的活动行；expID 优先 4063ms
+   ✓ 批次A：任务总览数据 > PUT /api/tasks/:id/llm：单绑定存第一项 + 链序表同步 352ms
+ ✓ src/db/assets.test.ts (25 tests) 1004ms
+(node:62809) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/agent/planner-memory.test.ts (19 tests) 10619ms
+   ✓ continues the native session, deduplicates unchanged projections and refreshes current state 1534ms
+   ✓ recovers completed delivery acknowledgement without an extra request and defers unseen events 549ms
+   ✓ retries interrupted batches using the original input, not a duplicated delivery 309ms
+   ✓ preserves originals through native compaction and can retrieve an early negative conclusion 1178ms
+   ✓ keeps a history search snapshot stable while a later round appends entries 462ms
+   ✓ searches original entries instead of recall queries/results, including mixed calls: false 465ms
+   ✓ searches original entries instead of recall queries/results, including mixed calls: true 414ms
+   ✓ delivers and acknowledges a newly compacted graph in the same planning round 2061ms
+   ✓ publishes only host-grounded outcomes even when the model insists untested ports are negated and partial reading is complete 697ms
+(node:62869) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/engine/artex-flow.test.ts (17 tests) 16539ms
+   ✓ Planner ends on one normal response without a decision tool or an extra model request 743ms
+   ✓ resumes a paused Worker outside the full pool exactly once through the resume button 2185ms
+   ✓ migration is idempotent and preserves disabled/custom tool configuration 907ms
+   ✓ limits concurrent Planner probes to three and stops probing once Worker evidence exists 3644ms
+   ✓ Main goal editing does not start a Worker pool 1291ms
+   ✓ continues the original session through repeated button pause/resume cycles 2049ms
+   ✓ button resume cannot admit a paused task or replay legacy human messages 2118ms
+ ✓ prompt-regression.test.ts (29 tests) 4801ms
+   ✓ lightweight role prompts > validates platform rollback settings and exposes the next-session application boundary 351ms
+   ✓ lightweight role prompts > assembles a Planner round with one todo copy and ends on its normal summary 586ms
+   ✓ lightweight role prompts > preserves a terminal Planner override and ends without an extra decision tool 386ms
+(node:62907) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/engine/worker-lifecycle.test.ts (18 tests) 42751ms
+   ✓ gives PI and Bash the same absolute working directory when dataDir is relative 2166ms
+   ✓ delivers native PI steering while preserving incremental writes and final summary 2135ms
+   ✓ explicitly resumes a legacy partial intent without accepting its old result again 2047ms
+   ✓ budget closing refuses further exploration while allowing facts and a summary in the same bounded turn 2130ms
+   ✓ budget exhaustion preserves a truthful recovery receipt and never invents an accepted result or finding 2076ms
+   ✓ Worker sees the early budget notice, recovers from a stale bash call and publishes partial observations before exit 2054ms
+   ✓ more than six operations never block further operations or existing evidence reads 2053ms
+   ✓ closing without verified observations saves an exhaustion receipt without inventing facts 2077ms
+   ✓ honors configured zero as unlimited and completes beyond the old 30+2 implicit cap 2051ms
+   ✓ connection errors preserve facts, progress, token usage and the original Main feedback subscription 2080ms
+   ✓ records kill independently of generic stopped and retains written facts 2060ms
+   ✓ records task-timeout independently of generic stopped and retains written facts 2076ms
+   ✓ records task-completed independently of generic stopped and retains written facts 2073ms
+   ✓ records shutdown independently of generic stopped and retains written facts 2066ms
+   ✓ records pause independently of generic stopped and retains written facts 2060ms
+   ✓ a fenced executor records lease loss without overwriting graph state owned by the next executor 2084ms
+   ✓ Planner reads changed facts, dispatches a dependent second intent, and naturally completes the task 2061ms
+   ✓ graceful shutdown resumes the original PI session and intent without repeating a committed fact 4101ms
+{"level":30,"time":1792547937368,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937481,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":112.5142920000003,"msg":"request completed"}
+{"level":30,"time":1792547937482,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937482,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":0.19945800000004965,"msg":"request completed"}
+{"level":30,"time":1792547937483,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937483,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":401},"responseTime":0.23804199999995035,"msg":"request completed"}
+{"level":30,"time":1792547937484,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/auth/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937486,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":1.732332999999926,"msg":"request completed"}
+{"level":30,"time":1792547937486,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937486,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":401},"responseTime":0.5176249999999527,"msg":"request completed"}
+{"level":30,"time":1792547937486,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937559,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":401},"responseTime":72.54824999999983,"msg":"request completed"}
+{"level":30,"time":1792547937559,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937638,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":200},"responseTime":78.09558300000026,"msg":"request completed"}
+{"level":30,"time":1792547937639,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/auth/me","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937639,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":200},"responseTime":0.1517919999996593,"msg":"request completed"}
+{"level":30,"time":1792547937639,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/auth/me","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937639,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":401},"responseTime":0.0759579999999005,"msg":"request completed"}
+{"level":30,"time":1792547937639,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937685,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":201},"responseTime":45.35212499999989,"msg":"request completed"}
+{"level":30,"time":1792547937685,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/tasks/3007","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547937862,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":176.2519580000003,"msg":"request completed"}
+{"level":30,"time":1792547937862,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"GET","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547938171,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":200},"responseTime":308.82649999999967,"msg":"request completed"}
+{"level":30,"time":1792547938172,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"POST","url":"/api/tasks/3007/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547938225,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":200},"responseTime":52.94029099999989,"msg":"request completed"}
+{"level":30,"time":1792547938225,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"POST","url":"/api/tasks/3007/pause","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547938465,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":200},"responseTime":239.7125000000001,"msg":"request completed"}
+{"level":30,"time":1792547938465,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"POST","url":"/api/tasks/3007/resume","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547938481,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":200},"responseTime":16.315500000000156,"msg":"request completed"}
+{"level":30,"time":1792547938482,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-g","req":{"method":"POST","url":"/api/tasks/3007/chat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547938498,"pid":63031,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"未配置激活的 LLM profile（测试桩）","stack":"Error: 未配置激活的 LLM profile（测试桩）\n    at Engine.throwingResolver [as modelResolver] (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/api.test.ts:36:9)\n    at /Users/pphua/Documents/GitHub/fate/apps/server/src/engine/engine.ts:934:32\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Engine.mainChat (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/engine.ts:957:18)\n    at chat (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/tasks.ts:285:21)"},"msg":"request failed"}
+{"level":30,"time":1792547938505,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-g","res":{"statusCode":500},"responseTime":23.744583000000148,"msg":"request completed"}
+{"level":30,"time":1792547938506,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-h","req":{"method":"DELETE","url":"/api/tasks/3007","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939886,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-h","res":{"statusCode":200},"responseTime":1380.2357089999996,"msg":"request completed"}
+{"level":30,"time":1792547939886,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-i","req":{"method":"GET","url":"/api/tasks/3007","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939888,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-i","res":{"statusCode":404},"responseTime":1.5364580000004935,"msg":"request completed"}
+{"level":30,"time":1792547939889,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-j","req":{"method":"POST","url":"/api/llm/retry-policy","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939891,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-j","res":{"statusCode":200},"responseTime":2.186250000000655,"msg":"request completed"}
+{"level":30,"time":1792547939892,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-k","req":{"method":"GET","url":"/api/llm/retry-policy","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939894,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-k","res":{"statusCode":200},"responseTime":2.4297090000000026,"msg":"request completed"}
+{"level":30,"time":1792547939895,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-l","req":{"method":"GET","url":"/api/llm/pool","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939904,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-l","res":{"statusCode":200},"responseTime":9.116209000000708,"msg":"request completed"}
+{"level":30,"time":1792547939904,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-m","req":{"method":"GET","url":"/api/llm/records?page=0&size=10","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939911,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-m","res":{"statusCode":200},"responseTime":6.500167000000147,"msg":"request completed"}
+{"level":30,"time":1792547939911,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-n","req":{"method":"GET","url":"/api/llm/records/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939914,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-n","res":{"statusCode":200},"responseTime":2.2897920000004888,"msg":"request completed"}
+{"level":30,"time":1792547939914,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-o","req":{"method":"GET","url":"/api/llm/records/999999999","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547939915,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-o","res":{"statusCode":404},"responseTime":1.1495000000004438,"msg":"request completed"}
+{"level":30,"time":1792547939960,"pid":63031,"hostname":"MacBook-Pro-3.local","msg":"Server listening at http://127.0.0.1:49319"}
+{"level":30,"time":1792547939969,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/exploration/activity/stream?expID=3440&since=0&token=[redacted]","host":"127.0.0.1:49319","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940516,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":546.1002079999998,"msg":"request completed"}
+{"level":30,"time":1792547940518,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-p","req":{"method":"GET","url":"/api/update/check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940518,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-p","res":{"statusCode":404},"responseTime":0.31045799999992596,"msg":"request completed"}
+{"level":30,"time":1792547940518,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-q","req":{"method":"GET","url":"/api/task-archives","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940518,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-q","res":{"statusCode":404},"responseTime":0.1419160000004922,"msg":"request completed"}
+{"level":30,"time":1792547940518,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-r","req":{"method":"GET","url":"/api/task-templates","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940519,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-r","res":{"statusCode":404},"responseTime":0.14262499999949796,"msg":"request completed"}
+{"level":30,"time":1792547940519,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-s","req":{"method":"GET","url":"/api/side-questions/x/events","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940519,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-s","res":{"statusCode":404},"responseTime":0.11879200000021228,"msg":"request completed"}
+{"level":30,"time":1792547940519,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-t","req":{"method":"GET","url":"/api/tasks/notifications","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940519,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-t","res":{"statusCode":404},"responseTime":0.08941700000013952,"msg":"request completed"}
+{"level":30,"time":1792547940520,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-u","req":{"method":"GET","url":"/api/settings","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940529,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-u","res":{"statusCode":200},"responseTime":9.794165999999677,"msg":"request completed"}
+{"level":30,"time":1792547940530,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-v","req":{"method":"POST","url":"/api/settings","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940532,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-v","res":{"statusCode":200},"responseTime":2.804167000000234,"msg":"request completed"}
+{"level":30,"time":1792547940533,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-w","req":{"method":"GET","url":"/api/settings","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940536,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-w","res":{"statusCode":200},"responseTime":3.4131250000000364,"msg":"request completed"}
+{"level":30,"time":1792547940536,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-x","req":{"method":"GET","url":"/api/agents","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940540,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-x","res":{"statusCode":200},"responseTime":3.4575830000003407,"msg":"request completed"}
+{"level":30,"time":1792547940540,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-y","req":{"method":"PUT","url":"/api/agents/planner/prompt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940555,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-y","res":{"statusCode":200},"responseTime":14.793749999999818,"msg":"request completed"}
+{"level":30,"time":1792547940555,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-z","req":{"method":"GET","url":"/api/llm/profiles","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940558,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-z","res":{"statusCode":200},"responseTime":2.588749999999891,"msg":"request completed"}
+{"level":30,"time":1792547940558,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-10","req":{"method":"GET","url":"/api/mcp","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940561,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-10","res":{"statusCode":200},"responseTime":3.3636249999999563,"msg":"request completed"}
+{"level":30,"time":1792547940562,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-11","req":{"method":"GET","url":"/api/skills","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940563,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-11","res":{"statusCode":200},"responseTime":0.9678330000006099,"msg":"request completed"}
+{"level":30,"time":1792547940563,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-12","req":{"method":"POST","url":"/api/skills/file","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940563,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-12","res":{"statusCode":200},"responseTime":0.3088340000003882,"msg":"request completed"}
+{"level":30,"time":1792547940563,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-13","req":{"method":"POST","url":"/api/skills/file","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940564,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-13","res":{"statusCode":200},"responseTime":0.3571249999995416,"msg":"request completed"}
+{"level":30,"time":1792547940564,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-14","req":{"method":"POST","url":"/api/skills/file","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940564,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-14","res":{"statusCode":400},"responseTime":0.15991699999995035,"msg":"request completed"}
+{"level":30,"time":1792547940564,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-15","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940587,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-15","res":{"statusCode":201},"responseTime":22.476332999999613,"msg":"request completed"}
+{"level":30,"time":1792547940587,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-16","req":{"method":"POST","url":"/api/tasks/3009/scope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940621,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-16","res":{"statusCode":201},"responseTime":34.067167000000154,"msg":"request completed"}
+{"level":30,"time":1792547940621,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-17","req":{"method":"GET","url":"/api/tasks/3009/scope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940625,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-17","res":{"statusCode":200},"responseTime":3.972874999999476,"msg":"request completed"}
+{"level":30,"time":1792547940626,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-18","req":{"method":"GET","url":"/api/tasks/3009/coverage","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940651,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-18","res":{"statusCode":200},"responseTime":24.808082999999897,"msg":"request completed"}
+{"level":30,"time":1792547940654,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-19","req":{"method":"POST","url":"/api/tasks/999999/intents/999999/messages","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547940655,"pid":63031,"hostname":"MacBook-Pro-3.local","reqId":"req-19","res":{"statusCode":410},"responseTime":0.2750420000002123,"msg":"request completed"}
+ ✓ src/http/api.test.ts (9 tests) 4470ms
+   ✓ M5 HTTP API > 创建任务：modelResolver 抛错时 decompose 容错（不 5xx，任务可查询/控制） 2249ms
+   ✓ M5 HTTP API > 活动 SSE：since 回放 DB + engine.bus 实时帧（data: {json}\n\n，id: 行） 601ms
+ ✓ src/db/asset-graph.test.ts (13 tests) 4857ms
+   ✓ asset_get preserves methods/params and paginates Unicode; default omits auth 636ms
+   ✓ graph contains >500 assets, real root once, URL labels and correct endpoint parents 309ms
+   ✓ MCP/PI-compatible complete input schema and no old 20-row silent truncation 377ms
+   ✓ REST batch registration and DSL share DTO, totals and error semantics 301ms
+ ✓ src/db/tasks.test.ts (13 tests) 851ms
+{"level":30,"time":1792547951678,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/tasks/1/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951696,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":17.32179099999985,"msg":"request completed"}
+{"level":30,"time":1792547951697,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/tasks/1/files?ref=work:i3&limit=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951722,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":24.895666999999776,"msg":"request completed"}
+{"level":30,"time":1792547951723,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/tasks/1/files?ref=work:i3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951761,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":200},"responseTime":37.56337499999972,"msg":"request completed"}
+{"level":30,"time":1792547951762,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=%2Fetc%2Fpasswd","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951767,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"无效文件引用","stack":"Error: 无效文件引用\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:58:42)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547951769,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":400},"responseTime":6.802999999999884,"msg":"request completed"}
+{"level":30,"time":1792547951769,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai1%2F..%2Fprivate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951771,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"无效文件路径","stack":"Error: 无效文件路径\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at fileParts (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:11:62)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:59:19)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547951771,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":400},"responseTime":1.9679590000000644,"msg":"request completed"}
+{"level":30,"time":1792547951771,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Fescape.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951790,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"不允许访问符号链接","stack":"Error: 不允许访问符号链接\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at safeFilePath (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:22:39)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:64:24)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":403},"msg":"request failed"}
+{"level":30,"time":1792547951791,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":403},"responseTime":19.34054100000003,"msg":"request completed"}
+{"level":30,"time":1792547951791,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Fescape-dir%2Fprivate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951798,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"不允许访问符号链接","stack":"Error: 不允许访问符号链接\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at safeFilePath (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:22:39)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:64:24)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":403},"msg":"request failed"}
+{"level":30,"time":1792547951798,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":403},"responseTime":6.66150000000016,"msg":"request completed"}
+{"level":30,"time":1792547951798,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%5Creport.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951803,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"无效文件引用","stack":"Error: 无效文件引用\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at fileParts (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:9:96)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:59:19)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547951803,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":400},"responseTime":4.789208000000144,"msg":"request completed"}
+{"level":30,"time":1792547951803,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/tasks/2/files/content?ref=attachment%3A672ffb0d-7311-4e50-a8b4-970194f3f2e8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951811,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"附件不属于当前任务","stack":"Error: 附件不属于当前任务\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:53:24)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792547951812,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":404},"responseTime":8.190416999999798,"msg":"request completed"}
+{"level":30,"time":1792547951812,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"GET","url":"/api/tasks/2/files/content?ref=work%3Ai3%2Freport.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951818,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"意图文件未获授权","stack":"Error: 意图文件未获授权\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at /Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:62:95\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:62:18)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":403},"msg":"request failed"}
+{"level":30,"time":1792547951819,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":403},"responseTime":6.777833999999984,"msg":"request completed"}
+{"level":30,"time":1792547951820,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Freport.txt&offset=0&version=","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951835,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":15.755415999999968,"msg":"request completed"}
+{"level":30,"time":1792547951836,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Freport.txt&offset=65535&version=317131023%3A238000%3A1792547951643.9575","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951855,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":200},"responseTime":18.861167000000023,"msg":"request completed"}
+{"level":30,"time":1792547951855,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Freport.txt&offset=131070&version=317131023%3A238000%3A1792547951643.9575","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951869,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":200},"responseTime":14.329125000000204,"msg":"request completed"}
+{"level":30,"time":1792547951870,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Freport.txt&offset=196605&version=317131023%3A238000%3A1792547951643.9575","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951879,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":200},"responseTime":9.68054200000006,"msg":"request completed"}
+{"level":30,"time":1792547951880,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work%3Ai3%2Freport.txt&version=317131023%3A238000%3A1792547951643.9575","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547951891,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"文件已变化，请从头读取","stack":"Error: 文件已变化，请从头读取\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:106:54)","statusCode":409},"msg":"request failed"}
+{"level":30,"time":1792547951891,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":409},"responseTime":10.816084000000046,"msg":"request completed"}
+{"level":30,"time":1792547951891,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-g","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work:i3/binary.bin","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951904,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-g","res":{"statusCode":200},"responseTime":12.319708999999875,"msg":"request completed"}
+{"level":30,"time":1792547951904,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-h","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work:i3/nested/html.html&download=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951916,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-h","res":{"statusCode":200},"responseTime":10.862875000000258,"msg":"request completed"}
+{"level":30,"time":1792547951917,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-i","req":{"method":"GET","url":"/api/traffic?task=1&body=%E4%B8%AD%E6%96%87%E8%AF%81%E6%8D%AE","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951929,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-i","res":{"statusCode":200},"responseTime":12.50525000000016,"msg":"request completed"}
+{"level":30,"time":1792547951929,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-j","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=0","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951939,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-j","res":{"statusCode":200},"responseTime":9.546584000000166,"msg":"request completed"}
+{"level":30,"time":1792547951939,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-k","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=8192","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951945,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-k","res":{"statusCode":200},"responseTime":5.816957999999886,"msg":"request completed"}
+{"level":30,"time":1792547951945,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-l","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=16384","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951953,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-l","res":{"statusCode":200},"responseTime":8.207375000000411,"msg":"request completed"}
+{"level":30,"time":1792547951954,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-m","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=24576","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951962,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-m","res":{"statusCode":200},"responseTime":8.648833000000195,"msg":"request completed"}
+{"level":30,"time":1792547951962,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-n","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=32768","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547951975,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-n","res":{"statusCode":200},"responseTime":12.63412500000004,"msg":"request completed"}
+{"level":30,"time":1792547951975,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-o","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=40960","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952005,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-o","res":{"statusCode":200},"responseTime":29.151041000000077,"msg":"request completed"}
+{"level":30,"time":1792547952005,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-p","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=49152","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952021,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-p","res":{"statusCode":200},"responseTime":16.394291000000067,"msg":"request completed"}
+{"level":30,"time":1792547952022,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-q","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=57344","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952038,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-q","res":{"statusCode":200},"responseTime":16.323667000000114,"msg":"request completed"}
+{"level":30,"time":1792547952038,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-r","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=65536","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952051,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-r","res":{"statusCode":200},"responseTime":12.819083999999748,"msg":"request completed"}
+{"level":30,"time":1792547952051,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-s","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=73728","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952060,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-s","res":{"statusCode":200},"responseTime":8.391125000000102,"msg":"request completed"}
+{"level":30,"time":1792547952060,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-t","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=81920","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952069,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-t","res":{"statusCode":200},"responseTime":8.575916000000234,"msg":"request completed"}
+{"level":30,"time":1792547952069,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-u","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=90112","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952075,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-u","res":{"statusCode":200},"responseTime":5.9027500000001965,"msg":"request completed"}
+{"level":30,"time":1792547952075,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-v","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=98304","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952086,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-v","res":{"statusCode":200},"responseTime":10.997207999999773,"msg":"request completed"}
+{"level":30,"time":1792547952086,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-w","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=106496","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952093,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-w","res":{"statusCode":200},"responseTime":7.314750000000004,"msg":"request completed"}
+{"level":30,"time":1792547952094,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-x","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=114688","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952100,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-x","res":{"statusCode":200},"responseTime":6.658500000000004,"msg":"request completed"}
+{"level":30,"time":1792547952101,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-y","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=122880","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952106,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-y","res":{"statusCode":200},"responseTime":5.6799590000000535,"msg":"request completed"}
+{"level":30,"time":1792547952106,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-z","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=131072","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952112,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-z","res":{"statusCode":200},"responseTime":5.836374999999862,"msg":"request completed"}
+{"level":30,"time":1792547952113,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-10","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=139264","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952122,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-10","res":{"statusCode":200},"responseTime":9.525957999999719,"msg":"request completed"}
+{"level":30,"time":1792547952122,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-11","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=147456","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952133,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-11","res":{"statusCode":200},"responseTime":10.285833999999795,"msg":"request completed"}
+{"level":30,"time":1792547952133,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-12","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=155648","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952141,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-12","res":{"statusCode":200},"responseTime":8.177957999999762,"msg":"request completed"}
+{"level":30,"time":1792547952142,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-13","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=163840","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952149,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-13","res":{"statusCode":200},"responseTime":7.731249999999818,"msg":"request completed"}
+{"level":30,"time":1792547952150,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-14","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=172032","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952158,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-14","res":{"statusCode":200},"responseTime":8.660832999999911,"msg":"request completed"}
+{"level":30,"time":1792547952158,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-15","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=180224","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952165,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-15","res":{"statusCode":200},"responseTime":6.777166999999736,"msg":"request completed"}
+{"level":30,"time":1792547952165,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-16","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=188416","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952171,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-16","res":{"statusCode":200},"responseTime":5.520457999999962,"msg":"request completed"}
+{"level":30,"time":1792547952171,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-17","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=196608","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952177,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-17","res":{"statusCode":200},"responseTime":5.435415999999805,"msg":"request completed"}
+{"level":30,"time":1792547952177,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-18","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=204800","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952184,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-18","res":{"statusCode":200},"responseTime":7.396374999999807,"msg":"request completed"}
+{"level":30,"time":1792547952185,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-19","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=212992","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952190,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-19","res":{"statusCode":200},"responseTime":5.417707999999948,"msg":"request completed"}
+{"level":30,"time":1792547952190,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1a","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=221184","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952197,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1a","res":{"statusCode":200},"responseTime":6.772541000000274,"msg":"request completed"}
+{"level":30,"time":1792547952197,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1b","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=229376","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952203,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1b","res":{"statusCode":200},"responseTime":5.67975000000024,"msg":"request completed"}
+{"level":30,"time":1792547952203,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1c","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&offset=237568","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952209,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1c","res":{"statusCode":200},"responseTime":5.822625000000244,"msg":"request completed"}
+{"level":30,"time":1792547952210,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1d","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=2&side=response","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547952211,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"证据不属于当前任务","stack":"Error: 证据不属于当前任务\n    at Module.authorizeEvidence (/Users/pphua/Documents/GitHub/fate/apps/server/src/evidence/authorization.ts:8:74)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/evidence.ts:71:9)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":403},"msg":"request failed"}
+{"level":30,"time":1792547952212,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1d","res":{"statusCode":403},"responseTime":1.7002079999997477,"msg":"request completed"}
+{"level":30,"time":1792547952212,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1e","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response&download=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952222,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1e","res":{"statusCode":200},"responseTime":9.78604200000018,"msg":"request completed"}
+{"level":30,"time":1792547952238,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1f","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work:i3/missing.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547952243,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"文件不存在","stack":"Error: 文件不存在\n    at fail (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:7:82)\n    at safeFilePath (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:29:57)\n    at resolve (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:64:24)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/task-files.ts:98:18)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792547952243,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1f","res":{"statusCode":404},"responseTime":4.789084000000003,"msg":"request completed"}
+{"level":30,"time":1792547952256,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1g","req":{"method":"GET","url":"/api/exploration/findings?task_id=1&severity=high&status=pending&q=LOCAL&page=1&limit=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952270,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1g","res":{"statusCode":200},"responseTime":14.331375000000207,"msg":"request completed"}
+{"level":30,"time":1792547952278,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1h","req":{"method":"GET","url":"/api/exploration/findings?context_task=2&q=LOCAL&limit=100","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952287,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1h","res":{"statusCode":200},"responseTime":8.75716599999987,"msg":"request completed"}
+{"level":30,"time":1792547952288,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1i","req":{"method":"GET","url":"/api/exploration/findings?context_task=2&legacy_node=6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952294,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1i","res":{"statusCode":200},"responseTime":6.3695410000000265,"msg":"request completed"}
+{"level":30,"time":1792547952294,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1j","req":{"method":"GET","url":"/api/exploration/findings/2?id_kind=record&context_task=2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952298,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1j","res":{"statusCode":200},"responseTime":4.071249999999964,"msg":"request completed"}
+{"level":30,"time":1792547952300,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1k","req":{"method":"GET","url":"/api/exploration/findings/export?scope=all&format=json","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952303,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1k","res":{"statusCode":200},"responseTime":3.4307089999997515,"msg":"request completed"}
+{"level":30,"time":1792547952313,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1l","req":{"method":"GET","url":"/api/exploration/findings/4?id_kind=record","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952318,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1l","res":{"statusCode":200},"responseTime":4.908500000000004,"msg":"request completed"}
+{"level":30,"time":1792547952319,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1m","req":{"method":"PATCH","url":"/api/exploration/findings/4?id_kind=record","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952329,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1m","res":{"statusCode":200},"responseTime":10.67883299999994,"msg":"request completed"}
+{"level":30,"time":1792547952338,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1n","req":{"method":"GET","url":"/api/conversations?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952344,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1n","res":{"statusCode":200},"responseTime":5.836291999999958,"msg":"request completed"}
+{"level":30,"time":1792547952344,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1o","req":{"method":"GET","url":"/api/conversations?task=2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952347,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1o","res":{"statusCode":200},"responseTime":2.7685419999997976,"msg":"request completed"}
+{"level":30,"time":1792547952366,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1p","req":{"method":"GET","url":"/api/traffic/hosts?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952380,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1p","res":{"statusCode":200},"responseTime":13.838666999999987,"msg":"request completed"}
+{"level":30,"time":1792547952380,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1q","req":{"method":"GET","url":"/api/traffic/hosts?task=2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952382,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1q","res":{"statusCode":200},"responseTime":2.284791999999925,"msg":"request completed"}
+{"level":30,"time":1792547952383,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1r","req":{"method":"GET","url":"/api/traffic/paths?task=1&host=127.0.0.1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952391,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1r","res":{"statusCode":200},"responseTime":7.924125000000004,"msg":"request completed"}
+{"level":30,"time":1792547952391,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1s","req":{"method":"GET","url":"/api/traffic?task=1&path_exact=/synthetic","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952404,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1s","res":{"statusCode":200},"responseTime":13.384500000000116,"msg":"request completed"}
+{"level":30,"time":1792547952405,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1t","req":{"method":"GET","url":"/api/traffic?task=1&path_exact=/","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952409,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1t","res":{"statusCode":200},"responseTime":3.9959579999999733,"msg":"request completed"}
+{"level":30,"time":1792547952409,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1u","req":{"method":"GET","url":"/api/traffic?task=1&status_class=4","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952414,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1u","res":{"statusCode":200},"responseTime":4.841542000000118,"msg":"request completed"}
+{"level":30,"time":1792547952414,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1v","req":{"method":"GET","url":"/api/traffic?task=1&status_class=2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952422,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1v","res":{"statusCode":200},"responseTime":8.38391700000011,"msg":"request completed"}
+{"level":30,"time":1792547952422,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1w","req":{"method":"GET","url":"/api/traffic?task=1&status_class=invalid","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547952423,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"无效状态码分组","stack":"Error: 无效状态码分组\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/evidence.ts:46:77)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547952424,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1w","res":{"statusCode":400},"responseTime":1.8190420000000813,"msg":"request completed"}
+{"level":30,"time":1792547952424,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1x","req":{"method":"GET","url":"/api/traffic/hosts?task=invalid","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547952424,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"无效任务","stack":"Error: 无效任务\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/evidence.ts:79:75)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1x","res":{"statusCode":400},"responseTime":0.1920420000001286,"msg":"request completed"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1y","req":{"method":"GET","url":"/api/traffic/paths?host=127.0.0.1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"必须指定任务及主机","stack":"Error: 必须指定任务及主机\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/evidence.ts:86:66)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1y","res":{"statusCode":400},"responseTime":0.15266599999995378,"msg":"request completed"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1z","req":{"method":"GET","url":"/api/traffic/paths?task=1&host=127.0.0.1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-1z","res":{"statusCode":401},"responseTime":0.1449999999999818,"msg":"request completed"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-20","req":{"method":"GET","url":"/api/tasks/1/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952425,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-20","res":{"statusCode":401},"responseTime":0.03920900000002803,"msg":"request completed"}
+{"level":30,"time":1792547952427,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-21","req":{"method":"GET","url":"/api/tasks/1/files/content?ref=work:i3/report.txt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952439,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-21","res":{"statusCode":200},"responseTime":11.771541999999954,"msg":"request completed"}
+{"level":30,"time":1792547952439,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-22","req":{"method":"GET","url":"/api/traffic/exchange/be191927-e213-4dfe-b079-8940d7f0b1b3/body?task=1&side=response","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952446,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-22","res":{"statusCode":200},"responseTime":6.132874999999785,"msg":"request completed"}
+{"level":30,"time":1792547952446,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-23","req":{"method":"GET","url":"/api/traffic?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547952454,"pid":63062,"hostname":"MacBook-Pro-3.local","reqId":"req-23","res":{"statusCode":200},"responseTime":8.704584000000068,"msg":"request completed"}
+ ✓ src/http/workspace-ui.test.ts (14 tests) 2786ms
+   ✓ file-backed traffic search and body paging preserve original bytes 306ms
+ ✓ src/tools/context-pages.test.ts (14 tests) 7669ms
+   ✓ on-demand graph reads > returns directly reusable field continuation without a relation cursor or repeated first page 431ms
+   ✓ on-demand graph reads > pages long Chinese summaries at item boundaries without loading evidence or skipping IDs 3331ms
+   ✓ on-demand graph reads > keeps cold negative conclusions and real asset/parent/yield links in Planner overview 834ms
+   ✓ on-demand graph reads > pages cold members after authorization, and detects changed references and versions 390ms
+{"level":30,"time":1792547968844,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/tasks/12/operations","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547968850,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":401},"responseTime":5.339207999999417,"msg":"request completed"}
+{"level":30,"time":1792547968850,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/tasks/12/operations","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547968900,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":49.496916000000056,"msg":"request completed"}
+{"level":30,"time":1792547968902,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"POST","url":"/api/tasks/12/operations/15/resolve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547968921,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":409},"responseTime":18.574208,"msg":"request completed"}
+{"level":30,"time":1792547968936,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"POST","url":"/api/tasks/12/operations/15/resolve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547968985,"pid":63109,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":49.4380000000001,"msg":"request completed"}
+ ✓ src/db/operation-journal.test.ts (12 tests) 7927ms
+   ✓ reuses returned results across executions, but allows live repeated observations 563ms
+   ✓ blocks all new external operations after an unconfirmed effect, while graph reads remain available 615ms
+   ✓ keeps unknown operations unresolved until a paused quiescent operator decision, recording the retry chain 365ms
+   ✓ wraps native pi and dynamically registered tools; recovery does not execute the operation again 717ms
+   ✓ treats an unfinished terminal as unknown; confirmed terminal closure never revives an old handle 407ms
+   ✓ exposes authenticated read/reconcile routes without starting or resuming a task 652ms
+   ✓ recovers a real SIGKILL at before_return without replaying the effect 1071ms
+   ✓ recovers a real SIGKILL at after_return without replaying the effect 382ms
+{"level":30,"time":1792547974715,"pid":63291,"hostname":"MacBook-Pro-3.local","msg":"Server listening at http://127.0.0.1:49510"}
+{"level":30,"time":1792547974792,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/exploration/activity/stream?task=1&token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547974984,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/exploration/activity/stream?task=1&token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975267,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/conversations/1/messages/stream?token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975625,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/tasks/2/turns?ids=main-request","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975640,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":14.655457999999271,"msg":"request completed"}
+{"level":30,"time":1792547975667,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/tasks/3/turns?ids=main-request","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975670,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":200},"responseTime":2.9431660000000193,"msg":"request completed"}
+{"level":30,"time":1792547975680,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"GET","url":"/api/conversations/2/messages/stream?token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975798,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"GET","url":"/api/conversations/2/turns?ids=auto-request","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975801,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":200},"responseTime":3.3683340000006865,"msg":"request completed"}
+{"level":30,"time":1792547975818,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/exploration/activity/stream?task=4","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975818,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":401},"responseTime":0.3912499999996726,"msg":"request completed"}
+{"level":30,"time":1792547975819,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/exploration/activity/stream?task=4&token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547975923,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":200},"responseTime":103.54983300000004,"msg":"request completed"}
+{"level":30,"time":1792547976022,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"GET","url":"/api/exploration/activity/stream?task=5&token=[redacted]","host":"127.0.0.1:49510","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547976168,"pid":63291,"hostname":"MacBook-Pro-3.local","msg":"Server listening at http://127.0.0.1:49532"}
+{"level":30,"time":1792547976183,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/exploration/activity/stream?task=6&token=[redacted]","host":"127.0.0.1:49532","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547976185,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":2.614708000000064,"msg":"request completed"}
+{"level":30,"time":1792547976279,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/tasks/8/turns?ids=protected","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547976279,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":401},"responseTime":0.1468749999994543,"msg":"request completed"}
+{"level":30,"time":1792547976279,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"GET","url":"/api/tasks/8/turns?ids=protected","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547976285,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":200},"responseTime":5.861041000000114,"msg":"request completed"}
+{"level":30,"time":1792547976287,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"GET","url":"/api/tasks/8/turns?ids=protected","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792547976289,"pid":63291,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":404},"responseTime":1.1402499999994689,"msg":"request completed"}
+ ✓ src/http/chat-stream.test.ts (9 tests) 7624ms
+   ✓ shared snapshots stream both channels before completion and reconnect on another DB connection 537ms
+   ✓ native Main messages/tools and final lifecycle share one identity; request replay never calls the model twice 360ms
+(node:63360) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/tools/tools.test.ts (9 tests) 1896ms
+   ✓ 工具层 > graph_overview 投影结构与 worker 视角删 coverage 685ms
+ ✓ src/pi/runner.test.ts (14 tests) 1337ms
+   ✓ pi native lifecycle > reserves closing time within the deadline and blocks new operations without blocking writeback 951ms
+stdout | src/egress/gateway.test.ts > 普通 HTTP 代理转发 > 未带凭据的流量：直接放行（与 Go 一致：独立聊天/enrich 不打标）
+[egress] 未打标流量直接放行: 127.0.0.1
+
+stdout | src/egress/gateway.test.ts > CONNECT 隧道 > 未带凭据的 CONNECT：放行（本地回环 echo 仍可达）
+[egress] 未打标流量直接放行: 127.0.0.1
+
+ ✓ src/egress/gateway.test.ts (15 tests) 25ms
+(node:63433) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/agent/seven-role-loadout.test.ts (17 tests) 4563ms
+   ✓ planner actual entrypoint matches preview and required tools execute 1073ms
+(node:63471) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/engine/engine.test.ts (2 tests) 5549ms
+   ✓ engine 端到端（faux 模型） > 完整闭环：goals→planner→worker→prove_goal→done 2429ms
+   ✓ engine 端到端（faux 模型） > 旧 steering 不注入意图，恢复后保留每次已写回的结果 2573ms
+{"level":30,"time":1792548003363,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/intercept/rules","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003367,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":404},"responseTime":3.580249999999978,"msg":"request completed"}
+{"level":30,"time":1792548003367,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"POST","url":"/api/intercept/rules","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003368,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":404},"responseTime":0.9572500000003856,"msg":"request completed"}
+{"level":30,"time":1792548003369,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/intercept/pending","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003369,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":404},"responseTime":0.5645419999991645,"msg":"request completed"}
+{"level":30,"time":1792548003369,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"POST","url":"/api/intercept/pending","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003370,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":404},"responseTime":0.48716700000022684,"msg":"request completed"}
+{"level":30,"time":1792548003370,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/tasks/1/asset-approvals","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003370,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":404},"responseTime":0.46749999999974534,"msg":"request completed"}
+{"level":30,"time":1792548003371,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/tasks/1/asset-approvals","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003371,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":404},"responseTime":0.1474580000003698,"msg":"request completed"}
+{"level":30,"time":1792548003371,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"GET","url":"/api/tasks/1/asset-approval-template","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003371,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":404},"responseTime":0.44441700000061246,"msg":"request completed"}
+{"level":30,"time":1792548003371,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"POST","url":"/api/tasks/1/asset-approval-template","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003372,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":404},"responseTime":0.13737500000024738,"msg":"request completed"}
+{"level":30,"time":1792548003372,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/assets?task_id=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003383,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":200},"responseTime":11.157583000000159,"msg":"request completed"}
+{"level":30,"time":1792548003398,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"GET","url":"/api/assets/counts?task_id=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003400,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":200},"responseTime":2.381749999999556,"msg":"request completed"}
+{"level":30,"time":1792548003401,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/assets/counts?task_id=invalid","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548003401,"pid":63500,"hostname":"MacBook-Pro-3.local","err":{"type":"AssetInputError","message":"task_id 无效","stack":"Error: task_id 无效\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/assets.ts:23:89)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792548003403,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":400},"responseTime":2.345792000000074,"msg":"request completed"}
+{"level":30,"time":1792548003403,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"GET","url":"/api/assets?task_id=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003403,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":401},"responseTime":0.09337500000037835,"msg":"request completed"}
+(node:63500) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"level":30,"time":1792548003517,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"DELETE","url":"/api/tasks/1/assets/2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548003522,"pid":63500,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":200},"responseTime":4.908625000000029,"msg":"request completed"}
+ ✓ src/db/approval-removal.test.ts (5 tests) 3974ms
+   ✓ archives legacy decisions once and removes active tables, columns, triggers and judge settings 639ms
+{"level":30,"time":1792548005736,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"POST","url":"/api/auth/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548005818,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":82.03591700000015,"msg":"request completed"}
+{"level":30,"time":1792548005819,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548005872,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":201},"responseTime":52.34649999999965,"msg":"request completed"}
+{"level":30,"time":1792548005922,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"POST","url":"/api/tasks/3025/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548005963,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":200},"responseTime":40.19033300000001,"msg":"request completed"}
+{"level":30,"time":1792548005965,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"POST","url":"/api/tasks/3025/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548005983,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":17.875292000000172,"msg":"request completed"}
+{"level":30,"time":1792548005983,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"POST","url":"/api/tasks/3025/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548005984,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":400},"responseTime":1.0254580000000715,"msg":"request completed"}
+{"level":30,"time":1792548005985,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/companies","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006020,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":201},"responseTime":34.58799999999974,"msg":"request completed"}
+{"level":30,"time":1792548006020,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/companies","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006025,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":409},"responseTime":5.51016699999991,"msg":"request completed"}
+{"level":30,"time":1792548006026,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"POST","url":"/api/companies/674/scope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006049,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":200},"responseTime":23.345250000000306,"msg":"request completed"}
+{"level":30,"time":1792548006049,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"POST","url":"/api/companies/674/scope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006050,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":400},"responseTime":0.27520899999990434,"msg":"request completed"}
+{"level":30,"time":1792548006052,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"POST","url":"/api/companies/674/scope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006076,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":200},"responseTime":24.63391700000011,"msg":"request completed"}
+{"level":30,"time":1792548006077,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"PATCH","url":"/api/companies/674/scope/1009","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006118,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":40.326958000000104,"msg":"request completed"}
+{"level":30,"time":1792548006118,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"DELETE","url":"/api/companies/674/scope/1010","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006136,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":200},"responseTime":18.31162499999982,"msg":"request completed"}
+{"level":30,"time":1792548006136,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"DELETE","url":"/api/companies/674/scope/1010","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006137,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":404},"responseTime":0.9906670000000304,"msg":"request completed"}
+{"level":30,"time":1792548006137,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"PATCH","url":"/api/companies/674","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006139,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":200},"responseTime":1.6198749999998654,"msg":"request completed"}
+{"level":30,"time":1792548006140,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"DELETE","url":"/api/companies/674","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006143,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":200},"responseTime":2.0494579999999587,"msg":"request completed"}
+{"level":30,"time":1792548006144,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-g","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006170,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-g","res":{"statusCode":201},"responseTime":25.840666000000056,"msg":"request completed"}
+{"level":30,"time":1792548006233,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-h","req":{"method":"POST","url":"/api/tasks/3026/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006266,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-h","res":{"statusCode":200},"responseTime":33.409541999999874,"msg":"request completed"}
+{"level":30,"time":1792548006266,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-i","req":{"method":"DELETE","url":"/api/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006272,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-i","res":{"statusCode":200},"responseTime":5.358958999999686,"msg":"request completed"}
+{"level":30,"time":1792548006274,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-j","req":{"method":"DELETE","url":"/api/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006274,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-j","res":{"statusCode":400},"responseTime":0.21829200000001947,"msg":"request completed"}
+{"level":30,"time":1792548006278,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-k","req":{"method":"DELETE","url":"/api/assets","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548006283,"pid":63521,"hostname":"MacBook-Pro-3.local","reqId":"req-k","res":{"statusCode":200},"responseTime":4.566000000000258,"msg":"request completed"}
+ ✓ src/http/batch-b.test.ts (3 tests) 3304ms
+ ✓ platform-adaptation.test.ts (6 tests) 2722ms
+   ✓ platform adaptation integration > recovers only the expired runtime and its in-flight model attempts, preserving concurrent Workers 354ms
+ ✓ src/db/platform.test.ts (5 tests) 772ms
+(node:63593) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ context-prefix.test.ts (5 tests) 3301ms
+   ✓ assembles Worker custom role and Skill before mandate, keeps live constraints once and recovers saved facts 516ms
+   ✓ Planner reads facts and completed work outside the startup window and rejects a duplicate dispatch 1332ms
+ ✓ src/agent/context-needs.test.ts (8 tests) 2100ms
+ ✓ src/engine/terminal.test.ts (9 tests) 16929ms
+   ✓ recovers durable completed goals without another Planner model request 2108ms
+   ✓ a failed terminal commit leaves the executor retryable and does not publish success 2042ms
+   ✓ a stale executor cannot finish a task after another owner acquired its lease 2063ms
+   ✓ a persisted pause wins against terminal publication from an in-flight Planner 2386ms
+   ✓ preserves a completed Worker receipt when stop arrives after execution ends 2100ms
+   ✓ preserves a completed Worker receipt when pause arrives after execution ends 2061ms
+   ✓ bounds a Planner-only task by its deadline without falsely completing unmet goals 2414ms
+ ✓ src/engine/regression.test.ts (6 tests) 5513ms
+   ✓ scheduler and graph regressions > manual dispatch commits before wake; a single worker drains multiple intents without a 30s sleep 2352ms
+   ✓ scheduler and graph regressions > concurrent run requests start only one worker pool 2042ms
+ ✓ src/pi/domain-compaction.test.ts (18 tests) 224ms
+ ✓ src/engine/triggers.test.ts (9 tests) 11657ms
+   ✓ durable trigger acceptance > drains goal and timeout events beyond the first page without replaying history 3121ms
+   ✓ durable trigger acceptance > delivers late commits even when a newer finding id has already been observed 1092ms
+   ✓ durable trigger acceptance > groups serial / all deliveries into 1 conversations without dropping events 1027ms
+   ✓ durable trigger acceptance > groups serial / by_task deliveries into 2 conversations without dropping events 2300ms
+   ✓ durable trigger acceptance > groups serial / none deliveries into 4 conversations without dropping events 533ms
+   ✓ durable trigger acceptance > triggers only committed findings and passes the report record id, not the graph node id 1118ms
+stdout | src/pi/platform-mcp.test.ts > native deferred MCP > reduces first-request schemas for large servers and records the discovery request cost separately
+MCP_BUDGET {"direct":[27618],"deferred":[1222,2843]}
+
+ ✓ src/pi/platform-mcp.test.ts (7 tests) 4297ms
+   ✓ native deferred MCP > does not misreport a resource-only server as unavailable 1161ms
+   ✓ native deferred MCP > stdio discovers and invokes only authorized tools 1403ms
+   ✓ native deferred MCP > http discovers and invokes only authorized tools 500ms
+   ✓ native deferred MCP > sse discovers and invokes only authorized tools 649ms
+   ✓ native deferred MCP > rejects revoked calls after discovery and after session recovery 311ms
+ ✓ src/tools/constraint-grounding.test.ts (6 tests) 5112ms
+   ✓ native pi Goals can recover from a rejected invented rule and save the real request 312ms
+(node:64240) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/agent/work-identity.test.ts (8 tests) 2511ms
+   ✓ serializes concurrent equivalent proposals, including asset aliases and different prose 688ms
+{"level":30,"time":1792548086044,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548086300,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":255.71770800000013,"msg":"request completed"}
+{"level":30,"time":1792548086541,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/llm/records/by-model?task=3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548086719,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":175.6922080000004,"msg":"request completed"}
+{"level":30,"time":1792548086995,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/exploration/intents?task=4","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548087080,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":200},"responseTime":83.98325000000023,"msg":"request completed"}
+{"level":30,"time":1792548087093,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/exploration/intents?task=4&page=1&limit=300","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548087149,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":55.28937500000029,"msg":"request completed"}
+{"level":30,"time":1792548087161,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/llm/records/by-model?task=999999999","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548087195,"pid":64249,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务不存在","stack":"Error: 任务不存在\n    at expOf (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:96:35)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:903:7)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792548087240,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":404},"responseTime":79.37941599999976,"msg":"request completed"}
+{"level":30,"time":1792548087241,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"GET","url":"/api/llm/records/by-model?task=999999999","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548087244,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":401},"responseTime":2.2850829999997586,"msg":"request completed"}
+{"level":30,"time":1792548087582,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"GET","url":"/api/exploration/findings?task=6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548087893,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":200},"responseTime":310.5203330000004,"msg":"request completed"}
+{"level":30,"time":1792548089748,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/tasks/7","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548090214,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":200},"responseTime":465.9567500000012,"msg":"request completed"}
+{"level":30,"time":1792548090224,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/stats","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548090314,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":200},"responseTime":90.01195799999914,"msg":"request completed"}
+{"level":30,"time":1792548090479,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"GET","url":"/api/stats?task=8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548090518,"pid":64249,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":200},"responseTime":37.613250000000335,"msg":"request completed"}
+ ✓ src/http/overview.test.ts (6 tests) 10965ms
+   ✓ legacy overview keeps task-scoped totals without inventing physical request counts 999ms
+   ✓ an unused task returns an empty model list instead of a missing field 399ms
+   ✓ intent lists retain their pagination envelope and task isolation 441ms
+   ✓ findings keep a paged items array for the overview list consumer 649ms
+   ✓ detail and global stats count live slots instead of historical running nodes 2634ms
+ ✓ src/db/exploration.core.test.ts (6 tests) 6271ms
+ ✓ src/pi/internal-discovery.test.ts (6 tests) 431ms
+ ✓ src/pi/providerFromProfile.test.ts (6 tests) 382ms
+{"level":30,"time":1792548111560,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/exploration/findings/1/retests","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111567,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":6.464042000000518,"msg":"request completed"}
+{"level":30,"time":1792548111568,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/conversations","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111574,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":6.162084000000505,"msg":"request completed"}
+{"level":30,"time":1792548111575,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/conversations/1/messages","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111581,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":200},"responseTime":6.190791999999419,"msg":"request completed"}
+{"level":30,"time":1792548111581,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/agents","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111584,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":2.335750000000189,"msg":"request completed"}
+{"level":30,"time":1792548111585,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"POST","url":"/api/exploration/findings/1/retests","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111586,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":410},"responseTime":1.0435830000005808,"msg":"request completed"}
+{"level":30,"time":1792548111586,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"POST","url":"/api/conversations","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111587,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at ConversationService.create (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:48:3)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/conversations.ts:43:37)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111590,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":410},"responseTime":3.851542000000336,"msg":"request completed"}
+{"level":30,"time":1792548111590,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/conversations/1/messages","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111593,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at /Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:83:4\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Database.transaction (/Users/pphua/Documents/GitHub/fate/apps/server/src/db/index.ts:45:22)\n    at ConversationService.enqueue (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:80:13)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/conversations.ts:118:20)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111594,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":410},"responseTime":4.031374999999571,"msg":"request completed"}
+{"level":30,"time":1792548111594,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"PATCH","url":"/api/conversations/1/profile","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111595,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at ConversationService.assertWritable (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:65:137)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at ConversationService.setProfile (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:67:3)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111595,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":410},"responseTime":1.2735420000008162,"msg":"request completed"}
+{"level":30,"time":1792548111596,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"PATCH","url":"/api/conversations/1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111597,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at ConversationService.assertWritable (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:65:137)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at ConversationService.update (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:58:3)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/conversations.ts:63:28)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111597,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":410},"responseTime":1.367500000000291,"msg":"request completed"}
+{"level":30,"time":1792548111597,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"DELETE","url":"/api/conversations/1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111598,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at ConversationService.assertWritable (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:65:137)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at ConversationService.remove (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:73:3)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111598,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":410},"responseTime":1.0056250000006912,"msg":"request completed"}
+{"level":30,"time":1792548111598,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"POST","url":"/api/conversations/1/stop","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111600,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at ConversationService.assertWritable (/Users/pphua/Documents/GitHub/fate/apps/server/src/engine/conversations.ts:65:137)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/conversations.ts:124:5)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111600,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":410},"responseTime":1.7537499999998545,"msg":"request completed"}
+{"level":30,"time":1792548111600,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-c","req":{"method":"PUT","url":"/api/agents/retester/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111600,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/app.ts:144:128)\n    at hookIterator (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:412:10)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:242:18)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-c","res":{"statusCode":410},"responseTime":0.4703749999998763,"msg":"request completed"}
+{"level":30,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-d","req":{"method":"POST","url":"/api/agents/retester/triggers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/app.ts:144:128)\n    at hookIterator (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:412:10)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:242:18)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-d","res":{"statusCode":410},"responseTime":0.23591600000054314,"msg":"request completed"}
+{"level":30,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-e","req":{"method":"POST","url":"/api/agents","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548111601,"pid":64803,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。","stack":"Error: Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。\n    at Module.assertActiveRole (/Users/pphua/Documents/GitHub/fate/apps/server/src/agent/retired-roles.ts:7:25)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/config.ts:236:5)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":410,"code":"RETESTER_RETIRED"},"msg":"request failed"}
+{"level":30,"time":1792548111602,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-e","res":{"statusCode":410},"responseTime":0.9456669999999576,"msg":"request completed"}
+{"level":30,"time":1792548111602,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-f","req":{"method":"POST","url":"/api/conversations/delete/batch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548111604,"pid":64803,"hostname":"MacBook-Pro-3.local","reqId":"req-f","res":{"statusCode":200},"responseTime":1.9830409999995027,"msg":"request completed"}
+ ✓ src/http/retester-retirement.test.ts (3 tests) 3348ms
+stdout | src/agent/tool-catalog.test.ts > all seven previews use real schemas and never include Retester capabilities
+LOADOUT_BUDGET [{"role":"goals","resident":["context_search","context_get","set_goals","set_constraints","register_user_target","read"],"deferred":[],"schema_bytes":{"before":5150,"resident":4864,"registered":4864}},{"role":"planner","resident":["context_search","context_get","graph_overview","add_intent","prove_goal","kill_work","steer_work","todo_write","read","bash","write","edit","tool_search"],"deferred":["add_task_scope","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17268,"resident":12085,"registered":15255}},{"role":"mainagent","resident":["record_fact","report_finding","insert_assets","context_search","context_get","add_intent","dispatch_intents","steer_work","read","bash","write","edit","tool_search"],"deferred":["graph_overview","set_goals","set_constraints","kill_work","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":24194,"resident":15187,"registered":20146}},{"role":"worker","resident":["http_request","context_search","context_get","record_fact","insert_assets","report_finding","read","bash","write","edit","tool_search"],"deferred":["graph_overview","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17337,"resident":10971,"registered":14130}},{"role":"auto","resident":["context_get","list_tasks","get_task","spawn_task","pause_task","resume_task","context_search","read","tool_search"],"deferred":["list_llm_profiles","add_task_hint","get_finding","update_finding_report","asset_search","asset_get","list_findings"],"schema_bytes":{"before":7814,"resident":4764,"registered":6653}},{"role":"pentest","resident":["context_get","context_search","record_conversation_fact","report_conversation_finding","http_request","read","bash","write","edit","tool_search"],"deferred":["asset_search","asset_get","list_findings","graph_overview"],"schema_bytes":{"before":11897,"resident":8635,"registered":10060}},{"role":"reporter","resident":["context_get","get_finding","update_finding_report","context_search","read","tool_search"],"deferred":["list_findings"],"schema_bytes":{"before":4789,"resident":4216,"registered":3908}}]
+
+ ✓ src/agent/tool-catalog.test.ts (3 tests) 1881ms
+   ✓ all seven previews use real schemas and never include Retester capabilities 336ms
+{"level":30,"time":1792548116541,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-1","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116553,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-1","res":{"statusCode":200},"responseTime":11.416708000000199,"msg":"request completed"}
+{"level":30,"time":1792548116555,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-2","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116558,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-2","res":{"statusCode":200},"responseTime":3.2897910000001502,"msg":"request completed"}
+{"level":30,"time":1792548116558,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-3","req":{"method":"GET","url":"/api/llm/records/by-model?task=2","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116561,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-3","res":{"statusCode":200},"responseTime":2.9067079999999805,"msg":"request completed"}
+{"level":30,"time":1792548116564,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-4","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116567,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-4","res":{"statusCode":200},"responseTime":2.927041999999801,"msg":"request completed"}
+{"level":30,"time":1792548116567,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-5","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116567,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-5","res":{"statusCode":401},"responseTime":0.13237500000013824,"msg":"request completed"}
+{"level":30,"time":1792548116567,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-6","req":{"method":"GET","url":"/api/llm/records/by-model?task=bad","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548116568,"pid":64971,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务 ID 无效","stack":"Error: 任务 ID 无效\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:902:70)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792548116571,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":400},"responseTime":3.826042000000143,"msg":"request completed"}
+{"level":30,"time":1792548116571,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"GET","url":"/api/llm/records/by-model?task=0","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务 ID 无效","stack":"Error: 任务 ID 无效\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:902:70)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":400},"responseTime":0.30704100000002654,"msg":"request completed"}
+{"level":30,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"GET","url":"/api/llm/records/by-model?task=-1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务 ID 无效","stack":"Error: 任务 ID 无效\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:902:70)\n    at preHandlerCallbackInner (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/handle-request.js:155:5)\n    at next (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/pphua/Documents/GitHub/fate/node_modules/.pnpm/fastify@5.12.7/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)","statusCode":400},"msg":"request failed"}
+{"level":30,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":400},"responseTime":0.1932080000001406,"msg":"request completed"}
+{"level":30,"time":1792548116572,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-9","req":{"method":"GET","url":"/api/llm/records/by-model?task=99999999","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548116573,"pid":64971,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务不存在","stack":"Error: 任务不存在\n    at expOf (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:96:35)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:903:7)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792548116574,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-9","res":{"statusCode":404},"responseTime":1.3576250000000982,"msg":"request completed"}
+{"level":30,"time":1792548116577,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-a","req":{"method":"GET","url":"/api/llm/records/by-model?task=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":40,"time":1792548116578,"pid":64971,"hostname":"MacBook-Pro-3.local","err":{"type":"Error","message":"任务不存在","stack":"Error: 任务不存在\n    at expOf (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:96:35)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Object.<anonymous> (/Users/pphua/Documents/GitHub/fate/apps/server/src/http/routes/compat.ts:903:7)","statusCode":404},"msg":"request failed"}
+{"level":30,"time":1792548116578,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-a","res":{"statusCode":404},"responseTime":1.2261250000001382,"msg":"request completed"}
+{"level":30,"time":1792548116578,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-b","req":{"method":"GET","url":"/api/llm/records/by-model","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792548116583,"pid":64971,"hostname":"MacBook-Pro-3.local","reqId":"req-b","res":{"statusCode":200},"responseTime":4.2807920000000195,"msg":"request completed"}
+ ✓ src/http/model-token-usage.test.ts (4 tests) 1454ms
+ ✓ src/tools/context-evidence.test.ts (3 tests) 1670ms
+stdout | src/egress/recording.test.ts > records HTTP and self-signed wrong-host HTTPS through both target transports without changing global TLS
+starting server for 127.0.0.1
+https server started for 127.0.0.1 on 50552
+
+ ✓ src/egress/recording.test.ts (1 test) 1672ms
+   ✓ records HTTP and self-signed wrong-host HTTPS through both target transports without changing global TLS 413ms
+ ✓ src/engine/turn-summary.test.ts (10 tests) 3ms
+ ✓ src/db/asset-repair.test.ts (1 test) 1812ms
+ ✓ src/engine/blackboard-crash.test.ts (2 tests) 13472ms
+   ✓ survives SIGKILL after published without losing or replaying observations 6654ms
+   ✓ survives SIGKILL after finished without losing or replaying observations 6817ms
+ ✓ src/pi/mcpTransport.test.ts (3 tests) 167ms
+ ✓ src/agent/tool-description-policy.test.ts (11 tests) 6ms
+ ✓ src/db/constraint-correction.test.ts (2 tests) 1482ms
+ ✓ src/engine/tool-revocation.test.ts (1 test) 1678ms
+   ✓ revoking interactive shell removes it from discovery and blocks execution without blocking writeback 415ms
+ ✓ src/agent/constraint-policy.test.ts (5 tests) 4ms
+ ✓ src/tools/custom.test.ts (4 tests) 86ms
+ ✓ src/pi/terminal.test.ts (2 tests) 549ms
+   ✓ keeps a REPL alive across input, Unicode output, incremental reads and exit 383ms
+ ✓ src/agent/tool-registry.test.ts (3 tests) 5ms
+ ✓ src/pi/platform-policy.test.ts (10 tests) 4ms
+ ✓ src/agent/planner-repair.test.ts (1 test) 1488ms
+ ✓ src/agent/coldgraph.test.ts (3 tests) 2ms
+ ✓ src/http/auth-stream.test.ts (1 test) 51ms
+ ✓ src/pi/modelResolver.test.ts (3 tests) 49ms
+
+ Test Files  60 passed (60)
+      Tests  567 passed | 1 skipped (568)
+   Start at  09:55:22
+   Duration  425.31s (transform 1.91s, setup 0ms, collect 57.30s, tests 351.38s, environment 9ms, prepare 4.88s)
+

@@ -16,7 +16,7 @@ export async function domainState(db:Database,role:string,taskID:number,intentID
   if(role==='reporter'||role==='retester')return status;
   if(role==='worker'){
     if(!intentID)throw new Error('Worker 缺少当前意图');
-    const {node}=await resolveGraphNode(db,taskID,task.exploration_id,intentID,true);
+    const {node}=await resolveGraphNode(db,taskID,task.exploration_id,intentID);
     return {...status,intent:{ref:`node:${node.id}`,version:node.content_version,state:node.state,owner:node.owner,
       contract:'当前系统消息中的执行约定；详情按当前意图引用读取',
       progress:progressSummary(node.payload.progress),result:resultSummary(node.payload.execution_result),execution_stop:stopSummary(node.payload.execution_stop)},

@@ -18,6 +18,7 @@ import {
   XIcon,
 } from "lucide-react";
 import {useTurnSummaries} from '@/hooks/use-turn-summaries';
+import {WorkerWritebacks,WorkerConclusion} from '@/components/worker-writebacks';
 import {turnParts,durationLabel,type TurnSummary} from '@/lib/turn-summary';
 import {Popover,PopoverTrigger,PopoverContent,PopoverHeader,PopoverTitle,PopoverDescription} from '@/components/ui/popover';
 import {Separator} from '@/components/ui/separator';
@@ -29,13 +30,12 @@ import { Markdown } from "@/components/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ApprovalDetail } from "@/components/approval-records";
 import { conversationTurns, isLifecycle, turnID } from "@/lib/conversation-turns";
 import { Message, MessageAvatar, MessageContent, MessageFooter } from "@/components/ui/message";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
-import type { Activity, InterceptPending } from "@/lib/types";
+import type { Activity } from "@/lib/types";
 
 // ---- per-agent lane color (planner + work#1/#2/#3 …) ---------------------------
 const workerColors = ["bg-sky-600", "bg-violet-600", "bg-teal-600", "bg-pink-600", "bg-orange-600"];
@@ -89,7 +89,7 @@ type Group =
   | { type: "round"; key: number; label: string }
   | { type: "tool"; key: number; worker: string; use?: Activity; result?: Activity }
   | { type: "msg"; key: number; worker: string; steps: Activity[] }
-  | { type: "intercept"; key: number; step: Activity };
+;
 
 function groupSteps(steps: Activity[], chat: boolean): Group[] {
   const out: Group[] = [];
@@ -99,10 +99,6 @@ function groupSteps(steps: Activity[], chat: boolean): Group[] {
     if (s.kind === "usage" || isLifecycle(s)) continue; // live token-usage marker — not a rendered step
     if (s.kind === "round") {
       out.push({ type: "round", key: s.seq, label: s.summary || "新一轮" }); // planner round boundary
-      continue;
-    }
-    if (s.kind === "intercept_request") {
-      out.push({ type: "intercept", key: s.seq, step: s });
       continue;
     }
     if (s.kind === "user" || s.kind === "intent") {
@@ -187,185 +183,6 @@ function toolInputText(tool: string, raw: string): string {
   return raw;
 }
 
-// InterceptCard renders an inline intercept_request approval card. The pending_id
-// is extracted from the summary (format: "工具 X 请求审批 (#N)") so buttons are
-// available immediately without waiting for the detail load.
-function InterceptCard({ step, getDetail }: { step: Activity; getDetail: (seq: number) => Promise<string> }) {
-  // extract pending_id from summary: "工具 Bash 请求审批 (#42)"
-  const pendingId = React.useMemo(() => {
-    const m = /\(#(\d+)\)/.exec(step.summary);
-    return m ? parseInt(m[1], 10) : null;
-  }, [step.summary]);
-
-  const toolName = React.useMemo(() => {
-    const m = /工具\s+(\S+)\s+请求/.exec(step.summary);
-    return m ? m[1] : step.summary;
-  }, [step.summary]);
-
-  const [detail, setDetail] = React.useState<Record<string, unknown> | null>(null);
-  const [decided, setDecided] = React.useState<"allowed" | "denied" | "timeout" | null>(null);
-  const [deciding, setDeciding] = React.useState(false);
-  const [expanded, setExpanded] = React.useState(false);
-  const [pending, setPending] = React.useState<InterceptPending | null>(null);
-  const [statusError, setStatusError] = React.useState("");
-  const [retry, setRetry] = React.useState(0);
-
-  // Load persisted detail JSON + check the real current status from the backend
-  // so that a page refresh shows the already-decided state instead of re-offering buttons.
-  React.useEffect(() => {
-    let live = true;
-    getDetail(step.seq)
-      .then((raw) => {
-        if (!live || !raw) return;
-        try {
-          setDetail(JSON.parse(raw));
-        } catch {
-          /* ignore */
-        }
-      })
-      .catch(() => {
-        /* ignore */
-      });
-    return () => {
-      live = false;
-    };
-  }, [step.seq, getDetail]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry explicitly reloads the same approval after a failed request.
-  React.useEffect(() => {
-    if (!pendingId) return;
-    let live = true;
-    api
-      .interceptGetOne(pendingId)
-      .then((p) => {
-        if (!live) return;
-        setPending(p);
-        setStatusError("");
-        if (p.status !== "pending") setDecided(p.status as "allowed" | "denied" | "timeout");
-      })
-      .catch((error) => {
-        if (live) setStatusError((error as Error).message || "审批详情加载失败");
-      });
-    return () => {
-      live = false;
-    };
-  }, [pendingId, retry]);
-
-  async function decide(decision: "allowed" | "denied") {
-    if (step.inherited || !pendingId || deciding) return;
-    setDeciding(true);
-    try {
-      await api.interceptDecide(pendingId, decision);
-      setDecided(decision);
-      toast.success(decision === "allowed" ? "已允许执行" : "已拒绝执行");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setDeciding(false);
-    }
-  }
-
-  const inputStr = detail?.input ? JSON.stringify(detail.input).slice(0, 200) : null;
-
-  const row = pending
-    ? { ...pending, status: decided || pending.status, conv_title: "", conv_agent_key: "", rule_name: "" }
-    : null;
-
-  return (
-    <div className="my-2 rounded-lg border border-amber-400/50 bg-amber-50/40 dark:bg-amber-950/15 p-3 text-xs">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
-          <ShieldAlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          <div className="min-w-0 space-y-0.5">
-            <div className="flex items-center gap-1.5 font-medium">
-              <span className="text-amber-700 dark:text-amber-400">审批请求</span>
-              <code className="rounded bg-amber-100 dark:bg-amber-900/50 px-1 font-mono text-amber-800 dark:text-amber-300">
-                {toolName}
-              </code>
-              {pendingId && <span className="text-muted-foreground">#{pendingId}</span>}
-            </div>
-            {inputStr && <p className="font-mono text-muted-foreground truncate">{inputStr}</p>}
-          </div>
-        </div>
-
-        {step.inherited ? (
-          <Badge variant="outline">历史记录 · 只读</Badge>
-        ) : decided ? (
-          <span
-            className={
-              "shrink-0 rounded px-2 py-0.5 text-[11px] font-medium " +
-              (decided === "allowed"
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-                : decided === "timeout"
-                  ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                  : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400")
-            }
-          >
-            {decided === "allowed" ? "已允许" : decided === "timeout" ? "已超时" : "已拒绝"}
-          </span>
-        ) : (
-          <div className="flex shrink-0 gap-1.5">
-            <Button
-              size="sm"
-              className="h-6 px-2 text-xs"
-              disabled={deciding || !pendingId}
-              onClick={() => decide("allowed")}
-            >
-              <CheckIcon className="h-3 w-3" />
-              允许
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="h-6 px-2 text-xs"
-              disabled={deciding || !pendingId}
-              onClick={() => decide("denied")}
-            >
-              <XIcon className="h-3 w-3" />
-              拒绝
-            </Button>
-          </div>
-        )}
-      </div>
-      {pendingId ? (
-        <Collapsible open={expanded} onOpenChange={setExpanded} className="mt-2 min-w-0">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label={expanded ? "收起审批详情" : "展开审批详情"}>
-              {expanded ? <ChevronDown data-icon="inline-start" /> : <ChevronRight data-icon="inline-start" />}
-              {expanded ? "收起审批详情" : "展开审批详情"}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {expanded && row ? (
-              <ApprovalDetail
-                row={row}
-                busy={deciding}
-                decide={(_id, decision) => decide(decision)}
-                revision={retry}
-                readOnly={Boolean(step.inherited)}
-                defaultExpanded
-                onResolved={setDecided}
-              />
-            ) : statusError ? (
-              <div className="flex flex-wrap items-center gap-2 p-3" role="alert">
-                <span>{statusError}</span>
-                <Button variant="outline" size="sm" onClick={() => setRetry((value) => value + 1)}>
-                  重试详情
-                </Button>
-              </div>
-            ) : (
-              <p className="p-3 text-muted-foreground">正在加载审批详情…</p>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
-    </div>
-  );
-}
-
-// ToolBlock renders ONE tool call: the command and its result bound into a single
-// row (collapsed shows the command + a status/result preview; expand shows the
-// full input AND output together). Lazy-loads both details on expand.
 function ToolBlock({
   group,
   getDetail,
@@ -676,7 +493,7 @@ function UserRow({
           </div>
         )}
         {text && (
-          <Bubble align="end" className="max-w-full"><BubbleContent className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</BubbleContent></Bubble>
+          <Bubble variant="outline" align="end" className="conversation-user-bubble max-w-full"><BubbleContent className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</BubbleContent></Bubble>
         )}
         <MessageFooter><ActivityTime ts={step.ts} /></MessageFooter>
       </MessageContent>
@@ -840,14 +657,7 @@ function ActivitySteps({
             onLocated={onLocated}
             focusLabel={focusLabel}
           />
-        ) : g.type === "intercept" && g.step.seq === focusActivity ? (
-          <React.Fragment key={`located-${g.key}`}>
-            <LocatedActivity step={g.step} getDetail={getDetail} onLocated={onLocated} />
-            <InterceptCard step={g.step} getDetail={getDetail} />
-          </React.Fragment>
-        ) : g.type === "intercept" ? (
-          <InterceptCard key={"ic" + g.key} step={g.step} getDetail={getDetail} />
-        ) : (
+         ) : (
           <MessageBlock key={"m" + g.key} group={g} getDetail={getDetail} showWorker={showWorker} />
         ),
       )}
@@ -894,35 +704,36 @@ function ExecutionTurn({turn,summary,latest,...props}:ExecutionProps&{turn:Retur
   const interrupted=turn.steps.some(s=>s.interrupted)||status==='interrupted';
   const pending=turn.steps.some(t=>t.kind==='tool_use'&&!turn.steps.some(s=>s.kind==='tool_result'&&s.tool_use_id===t.tool_use_id));
   const failed=terminal?.is_error||status==='failed'||status==='blocked';
-  const label=status==='awaiting_confirmation'?'等待宿主确认':!ended&&props.pendingStatus&&latest?'等待停止确认':failed?'失败':status==='stopped'||status==='paused'?'已停止':status==='exhausted'?'预算耗尽':interrupted?'执行已中断':ended?'已完成':live?(last.kind==='intercept_request'?'等待审批':pending?'执行工具中':streaming?'正在生成':'等待模型响应'):'历史记录';
+  const label=status==='awaiting_confirmation'?'等待宿主确认':!ended&&props.pendingStatus&&latest?'等待停止确认':failed?'失败':status==='stopped'||status==='paused'?'已停止':status==='exhausted'?'预算耗尽':interrupted?'执行已中断':ended?'已完成':live?(pending?'执行工具中':streaming?'正在生成':'等待模型响应'):'历史记录';
   const [now,setNow]=React.useState(Date.now);
   React.useEffect(()=>{if(!live)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[live]);
   const elapsed=durationLabel(summary?.started_at??null,summary?.finished_at??terminal?.ts??null,now);
   const {final,process}=turnParts(turn.steps,summary);
+  const workerResults=!!props.taskId&&!props.conversationId&&ended&&(summary?.role==='worker'||last.worker.startsWith('work#'));
   const focus=props.focusActivity;
   // Search can reveal the original duplicate receipt without corrupting the normal assembly.
   const focusedOriginal=turn.steps.find(s=>s.seq===focus);
   const processSteps=focusedOriginal&&focusedOriginal.seq!==final?.seq&&!process.some(s=>s.seq===focus)?[...process,focusedOriginal].sort((a,b)=>a.seq-b.seq):process;
-  const hasProcess=processSteps.length>0&&(processSteps.some(s=>['thinking','tool_use','tool_result','round','intercept_request'].includes(s.kind))||(summary?.steps??0)>1);
+  const hasProcess=processSteps.length>0&&(processSteps.some(s=>['thinking','tool_use','tool_result','round'].includes(s.kind))||(summary?.steps??0)>1);
   const [manualOpen,setManualOpen]=React.useState<{open:boolean;focus?:number}|undefined>(undefined);
   const focusInside=!!focus&&processSteps.some(s=>s.seq===focus);
   const open=(focusInside&&manualOpen?.focus!==focus)||(manualOpen?.open??(live||!summary?.started_at));
   const errorText=summary?.error??(failed?terminal?.detail||terminal?.summary:undefined);
   const failedTools=summary?.failed_tool_calls??new Set(processSteps.filter(s=>s.kind==='tool_result'&&s.is_error).map(s=>s.tool_use_id??s.seq)).size;
-  const statusClass=cn('text-sm',failed||status==='exhausted'?'text-destructive':'text-muted-foreground',live&&'shimmer');
+  const statusClass=cn('execution-status text-sm',failed||status==='exhausted'?'text-destructive':status==='completed'||status==='done'?'text-[var(--status-success)]':'text-muted-foreground',live&&'shimmer');
   async function copy(){try{const entries=final?[final]:processSteps.filter(s=>['text','assistant','result'].includes(s.kind));const bodies=await Promise.all(entries.map(s=>s.detail??(s.seq>0?getDetail(s.seq):Promise.resolve(s.summary))));await navigator.clipboard.writeText(bodies.join('\n\n'));toast.success('已复制');}catch{toast.error('复制失败');}}
   if(turn.user)return <UserRow step={last} intent={last.kind==='intent'} getDetail={getDetail}/>;
   if(last.metadata?.worker_feedback||last.worker==='system')return <Message align="start"><MessageContent><Bubble variant="muted"><BubbleContent><ActivitySteps {...props} activity={turn.steps}/></BubbleContent></Bubble></MessageContent></Message>;
   return <Message data-turn-id={turn.key} data-run-status={label} align="start"><MessageContent>
     <Bubble variant="ghost" className="w-full max-w-full"><BubbleContent className="flex w-full min-w-0 flex-col gap-4 py-2">
-      <div className="flex flex-wrap items-center gap-2"><span role="status" className={statusClass}>{ended&&!failed&&status!=='exhausted'&&status!=='interrupted'?<CheckIcon className="mr-1 inline size-4"/>:null}{label}</span><span aria-hidden="true" className="text-muted-foreground">/</span><span className="text-sm text-muted-foreground tabular-nums">{elapsed}</span><TurnDetails summary={summary} label={label} elapsed={elapsed} conversationId={props.conversationId}/></div>
+      <div className="flex flex-wrap items-center gap-2"><span role="status" className={statusClass}><span className="execution-status-dot" aria-hidden="true"/>{label}</span><span aria-hidden="true" className="text-muted-foreground">/</span><span className="text-sm text-muted-foreground tabular-nums">{elapsed}</span><TurnDetails summary={summary} label={label} elapsed={elapsed} conversationId={props.conversationId}/></div>
       {hasProcess?<Collapsible open={open} onOpenChange={open=>setManualOpen({open,focus})}>
-        <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"><ChevronRight className={cn('transition-transform',open&&'rotate-90')}/><span>{live?'执行中':ended?'执行记录':'历史过程'}</span><span className="font-normal text-muted-foreground">{summary?.steps==null?'步骤未记录':`${summary.steps} 步`} · {summary?.tool_calls==null?'调用数未记录':`${summary.tool_calls} 次工具调用`}{failedTools>0?` · ${failedTools} 次失败`:''}</span></Button></CollapsibleTrigger>
+        <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"><ChevronRight className={cn('transition-transform',open&&'rotate-90')}/><span>{live?'执行中':ended?(failed?'执行失败':['completed','done'].includes(status??'')?'执行完成':'执行记录'):'历史过程'}</span><span className="font-normal text-muted-foreground">{summary?.steps==null?'步骤未记录':`${summary.steps} 步`} · {summary?.tool_calls==null?'调用数未记录':`${summary.tool_calls} 次工具调用`}{failedTools>0?` · ${failedTools} 次失败`:''}</span></Button></CollapsibleTrigger>
         <CollapsibleContent className="min-w-0 border-l pl-3 sm:pl-5"><ActivitySteps {...props} activity={processSteps}/></CollapsibleContent>
       </Collapsible>:processSteps.length>0?<ActivitySteps {...props} activity={processSteps}/>:null}
-      {hasProcess&&!open&&processSteps.filter(s=>s.kind==='intercept_request').map(s=><InterceptCard key={s.seq} step={s} getDetail={getDetail}/>)}
       {errorText&&!final&&<Alert variant={failed||status==='exhausted'?'destructive':'default'}><AlertDescription>{errorText}</AlertDescription></Alert>}
-      {final&&<div data-final-answer="true"><ActivitySteps {...props} activity={[final]}/></div>}
+      {final&&<div data-final-answer="true">{workerResults?<WorkerConclusion focused={focus===final.seq}><ActivitySteps {...props} activity={[final]}/></WorkerConclusion>:<ActivitySteps {...props} activity={[final]}/>}</div>}
+      {workerResults&&<WorkerWritebacks key={`${props.taskId}:${turn.key}`} task={props.taskId!} turn={summary?.turn_id??turnID(last)??turn.key} status={status} revision={terminal?.seq??summary?.revision??last.seq}/>}
     </BubbleContent></Bubble>
     <MessageFooter className="gap-3"><Button variant="ghost" size="icon-sm" onClick={()=>void copy()} disabled={!final&&!processSteps.some(s=>["text","assistant","result"].includes(s.kind)&&!!(s.detail||s.summary))} aria-label="复制答复"><CopyIcon/></Button><ActivityTime ts={terminal?.ts??last.ts}/>{last.inherited&&<Badge variant="outline">来源任务 · 只读</Badge>}</MessageFooter>
   </MessageContent></Message>;

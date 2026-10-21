@@ -1,0 +1,587 @@
+{
+  "started_at": "2026-10-20T08:09:29.663Z",
+  "updated_at": "2026-10-20T08:09:38.036Z",
+  "model": "deepseek-flash",
+  "target_requests": 0,
+  "method": "Same current domain schemas and fixed role input; direct compatibility loadout versus lean native discovery. Three fresh sessions per role/condition; alternating order; all physical requests including search recorded. Tool handlers return synthetic local evidence only.",
+  "rows": [
+    {
+      "role": "worker",
+      "variant": "before",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:29.734Z",
+          "role": "worker",
+          "variant": "before",
+          "repeat": 1,
+          "bytes": 19603,
+          "schema_bytes": 17760,
+          "estimated_tokens": 4901,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: a02aff48-2456-428c-bc09-7281a2a185bd)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "worker",
+      "variant": "after",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:30.281Z",
+          "role": "worker",
+          "variant": "after",
+          "repeat": 1,
+          "bytes": 13099,
+          "schema_bytes": 11257,
+          "estimated_tokens": 3275,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 563eab1a-5b03-46b5-a581-7fdb017130ac)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "worker",
+      "variant": "after",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:30.696Z",
+          "role": "worker",
+          "variant": "after",
+          "repeat": 2,
+          "bytes": 13099,
+          "schema_bytes": 11257,
+          "estimated_tokens": 3275,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 605e20dc-38e6-47ed-8aab-34014961ac08)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "worker",
+      "variant": "before",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:31.277Z",
+          "role": "worker",
+          "variant": "before",
+          "repeat": 2,
+          "bytes": 19603,
+          "schema_bytes": 17760,
+          "estimated_tokens": 4901,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 6e1cdb57-79b6-4b04-9ad0-7b7773bb151a)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "worker",
+      "variant": "before",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:31.730Z",
+          "role": "worker",
+          "variant": "before",
+          "repeat": 3,
+          "bytes": 19603,
+          "schema_bytes": 17760,
+          "estimated_tokens": 4901,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 761770ac-26c0-4028-8667-9fceea574ab4)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "worker",
+      "variant": "after",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:32.171Z",
+          "role": "worker",
+          "variant": "after",
+          "repeat": 3,
+          "bytes": 13099,
+          "schema_bytes": 11257,
+          "estimated_tokens": 3275,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: f9be5f8a-a6c2-4dec-a087-ec79e09d76c8)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "before",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:32.571Z",
+          "role": "planner",
+          "variant": "before",
+          "repeat": 1,
+          "bytes": 21121,
+          "schema_bytes": 17441,
+          "estimated_tokens": 5281,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 1b8fc0b9-3c2a-4cdf-8420-949b2132911b)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "after",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:32.998Z",
+          "role": "planner",
+          "variant": "after",
+          "repeat": 1,
+          "bytes": 15898,
+          "schema_bytes": 12219,
+          "estimated_tokens": 3975,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: a823d52f-db0c-4a5d-8d26-3d0a6ae369b6)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "after",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:33.424Z",
+          "role": "planner",
+          "variant": "after",
+          "repeat": 2,
+          "bytes": 15898,
+          "schema_bytes": 12219,
+          "estimated_tokens": 3975,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: cc0f4888-2a8e-4e75-a141-37e3ada30626)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "before",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:33.849Z",
+          "role": "planner",
+          "variant": "before",
+          "repeat": 2,
+          "bytes": 21121,
+          "schema_bytes": 17441,
+          "estimated_tokens": 5281,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 1c542460-ff2f-4498-9994-1742fd71af4f)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "before",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:34.338Z",
+          "role": "planner",
+          "variant": "before",
+          "repeat": 3,
+          "bytes": 21121,
+          "schema_bytes": 17441,
+          "estimated_tokens": 5281,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 2d3e2502-7c70-411c-a793-b5438c0fb6d8)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "planner",
+      "variant": "after",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:34.732Z",
+          "role": "planner",
+          "variant": "after",
+          "repeat": 3,
+          "bytes": 15898,
+          "schema_bytes": 12219,
+          "estimated_tokens": 3975,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 5274387f-d47f-44a0-a8c4-924bda5f56d5)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:35.210Z",
+          "role": "mainagent",
+          "variant": "before",
+          "repeat": 1,
+          "bytes": 26081,
+          "schema_bytes": 24591,
+          "estimated_tokens": 6521,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: d2b6bf08-b4b9-4511-83b3-658d3922e4b7)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 1,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:35.626Z",
+          "role": "mainagent",
+          "variant": "after",
+          "repeat": 1,
+          "bytes": 17060,
+          "schema_bytes": 15571,
+          "estimated_tokens": 4265,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 06d91dd8-9d4e-420f-97c0-d2036db2de9c)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:36.060Z",
+          "role": "mainagent",
+          "variant": "after",
+          "repeat": 2,
+          "bytes": 17060,
+          "schema_bytes": 15571,
+          "estimated_tokens": 4265,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: c20ea0c4-ec4a-400f-b328-76200518d5d0)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 2,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:36.591Z",
+          "role": "mainagent",
+          "variant": "before",
+          "repeat": 2,
+          "bytes": 26081,
+          "schema_bytes": 24591,
+          "estimated_tokens": 6521,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 04dd5833-ea76-4c2f-9512-1ec5297eb7ca)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:37.105Z",
+          "role": "mainagent",
+          "variant": "before",
+          "repeat": 3,
+          "bytes": 26081,
+          "schema_bytes": 24591,
+          "estimated_tokens": 6521,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 7dfe2cb2-2fa3-4e77-b8f8-7cf1d7e84994)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    },
+    {
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 3,
+      "calls": [],
+      "requests": [
+        {
+          "at": "2026-10-20T08:09:37.489Z",
+          "role": "mainagent",
+          "variant": "after",
+          "repeat": 3,
+          "bytes": 17060,
+          "schema_bytes": 15571,
+          "estimated_tokens": 4265,
+          "status": 402
+        }
+      ],
+      "saved_facts": 0,
+      "unexpected": [],
+      "status": "failed",
+      "error": "Error: 402: {\"message\":\"Insufficient Balance (request_id: 094896fd-cdbe-4c46-9534-c6cc4b7e3e17)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}"
+    }
+  ],
+  "requests": [
+    {
+      "at": "2026-10-20T08:09:29.734Z",
+      "role": "worker",
+      "variant": "before",
+      "repeat": 1,
+      "bytes": 19603,
+      "schema_bytes": 17760,
+      "estimated_tokens": 4901,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:30.281Z",
+      "role": "worker",
+      "variant": "after",
+      "repeat": 1,
+      "bytes": 13099,
+      "schema_bytes": 11257,
+      "estimated_tokens": 3275,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:30.696Z",
+      "role": "worker",
+      "variant": "after",
+      "repeat": 2,
+      "bytes": 13099,
+      "schema_bytes": 11257,
+      "estimated_tokens": 3275,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:31.277Z",
+      "role": "worker",
+      "variant": "before",
+      "repeat": 2,
+      "bytes": 19603,
+      "schema_bytes": 17760,
+      "estimated_tokens": 4901,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:31.730Z",
+      "role": "worker",
+      "variant": "before",
+      "repeat": 3,
+      "bytes": 19603,
+      "schema_bytes": 17760,
+      "estimated_tokens": 4901,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:32.171Z",
+      "role": "worker",
+      "variant": "after",
+      "repeat": 3,
+      "bytes": 13099,
+      "schema_bytes": 11257,
+      "estimated_tokens": 3275,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:32.571Z",
+      "role": "planner",
+      "variant": "before",
+      "repeat": 1,
+      "bytes": 21121,
+      "schema_bytes": 17441,
+      "estimated_tokens": 5281,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:32.998Z",
+      "role": "planner",
+      "variant": "after",
+      "repeat": 1,
+      "bytes": 15898,
+      "schema_bytes": 12219,
+      "estimated_tokens": 3975,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:33.424Z",
+      "role": "planner",
+      "variant": "after",
+      "repeat": 2,
+      "bytes": 15898,
+      "schema_bytes": 12219,
+      "estimated_tokens": 3975,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:33.849Z",
+      "role": "planner",
+      "variant": "before",
+      "repeat": 2,
+      "bytes": 21121,
+      "schema_bytes": 17441,
+      "estimated_tokens": 5281,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:34.338Z",
+      "role": "planner",
+      "variant": "before",
+      "repeat": 3,
+      "bytes": 21121,
+      "schema_bytes": 17441,
+      "estimated_tokens": 5281,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:34.732Z",
+      "role": "planner",
+      "variant": "after",
+      "repeat": 3,
+      "bytes": 15898,
+      "schema_bytes": 12219,
+      "estimated_tokens": 3975,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:35.210Z",
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 1,
+      "bytes": 26081,
+      "schema_bytes": 24591,
+      "estimated_tokens": 6521,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:35.626Z",
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 1,
+      "bytes": 17060,
+      "schema_bytes": 15571,
+      "estimated_tokens": 4265,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:36.060Z",
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 2,
+      "bytes": 17060,
+      "schema_bytes": 15571,
+      "estimated_tokens": 4265,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:36.591Z",
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 2,
+      "bytes": 26081,
+      "schema_bytes": 24591,
+      "estimated_tokens": 6521,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:37.105Z",
+      "role": "mainagent",
+      "variant": "before",
+      "repeat": 3,
+      "bytes": 26081,
+      "schema_bytes": 24591,
+      "estimated_tokens": 6521,
+      "status": 402
+    },
+    {
+      "at": "2026-10-20T08:09:37.489Z",
+      "role": "mainagent",
+      "variant": "after",
+      "repeat": 3,
+      "bytes": 17060,
+      "schema_bytes": 15571,
+      "estimated_tokens": 4265,
+      "status": 402
+    }
+  ]
+}

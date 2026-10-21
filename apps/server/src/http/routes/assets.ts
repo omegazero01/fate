@@ -1,3 +1,5 @@
+import {queryAssets,assetCounts,AssetRow} from '../../db/asset-query.js';
+import {writeAssets,AssetInputError} from '../../db/asset-write.js';
 // 资产/公司/任务范围/覆盖度路由。
 // 资产列表/公司列表是只读投影（AssetStore 的写路径与 mapAsset 宽列留在工具侧使用），
 // 直接 SQL 取需要的列；task scope 与 coverage 走 db.taskScope()。
@@ -8,82 +10,23 @@ import { TaskAssetInvalidError, TaskAssetTaskNotFoundError } from "../../db/task
 export function registerAssetRoutes(app: FastifyInstance): void {
   const db = () => app.db;
 
-  // GET /api/assets?type=&limit=&offset= — 分页资产列表（前端资产页/任务资产 Tab 共用）。
-  // 任务视图参数（对齐 api.taskAssets / searchTaskAssets）：task_id=本任务链接过滤、
-  // tested=true/false（task_asset_links.tested）、approval_state=（有效审批态，含继承）、
-  // dsl=简单 ILIKE（domain/root_domain/ip/url/app_name/service_name）。
-  app.get("/api/assets", async (req) => {
-    const q = req.query as Record<string, unknown>;
-    const type = typeof q["type"] === "string" && q["type"] !== "" ? q["type"] : null;
-    const taskID = Number(q["task_id"]) || 0;
-    const tested = q["tested"] === "true" ? true : q["tested"] === "false" ? false : null;
-    const approval =
-      typeof q["approval_state"] === "string" &&
-      ["approved", "pending", "revoked", "blocked"].includes(q["approval_state"])
-        ? q["approval_state"]
-        : null;
-    const dsl = typeof q["dsl"] === "string" ? q["dsl"].trim() : "";
-    const limit = Math.min(500, Math.max(1, Number(q["limit"]) || 50));
-    const offset = Math.max(0, Number(q["offset"]) || 0);
-
-    const params: unknown[] = [];
-    const push = (v: unknown): string => {
-      params.push(v);
-      return `$${String(params.length)}`;
-    };
-    // taskID 占位符只 push 一次，后续子查询复用（pg 参数可重复引用）。
-    const tRef = taskID > 0 ? push(taskID) : "";
-    let where = "TRUE";
-    if (type !== null) where += ` AND a.type=${push(type)}`;
-    if (taskID > 0) {
-      where += ` AND EXISTS (SELECT 1 FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id)`;
-    }
-    // tested/approval 仅在任务视图下有意义（无任务上下文时忽略）。
-    if (taskID > 0 && tested !== null) {
-      where += ` AND COALESCE((SELECT l.tested FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id), false) = ${push(tested)}`;
-    }
-    if (taskID > 0 && approval !== null) {
-      where += ` AND task_asset_effective_approval_state(${tRef}, a.id)=${push(approval)}`;
-    }
-    if (dsl !== "") {
-      const like = push(`%${dsl}%`);
-      where += ` AND (a.domain ILIKE ${like} OR a.root_domain ILIKE ${like} OR a.ip ILIKE ${like}
-                     OR a.url ILIKE ${like} OR a.app_name ILIKE ${like} OR a.service_name ILIKE ${like})`;
-    }
-
-    // 任务视图补 per-task 列（tested/approval/来源），与前端 Asset 的任务扩展位对齐。
-    const taskCols =
-      taskID > 0
-        ? `, (SELECT l.tested FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id) AS tested,
-            (SELECT l.tested_at FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id) AS tested_at,
-            (SELECT l.tested_by FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id) AS tested_by,
-            (SELECT l.source FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id) AS task_source,
-            (SELECT l.source_summary FROM task_asset_links l WHERE l.task_id=${tRef} AND l.asset_id=a.id) AS task_source_summary,
-            task_asset_effective_approval_state(${tRef}, a.id) AS approval_state`
-        : "";
-    // 过滤参数与分页参数分开（count 语句只引用过滤占位符——pg 要求实参数量严格匹配）。
-    const filterParams = [...params];
-    const limitRef = push(limit);
-    const offsetRef = push(offset);
-    const assets = await db().query(
-      `SELECT id, type, company_id, task_ids, COALESCE(domain,'') AS domain, COALESCE(root_domain,'') AS root_domain,
-              COALESCE(ip,'') AS ip, port, COALESCE(icp,'') AS icp, COALESCE(app_name,'') AS app_name,
-              COALESCE(url,'') AS url, COALESCE(service_type,'') AS service_type, COALESCE(service_name,'') AS service_name,
-              COALESCE(page_title,'') AS page_title, status_code, last_seen${taskCols}
-       FROM assets a WHERE ${where}
-       ORDER BY last_seen DESC NULLS LAST, id DESC LIMIT ${limitRef} OFFSET ${offsetRef}`,
-      params,
-    );
-    const total = await db().query<{ count: string }>(`SELECT count(*) AS count FROM assets a WHERE ${where}`, filterParams);
-    return { count: assets.rows.length, total: Number(total.rows[0]?.count ?? 0), assets: assets.rows };
+  app.get('/api/assets',async(req)=>{
+    const q=req.query as Record<string,string>,taskID=Number(q.task_id??0);
+    if(!Number.isSafeInteger(taskID)||taskID<0)throw new AssetInputError('task_id 无效');
+    if(q.tested&&!['true','false','all'].includes(q.tested))throw new AssetInputError('tested 必须为 all/true/false');
+    const ids=q.id===undefined?undefined:q.id.split(',').map(Number);
+    if(ids?.some(id=>!Number.isSafeInteger(id)||id<=0))throw new AssetInputError('id 无效');
+    return queryAssets(db(),{taskID,ids,type:q.type,dsl:q.dsl,companyID:Number(q.company_id)||undefined,tested:q.tested==='true'?true:q.tested==='false'?false:undefined,limit:Math.min(500,Number(q.limit)||50),offset:Number(q.offset)||0});
   });
-
-  // GET /api/assets/counts — 按类型计数（资产页筛选徽标）。
-  app.get("/api/assets/counts", async () => {
-    const counts = await db().assets().countsByType();
-    const out: Record<string, number> = {};
-    for (const [type, n] of counts) out[type] = n;
-    return out;
+  app.get('/api/assets/counts',async(req)=>{
+    const q=req.query as Record<string,string>,taskID=Number(q.task_id??0);
+    if(!Number.isSafeInteger(taskID)||taskID<0||q.task_id!==undefined&&taskID===0)throw new AssetInputError('task_id 无效');
+    return assetCounts(db(),taskID);
+  });
+  app.post('/api/assets',async(req)=>{
+    const b=req.body as AssetRow,taskID=Number(b.task_id??0);
+    if(!Number.isSafeInteger(taskID)||taskID<0||!Array.isArray(b.assets)||!b.assets.length)throw new AssetInputError('需要有效 task_id 和非空 assets 数组');
+    return writeAssets(db(),b.assets,{taskID,agent:'user',user:true});
   });
 
   // GET /api/companies — 公司列表（含资产计数，前端企业页最小面）。
@@ -138,7 +81,7 @@ export function registerAssetRoutes(app: FastifyInstance): void {
     const reason = typeof b["reason"] === "string" ? b["reason"] : "";
     if (kind === "" || value === "") return reply.code(400).send({ error: "kind/value 不能为空" });
     try {
-      // HTTP/UI 侧 = 操作者显式授权边界：source 'manual'（与资产授权同事务，对齐 Go 语义）。
+      // HTTP/UI 手工登记的测试范围，source 为 manual，同时关联匹配资产。
       const ts = await db().taskScope().addAgentScope(taskID, kind, value, reason, "manual");
       return reply.code(201).send(scopeDTO(ts as unknown as Record<string, unknown>));
     } catch (err) {
@@ -167,6 +110,8 @@ export function registerAssetRoutes(app: FastifyInstance): void {
       scope_rows: cov.scopeRows,
       denominator: cov.denominator,
       tested: cov.tested,
+      coverage_basis: cov.coverage_basis,
+      legacy_unverified: cov.legacy_unverified,
       pct: cov.pct,
       by_type: cov.byType.map((b) => ({ type: b.type, total: b.total, tested: b.tested })),
     };

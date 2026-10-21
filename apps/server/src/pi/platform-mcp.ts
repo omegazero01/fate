@@ -3,6 +3,7 @@ import {createServerTransport} from './mcpTransport.js';
 import type {AgentRunnerOptions} from './runner.js';
 
 export const MCP_RESOURCE_TOOLS=['list_mcp_resources','list_mcp_resource_templates','read_mcp_resource'];
+export const TOOL_SEARCH_HINT=' 使用服务器名、工具名或英文关键词检索；只有获授权的工具会被加载。';
 
 export function hasDeferredMcp(opts:Pick<AgentRunnerOptions,'mcpEntries'>) {
   return opts.mcpEntries?.some(e=>e.config.exposure==='deferred'||Object.values(e.config.toolExposure??{}).includes('deferred'))??false;
@@ -11,7 +12,7 @@ export function hasDeferredMcp(opts:Pick<AgentRunnerOptions,'mcpEntries'>) {
 /** Adapt native registration/discovery; pi retains connections, ranking, loading and tool execution. */
 export function platformMcpExtension(opts:AgentRunnerOptions):ExtensionFactory {
   return async pi=>{
-    const states=new Map<string,string>();
+    const states=new Map<string,string>((opts.mcpEntries??[]).map(e=>[e.name,'connecting']));
     const owners=new Map<string,{server:string;tool:string}>();
     const native=createMcpExtension({
       createTransport:(entry,cwd,auth)=>{
@@ -48,6 +49,10 @@ export function platformMcpExtension(opts:AgentRunnerOptions):ExtensionFactory {
     });
     await native(new Proxy(pi,{
       get(target,key){
+        if(key==='on')return (event:string,handler:(...a:any[])=>unknown)=>{
+          if(event==='tool_call')return target.on(event,((...a:any[])=>a[0].toolName==='tool_search'&&opts.toolLoading?.deferred.length?undefined:handler(...a)) as never);
+          return target.on(event as never,handler as never);
+        };
         if(key==='registerTool')return ((definition:Parameters<ExtensionAPI['registerTool']>[0])=>{
           const server=definition.namespace?.aliases?.[0];
           if(server&&definition.name.startsWith('mcp__')&&definition.label.startsWith(server+'/'))
@@ -57,27 +62,38 @@ export function platformMcpExtension(opts:AgentRunnerOptions):ExtensionFactory {
         return Reflect.get(target,key);
       },
     }));
-    if(!hasDeferredMcp(opts))return;
+    pi.on('tool_call',async event=>{
+      const owner=owners.get(event.toolName);
+      if(owner)await opts.mcpGuard?.(owner.server,'tools/call',owner.tool);
+    });
+    if(!hasDeferredMcp(opts)&&!opts.toolLoading?.deferred.length)return;
     let permitted=new Set<string>();
     await createToolSearchExtension()(new Proxy(pi,{
       get(target,key){
-        if(key==='getAllTools')return ()=>target.getAllTools().filter(t=>!owners.has(t.name)||permitted.has(t.name));
+        if(key==='getAllTools')return ()=>target.getAllTools().filter(t=>permitted.has(t.name));
         if(key==='registerTool')return ((definition:Parameters<ExtensionAPI['registerTool']>[0])=>{
           const execute=definition.execute;
-          target.registerTool({...definition,description:definition.description+' 使用服务器名、工具名或英文关键词检索；只有获授权的工具会被加载。',
+          target.registerTool({...definition,description:definition.description+TOOL_SEARCH_HINT,
             execute:async(...args)=>{
               args[2]?.throwIfAborted();
               // The native MCP tool_call readiness hook has run before execute.
               const unavailable=[...states].filter(([,state])=>state!=='ready').map(([name])=>name);
-              if(unavailable.length)throw new Error(`MCP 服务尚不可用，无法完成工具发现：${unavailable.join(', ')}`);
+              const query=String((args[1] as {query?:string}).query??'');
+              if(!/[a-z0-9]/i.test(query))throw new Error('原生搜索暂不支持中文分词；请用英文工具名或关键词重试，例如 asset search、shell terminal、traffic。');
               const next=new Set<string>();
-              for(const [name,owner] of owners){
-                try{await opts.mcpGuard?.(owner.server,'tools/call',owner.tool);next.add(name);}catch{/* omit revoked bindings */}
+              for(const t of target.getAllTools()){
+                const owner=owners.get(t.name);
+                try{
+                  if(owner){if(states.get(owner.server)!=='ready')continue;await opts.mcpGuard?.(owner.server,'tools/call',owner.tool);}
+                  else await opts.discoveryGuard?.(t.name);
+                  next.add(t.name);
+                }catch{/* omit revoked bindings */}
               }
               permitted=next;
               // Loaded tools can outlive their binding in the transcript; remove current declarations too.
-              target.setActiveTools(target.getActiveTools().filter(name=>!owners.has(name)||next.has(name)));
-              return execute(...args);
+              target.setActiveTools(target.getActiveTools().filter(name=>next.has(name)));
+              const result=await execute(...args);
+              return unavailable.length?{...result,content:[...result.content,{type:'text' as const,text:`MCP 发现未完成（服务不可用或仍连接中）：${unavailable.join(', ')}。以上匹配仅涵盖当前可用工具，不能据此认定这些 MCP 没有工具；稍后重试。`}]}:result;
             },
           });
         });

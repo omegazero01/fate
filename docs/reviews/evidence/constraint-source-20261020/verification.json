@@ -1,0 +1,112 @@
+{
+  "version": "constraint-source-20261020",
+  "reference": {
+    "repo": "https://github.com/neouks/series",
+    "commit": "78ab23f77da8fb111d3f6e9b2bea626cecaffdfc",
+    "files": [
+      "agent/goals.go",
+      "agent/constraints.go",
+      "agent/worker.go",
+      "db/constraints.go"
+    ]
+  },
+  "tests": {
+    "server_passed": 493,
+    "server_skipped": 1,
+    "focused_passed": 47,
+    "typecheck": "passed",
+    "build": "passed",
+    "model": "native pi deterministic fixtures",
+    "deepseek_requests": 0,
+    "target_requests": 0,
+    "skipped_suite": "src/http/batch-a.test.ts (existing skip)"
+  },
+  "task": {
+    "id": "4846",
+    "status": "running",
+    "paused": true
+  },
+  "corrected_nodes": [
+    {
+      "id": "32353",
+      "state": "confirmed",
+      "content_version": 1,
+      "correction_key": "task-4846-constraint-source-review-v1"
+    },
+    {
+      "id": "32356",
+      "state": "dismissed",
+      "content_version": 1,
+      "correction_key": "task-4846-constraint-source-review-v1"
+    },
+    {
+      "id": "32358",
+      "state": "confirmed",
+      "content_version": 1,
+      "correction_key": "task-4846-constraint-source-review-v1"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "75",
+      "origin": "review",
+      "source_field": "description",
+      "source_hash": "785589fd62f67a71c51fd4285b0ee58278a2049d5640661d3d137b3e211b77ef"
+    },
+    {
+      "id": "76",
+      "origin": "review",
+      "source_field": "description",
+      "source_hash": "785589fd62f67a71c51fd4285b0ee58278a2049d5640661d3d137b3e211b77ef"
+    }
+  ],
+  "intent_32355": {
+    "id": "32355",
+    "state": "stopped",
+    "stop_reason": "planner_terminated"
+  },
+  "original_activity_records_retained": "7",
+  "prompts": [
+    {
+      "role": "worker",
+      "version": 32,
+      "note": null,
+      "hash": "dd2d5f04cef40651761a0762787465e80130f21379c701226f5bd6603116ce3c"
+    },
+    {
+      "role": "goals",
+      "version": 2,
+      "note": "修复旧内置 Goals 将目标误作排他约束；保留历史版本",
+      "hash": "e23e591c4119c97e093d461e68daed0fcc8b496cacdddc4974fc1b9665b90886"
+    }
+  ],
+  "review": {
+    "result": "focused checks passed",
+    "scope": "operator constraint extraction, injection, prompt migration and reviewed task correction",
+    "limitations": [
+      "Verbatim source grounding does not prove arbitrary natural-language semantics; prompts and behavior tests retain that responsibility.",
+      "Legacy constraints on other tasks are preserved; no blanket deletion.",
+      "Task 4846 remains paused; no intent is automatically resumed.",
+      "Original transcript replies and evidence remain as historical records; corrections are in current graph payloads and audit.",
+      "Custom Worker template remains selected; revised candidate is saved and host policy applies."
+    ]
+  },
+  "backup": "/Users/pphua/.local/share/fate/backups/constraint-source-20261020",
+  "timestamp": "2026-10-20T03:37:17.393Z",
+  "preservation": {
+    "unrelated_tracked_changes_since_snapshot": [],
+    "commit_scope": "Only explicit feature patches staged; pre-existing changes remain unstaged."
+  },
+  "browser": {
+    "url": "http://localhost:5173/function/tasks/detail?id=4846&tab=sessions&section=overview&explore=graph",
+    "constraint_count": 2,
+    "paused": true,
+    "screenshot": "task-4846-constraints.png"
+  },
+  "rollback": {
+    "code": "Revert the constraint feature and correction-tool commits separately. Existing uncommitted work was not included.",
+    "database": "constraint_correction_audit preserves full before_snapshot and reviewed correction for task 4846; restore only after checking current versions.",
+    "prompts": "Previous prompt versions retained; custom Worker v32 remains selected and revised candidate is not activated.",
+    "release": "Previous dist saved in private backup; 5173 service was not restarted."
+  }
+}

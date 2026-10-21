@@ -1,20 +1,9 @@
+import {assetCoverage,queryAssets} from './asset-query.js';
 import { rootDomain } from "./assets.js";
-// 任务侧资产授权/范围/覆盖度 store。
-// 平移自 Go 版 db/task_scope.go（AddAutoScope/AddAgentScope/covTargetCTE/TaskCoverage/
-// ListUntestedAssets）、db/task_assets.go（Validate*/TaskAssetApprovalStates/Approve/Revoke/
-// MarkTaskAssetsTested/AssetKey/normalizeTaskAssetHost）、db/main_execution.go（ValidateIntent*/
-// intentAssetAllowedSQL）、db/worker_execution.go（ValidateWorker*）、db/asset_skips.go
-// （RememberTaskAssetDenials/ActiveTaskAssetSkips）。SQL 原样平移（表/列/函数名不变）。
-//
-// 与 Go 版的已知偏差：
-// - RootDomain（eTLD+1）Go 依赖 golang.org/x/net/publicsuffix；TS 侧用常用二级公共后缀
-//   集合近似，未收录后缀回退「最后两段」。对常见域（example.com / *.co.uk 等）等价。
-// - NormalizeAgentHost 的 IDNA ToASCII 用 URL 构造器（punycode + 小写）近似。
-
+// 任务资产关联、范围登记与覆盖度。
 import net from "node:net";
 import type { PoolClient } from "pg";
 import type { Database } from "./index.js";
-import { nodeAllowsPendingAssets } from "./exploration.js";
 import type { Node } from "./exploration.js";
 
 // ─── 常量与错误（db/task_assets.go）──────────────────────────────────────────
@@ -22,10 +11,6 @@ import type { Node } from "./exploration.js";
 export const MAX_TASK_ASSET_MUTATION_COUNT = 100;
 export const MAX_TASK_ASSET_SUMMARY_RUNES = 500;
 
-export const APPROVAL_APPROVED = "approved";
-export const APPROVAL_PENDING = "pending";
-export const APPROVAL_REVOKED = "revoked";
-export const APPROVAL_BLOCKED = "blocked";
 
 export class TaskAssetInvalidError extends Error {
   constructor(message = "invalid task asset association") {
@@ -45,21 +30,6 @@ export class TaskAssetNotFoundError extends Error {
     this.name = "TaskAssetNotFoundError";
   }
 }
-export class TaskAssetBlockedError extends Error {
-  constructor(message = "task asset is blocked") {
-    super(message);
-    this.name = "TaskAssetBlockedError";
-  }
-}
-export class TaskAssetNotApprovedError extends Error {
-  constructor(message = "task asset is not approved") {
-    super(message);
-    this.name = "TaskAssetNotApprovedError";
-  }
-}
-
-// ─── 主机/域/IP 归一化（db/nkey.go / db/task_assets.go / db/assets.go）───────
-
 /** 归一化域自然键：trim + 小写 + 去尾点（Go DomainKey）。 */
 export function domainKey(fqdn: string): string {
   return fqdn.trim().toLowerCase().replace(/\.$/, "");
@@ -187,7 +157,6 @@ export function parseURL(raw: string): { domain: string; port: number; serviceNa
   }
 }
 
-// ─── AssetKey（任务本地稳定身份，删除墓碑用；Go AssetKey）───────────────────
 
 export interface AssetIdentity {
   id: number;
@@ -204,60 +173,7 @@ export interface AssetIdentity {
 }
 
 /**
- * 删除墓碑用的任务本地稳定身份：刻意独立于全局资产行 id，共享资产的删除/重建
- * 无法绕过任务的显式封禁。
  */
-export function assetKey(a: AssetIdentity | null): { key: string; host: string } {
-  if (!a) return { key: "", host: "" };
-  let host = normalizeTaskAssetHost(a.domain ?? "");
-  if (host === "") host = normalizeTaskAssetHost(a.ip ?? "");
-  if (host === "" && a.url) {
-    try {
-      host = normalizeTaskAssetHost(new URL(a.url).hostname);
-    } catch {
-      /* 保持空 */
-    }
-  }
-  let key = "";
-  switch (a.type) {
-    case "root_domain":
-    case "subdomain":
-      key = `${a.type}:${normalizeTaskAssetHost(a.domain ?? "")}`;
-      break;
-    case "ip":
-      key = `ip:${normalizeTaskAssetHost(a.ip ?? "")}`;
-      break;
-    case "service":
-      key = `service:${normalizeURL(a.url ?? "")}`;
-      if (!a.url) {
-        const port = a.port ?? 0;
-        key = `service:${host}:${port}:${String(a.service_name ?? "").trim().toLowerCase()}`;
-      }
-      break;
-    case "endpoint":
-      key = `endpoint:${normalizeURL(a.url ?? "")}:${String(a.method ?? "").trim().toUpperCase()}`;
-      break;
-    case "app":
-      key = `app:${String(a.bundle_id ?? "").trim().toLowerCase() || String(a.app_name ?? "").trim().toLowerCase()}`;
-      break;
-    default:
-      key = `${a.type}:${String(a.id).trim()}`;
-  }
-  return { key, host };
-}
-
-// ─── intentAssetAllowedSQL（db/main_execution.go；与 exploration.ts 私有实现同体）──
-
-export function intentAssetAllowedSQL(task: string, asset: string, node: string): string {
-  return (
-    `(CASE WHEN ${node}.payload->'pending_asset_execution'->>'issuer'='mainagent' ` +
-    `THEN task_asset_worker_executable(${task},${asset}) ` +
-    `ELSE task_asset_effectively_approved(${task},${asset}) END)`
-  );
-}
-
-// ─── 类型 ────────────────────────────────────────────────────────────────────
-
 export interface TaskScope {
   id?: number;
   task_id: number;
@@ -291,23 +207,10 @@ export interface Coverage {
   tested: number;
   pct: number | null;
   byType: CoverageByType[];
+  coverage_basis?: string;
+  legacy_unverified?: number;
 }
 
-export interface TaskAssetSkip {
-  host: string;
-  state: string;
-  attempts: number;
-}
-
-export interface TaskAssetMutation {
-  requested: number;
-  attached: number;
-  existing: number;
-}
-
-// ─── id 归一化（db/task_assets.go）───────────────────────────────────────────
-
-/** 变更端点的严格归一化：非空、正数、去重、上限 100。 */
 export function normalizeTaskAssetIDs(ids: number[]): number[] {
   if (ids.length === 0) throw new TaskAssetInvalidError("invalid task asset association: asset_ids is required");
   const seen = new Set<number>();
@@ -347,37 +250,6 @@ function normalizeKeyword(value: string): string {
     .filter(Boolean)
     .join(" ");
 }
-
-// ─── covTargetCTE（db/task_scope.go，$1=taskID $2=expID；原样平移）──────────
-
-const covTargetCTE = `
-target AS (
-  SELECT DISTINCT a.id, a.type,
-         COALESCE(a.url, a.domain, a.ip, a.app_name, a.root_domain, '') AS label
-  FROM assets a
-  JOIN task_scope ts ON ts.task_id = $1 AND (
-       (ts.kind='company'     AND a.company_id = ts.company_id)
-    OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
-    OR (ts.kind='subdomain'   AND a.domain = ts.domain)
-    OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
-    OR (ts.kind='icp' AND (
-         lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
-         OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
-       ))
-  )
-  AND task_asset_effectively_approved($1,a.id)
-),
-tested AS (
-  SELECT DISTINCT link.asset_id
-  FROM task_asset_links link
-  WHERE link.task_id = $1 AND link.tested AND task_asset_effectively_approved($1,link.asset_id)
-  UNION
-  SELECT DISTINCT ea.asset_id
-  FROM exploration_anchors ea
-  JOIN exploration_nodes en ON en.id = ea.node_id
-  WHERE en.exploration_id = $2 AND en.kind IN ('fact','finding')
-    AND task_asset_effectively_approved($1,ea.asset_id)
-)`;
 
 /** 校验 CIDR 字符串（Go net.ParseCIDR 近似：IP 合法 + 掩码位数在族范围内）。 */
 function validCIDR(v: string): boolean {
@@ -457,7 +329,7 @@ export class TaskScopeStore {
           return this.upsertTaskScope({ task_id: taskID, kind: "subdomain", domain: host });
         }
         // IP 字面量主机或无主机 → 有 IP 就回退 ip 范围。
-        const c = ipToHostCIDR(ip);
+        const c = ipToHostCIDR(ip || host);
         if (c !== "") return this.upsertTaskScope({ task_id: taskID, kind: "ip", net: c });
         return;
       }
@@ -472,8 +344,6 @@ export class TaskScopeStore {
   /**
    * 解析 (kind,value) 并记录任务范围。LLM 工具传 source='agent'，UI 传 'manual'。
    * company：企业名或 id（须已存在）。root_domain/subdomain：域名。ip/cidr：裸 IP
-   * 自动 /32,/128。source='manual' 是操作者显式授权边界：同事务写入 task_asset_grants、
-   * 把匹配的存量资产重新挂回任务（approved）并清墓碑（AddAgentScope + authorizeScopeAssetsInTx）。
    */
   async addAgentScope(taskID: number, kind: string, value: string, reason: string, source: string): Promise<TaskScope> {
     if (source === "") source = "agent";
@@ -540,16 +410,16 @@ export class TaskScopeStore {
 
     if (this.tx) {
       await this.upsertTaskScope(ts);
-      await this.authorizeScopeAssets(this.tx, ts);
+      await this.linkScopeAssets(this.tx, ts);
       return ts;
     }
-    // 操作者范围 = 显式授权边界：范围与资产恢复同事务原子提交。
+    // 操作者登记的范围与资产关联在同一事务提交。
     const client = await this.db.pool.connect();
     try {
       await client.query("BEGIN");
       const scoped = new TaskScopeStore(this.db, client);
       await scoped.upsertTaskScope(ts);
-      await scoped.authorizeScopeAssets(client, ts);
+      await scoped.linkScopeAssets(client, ts);
       await client.query("COMMIT");
       return ts;
     } catch (err) {
@@ -577,38 +447,10 @@ export class TaskScopeStore {
   }
 
   /**
-   * source='manual' 的授权落地（Go authorizeScopeAssetsInTx，SQL 原样）：
-   * 写 task_asset_grants → 匹配资产重新挂任务（approved, manual）→ 按资产身份清墓碑 →
-   * 按范围身份（host_key）清已删资产的残留墓碑。keyword 只是发现线索，不按展示名认领资产。
+   * 关联 source='manual' 范围内已有的资产。
    */
-  private async authorizeScopeAssets(client: PoolClient, scope: TaskScope): Promise<void> {
+  private async linkScopeAssets(client: PoolClient, scope: TaskScope): Promise<void> {
     if (scope.task_id <= 0) return;
-    let grantKind = "";
-    let grantValue = "";
-    let root = "";
-    switch (scope.kind) {
-      case "root_domain":
-        grantKind = "domain";
-        grantValue = scope.domain ?? "";
-        root = scope.domain ?? "";
-        break;
-      case "subdomain":
-        grantKind = "host";
-        grantValue = scope.domain ?? "";
-        root = rootDomain(scope.domain ?? "").root;
-        break;
-      case "ip":
-      case "cidr":
-        grantKind = "cidr";
-        grantValue = scope.net ?? "";
-        break;
-    }
-    if (grantKind !== "") {
-      await client.query(
-        `INSERT INTO task_asset_grants(task_id,kind,value,root_domain,source,evidence) VALUES($1,$2,$3,$4,'manual',$5) ON CONFLICT DO NOTHING`,
-        [scope.task_id, grantKind, grantValue, root, scope.reason ?? ""],
-      );
-    }
     let where = "";
     let arg: unknown = null;
     switch (scope.kind) {
@@ -662,43 +504,11 @@ OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g'))=$1)`;
         [scope.task_id, a.id],
       );
       await client.query(
-        `INSERT INTO task_asset_links(task_id,asset_id,source,source_summary,approval_state,approved_at,approved_by,approval_reason)
-        VALUES ($1,$2,'manual',$3,'approved',now(),'user',$4)
-        ON CONFLICT(task_id,asset_id) DO UPDATE SET source='manual',source_summary=EXCLUDED.source_summary,source_node_id=NULL,
-        approval_state='approved',approved_at=now(),approved_by='user',approval_reason=EXCLUDED.approval_reason`,
-        [scope.task_id, a.id, summary, reason],
+        `INSERT INTO task_asset_links(task_id,asset_id,source,source_summary)
+         VALUES($1,$2,'manual',$3) ON CONFLICT(task_id,asset_id) DO UPDATE
+         SET source='manual',source_summary=EXCLUDED.source_summary,source_node_id=NULL`,
+        [scope.task_id,a.id,summary],
       );
-      const { key } = assetKey(a);
-      await client.query(
-        `DELETE FROM task_asset_blocks WHERE task_id=$1 AND block_kind<>'invalid' AND (asset_id=$2 OR asset_key=$3)`,
-        [scope.task_id, a.id, key],
-      );
-    }
-
-    // 范围身份同样清「全局资产行已不存在」的墓碑；否则删除后重建全局行会让操作者的
-    // 显式重新授权失效。
-    switch (scope.kind) {
-      case "root_domain":
-        await client.query(
-          `DELETE FROM task_asset_blocks
-          WHERE task_id=$1 AND block_kind<>'invalid' AND host_key<>'' AND (host_key=$2 OR host_key LIKE '%.'||$2)`,
-          [scope.task_id, scope.domain ?? ""],
-        );
-        break;
-      case "subdomain":
-        await client.query(
-          `DELETE FROM task_asset_blocks WHERE task_id=$1 AND block_kind<>'invalid' AND host_key=$2`,
-          [scope.task_id, scope.domain ?? ""],
-        );
-        break;
-      case "ip":
-      case "cidr":
-        await client.query(
-          `DELETE FROM task_asset_blocks
-          WHERE task_id=$1 AND block_kind<>'invalid' AND try_inet(host_key) IS NOT NULL AND $2::cidr >>= try_inet(host_key)`,
-          [scope.task_id, scope.net ?? ""],
-        );
-        break;
     }
   }
 
@@ -759,369 +569,34 @@ OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g'))=$1)`;
   }
 
   /**
-   * 粗粒度按类型覆盖度。分母=匹配任一活跃 task_scope 的资产；分子=已测（链接 tested
-   * 或锚到 fact/finding 节点）。Go 版 Enabled 由 API 层填；TS 版在此直接读开关。
+   * 粗粒度按类型覆盖度。分母=匹配任一活跃 task_scope 的资产；分子=有明确范围、资产关联和实测证据的记录
+   * （不表示所有方向测试完毕，历史范围不明单独展示）。Go 版 Enabled 由 API 层填；TS 版在此直接读开关。
    */
   async taskCoverage(taskID: number, expID: number): Promise<Coverage> {
-    const scopeRes = await this.exec<{ count: string }>(`SELECT count(*) FROM task_scope WHERE task_id=$1`, [taskID]);
-    const cov: Coverage = {
-      enabled: await this.coverageEnabled(taskID),
-      scopeRows: Number(scopeRes.rows[0]?.count ?? 0),
-      denominator: 0,
-      tested: 0,
-      pct: null,
-      byType: [],
-    };
-    const res = await this.exec<{ type: string; total: string; tested: string }>(
-      `WITH ${covTargetCTE}
-      SELECT t.type, count(*) AS total,
-             count(*) FILTER (WHERE t.id IN (SELECT asset_id FROM tested)) AS tested
-      FROM target t GROUP BY t.type ORDER BY t.type`,
-      [taskID, expID],
-    );
-    for (const row of res.rows) {
-      const bt: CoverageByType = { type: row.type, total: Number(row.total), tested: Number(row.tested) };
-      cov.byType.push(bt);
-      cov.denominator += bt.total;
-      cov.tested += bt.tested;
-    }
-    if (cov.denominator > 0) cov.pct = cov.tested / cov.denominator;
-    return cov;
+    return assetCoverage(this.db,taskID);
   }
 
-  /** 范围内未测资产（可按类型过滤、分页）。返回页 + 总数。limit<=0 → 10。 */
-  async listUntestedAssets(
-    taskID: number,
-    expID: number,
-    typ: string,
-    limit: number,
-    offset: number,
-  ): Promise<{ page: CoverageAsset[]; total: number }> {
-    if (limit <= 0) limit = 10;
-    if (offset < 0) offset = 0;
-    const args: unknown[] = [taskID, expID];
-    let typeFilter = "";
-    if (typ !== "") {
-      typeFilter = " AND t.type = $3";
-      args.push(typ);
-    }
-    const totalRes = await this.exec<{ count: string }>(
-      `WITH ${covTargetCTE}
-      SELECT count(*) FROM target t WHERE t.id NOT IN (SELECT asset_id FROM tested)${typeFilter}`,
-      args,
-    );
-    const total = Number(totalRes.rows[0]?.count ?? 0);
-    const pageArgs = [...args, limit, offset];
-    const limPos = args.length + 1;
-    const offPos = args.length + 2;
-    const res = await this.exec<{ id: string; type: string; label: string }>(
-      `WITH ${covTargetCTE}
-      SELECT t.id, t.type, t.label FROM target t
-      WHERE t.id NOT IN (SELECT asset_id FROM tested)${typeFilter}
-      ORDER BY t.id LIMIT $${limPos} OFFSET $${offPos}`,
-      pageArgs,
-    );
-    return {
-      page: res.rows.map((r) => ({ id: Number(r.id), type: r.type, label: r.label })),
-      total,
-    };
+  async listUntestedAssets(taskID:number,_expID:number,typ:string,limit:number,offset:number):Promise<{page:CoverageAsset[];total:number}> {
+    if(!await this.coverageEnabled(taskID))return {page:[],total:0};
+    const result=await queryAssets(this.db,{taskID,type:typ,untested:true,limit:limit>0?limit:10,offset:Math.max(0,offset),summary:true});
+    return {page:result.assets.map(a=>({id:a.id,type:a.type,label:a.url||a.domain||a.ip||a.app_name||''})),total:result.total};
   }
 
-  // ─── 授权校验（DB 侧 SQL 函数族）──────────────────────────────────────────
-
-  /** 批量读有效授权态（task_asset_effective_approval_state）；缺失 id 不含入结果。 */
-  async taskAssetApprovalStates(taskID: number, ids: number[]): Promise<Map<number, string>> {
-    const states = new Map<number, string>();
-    if (ids.length === 0) return states;
-    const res = await this.exec<{ id: string; state: string | null }>(
-      `SELECT id,task_asset_effective_approval_state($1,id) AS state
-      FROM assets WHERE id=ANY($2::bigint[])`,
-      [taskID, ids],
-    );
-    for (const row of res.rows) states.set(Number(row.id), row.state ?? "");
-    return states;
+  /** Assets used as graph anchors must belong to this task or a directly linked source. */
+  async validateTaskAssets(taskID: number, assetIDs: number[]): Promise<void> {
+    if(!assetIDs.length)return;
+    const ids=normalizeTaskAssetIDs(assetIDs);
+    const rows=await this.exec<{id:string}>('SELECT id FROM assets WHERE id=ANY($2::bigint[]) AND task_asset_linked($1,id)',[taskID,ids]);
+    if(rows.rows.length!==ids.length)throw new TaskAssetNotFoundError('资产不存在或不属于当前任务及直接来源任务');
   }
 
-  /**
-   * 严格 planning/startup 准入校验。运行中 Worker 写回用 validateWorkerAssets。
-   * 空列表合法（全局方向）。当前任务链接权威；无链接时可被直接继承的来源链接
-   * 以来源任务的只读状态授权。
-   */
-  async validateTaskAssetsApproved(taskID: number, assetIDs: number[]): Promise<void> {
-    if (taskID <= 0 || assetIDs.length === 0) return;
-    const ids = normalizeTaskAssetIDs(assetIDs);
-    const states = await this.taskAssetApprovalStates(taskID, ids);
-    for (const id of ids) {
-      const state = states.get(id) ?? "";
-      if (state === APPROVAL_APPROVED) continue;
-      if (state === "") throw new TaskAssetNotFoundError();
-      if (state === APPROVAL_BLOCKED) throw new TaskAssetBlockedError(`task asset is blocked: asset ${id} 或其父资产已封禁`);
-      throw new TaskAssetNotApprovedError(`task asset is not approved: asset ${id} 状态为 ${state}`);
-    }
-  }
-
-  /** 运行中 Worker 写回校验：approved 或 pending 均可执行。 */
-  async validateWorkerAssets(taskID: number, ids: number[]): Promise<void> {
-    const states = await this.taskAssetApprovalStates(taskID, ids);
-    for (const id of ids) {
-      const state = states.get(id) ?? "";
-      if (state !== APPROVAL_APPROVED && state !== APPROVAL_PENDING) {
-        throw new TaskAssetNotApprovedError(`task asset is not approved: asset ${id} 不属于本任务或已被主动限制 (${state})`);
-      }
-    }
-  }
-
-  /** 非结构化网络工具（Bash/HTTP/MCP）的任务授权批量读（task_host_approval_state）。 */
-  async taskHostApprovalStates(taskID: number, hosts: string[]): Promise<Map<string, string>> {
-    const states = new Map<string, string>();
-    if (hosts.length === 0) return states;
-    const res = await this.exec<{ host: string; state: string | null }>(
-      `SELECT host,COALESCE(task_host_approval_state($1,host),'') AS state
-      FROM unnest($2::text[]) AS requested(host)`,
-      [taskID, hosts],
-    );
-    for (const row of res.rows) states.set(row.host, row.state ?? "");
-    return states;
-  }
-
-  /**
-   * 任务级主机准入：显式/相关模板对未知主机 fail-closed；all_assets 仍放行新的合法
-   * 主机，除非操作者封禁、撤回或删除生效。
-   */
-  async validateTaskHostsApproved(taskID: number, hosts: string[]): Promise<void> {
-    if (taskID <= 0 || hosts.length === 0) return;
-    const want: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of hosts) {
-      const host = normalizeTaskAssetHost(raw);
-      if (host === "") continue;
-      let normalized: string;
-      try {
-        normalized = normalizeAgentHost(host, true);
-      } catch {
-        throw new TaskAssetInvalidError(`invalid task asset association: host "${host}" 格式无效`);
-      }
-      if (!seen.has(normalized)) {
-        want.push(normalized);
-        seen.add(normalized);
-      }
-    }
-    const states = await this.taskHostApprovalStates(taskID, want);
-    for (const host of want) {
-      const state = states.get(host) ?? "";
-      if (state === APPROVAL_APPROVED) continue;
-      if (state === "") throw new TaskAssetTaskNotFoundError();
-      if (state === APPROVAL_BLOCKED) throw new TaskAssetBlockedError(`task asset is blocked: host ${host} 已封禁`);
-      throw new TaskAssetNotApprovedError(`task asset is not approved: host ${host} 状态为 ${state}`);
-    }
-  }
-
-  /** Worker 运行态主机校验：approved 或 pending 均可。 */
-  async validateWorkerHosts(taskID: number, hosts: string[]): Promise<void> {
-    const normalized = hosts.map((host) => {
-      try {
-        return normalizeAgentHost(host, true);
-      } catch {
-        throw new TaskAssetInvalidError(`invalid task asset association: host "${host}"`);
-      }
-    });
-    const states = await this.taskHostApprovalStates(taskID, normalized);
-    for (const host of normalized) {
-      const state = states.get(host) ?? "";
-      if (state !== APPROVAL_APPROVED && state !== APPROVAL_PENDING) {
-        throw new TaskAssetNotApprovedError(`task asset is not approved: host ${host} 已被主动限制或任务无效 (${state})`);
-      }
-    }
-  }
-
-  /**
-   * Network egress guard with port awareness. Legacy host scopes still allow
-   * any port when the task has no selected service asset for that host; once a
-   * service/endpoint asset is explicitly linked, only its approved ports pass.
-   */
-  private async validateHostPort(taskID: number, rawHost: string, port: number, allowPending: boolean): Promise<void> {
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new TaskAssetInvalidError("invalid target port");
-    const host = normalizeAgentHost(stripHostPort(rawHost), true);
-    if(allowPending)await this.validateWorkerHosts(taskID, [host]);else await this.validateTaskHostsApproved(taskID,[host]);
-    const linked = await this.exec<{id:string;type:string;domain:string;url:string;ip:string;port:number|null}>(
-      `SELECT DISTINCT a.id,a.type,COALESCE(a.domain,'') AS domain,COALESCE(a.url,'') AS url,
-              COALESCE(a.ip,'') AS ip,a.port
-       FROM task_asset_links l JOIN assets a ON a.id=l.asset_id
-       WHERE (l.task_id=$1 OR l.task_id IN (SELECT source_task_id FROM task_relations WHERE task_id=$1))
-         AND a.type IN ('service','endpoint')`, [taskID]);
-    const matching = linked.rows.filter(asset => {
-      const hosts = new Set<string>();
-      if (asset.domain) hosts.add(normalizeTaskAssetHost(asset.domain));
-      if (asset.ip) hosts.add(normalizeTaskAssetHost(asset.ip));
-      if (asset.url) { try { hosts.add(normalizeTaskAssetHost(new URL(asset.url).hostname)); } catch { /* malformed legacy URL */ } }
-      return hosts.has(host);
-    });
-    if (!matching.length) return;
-    const states = await this.taskAssetApprovalStates(taskID, matching.map(asset => Number(asset.id)));
-    const allowedStates=allowPending?[APPROVAL_APPROVED,APPROVAL_PENDING]:[APPROVAL_APPROVED];
-    const permitted = matching.some(asset => Number(asset.port) === port &&
-      allowedStates.includes(states.get(Number(asset.id)) ?? ""));
-    if (!permitted) throw new TaskAssetNotApprovedError(`task target port is not approved: ${host}:${port}`);
-  }
-
-  async validateWorkerHostPort(taskID:number,host:string,port:number):Promise<void>{return this.validateHostPort(taskID,host,port,true);}
-  async validateTaskHostPort(taskID:number,host:string,port:number):Promise<void>{return this.validateHostPort(taskID,host,port,false);}
-
-  /** 意图资产校验：受信 main-agent 派发放行 pending（AllowsPendingAssets 分流）。 */
-  async validateIntentAssets(taskID: number, n: Node | null, ids: number[]): Promise<void> {
-    if (n && nodeAllowsPendingAssets(n)) return this.validateWorkerAssets(taskID, ids);
-    return this.validateTaskAssetsApproved(taskID, ids);
-  }
-
-  /** 意图主机校验：同上按 AllowsPendingAssets 分流。 */
-  async validateIntentHosts(taskID: number, n: Node | null, hosts: string[]): Promise<void> {
-    if (n && nodeAllowsPendingAssets(n)) return this.validateWorkerHosts(taskID, hosts);
-    return this.validateTaskHostsApproved(taskID, hosts);
-  }
-
-  async validateIntentHostPort(taskID:number,n:Node|null,host:string,port:number):Promise<void>{
-    if(n&&nodeAllowsPendingAssets(n))return this.validateWorkerHostPort(taskID,host,port);
-    return this.validateTaskHostPort(taskID,host,port);
-  }
-
-  /**
-   * 原子合并所有 Worker 与代理的拒绝记忆（task_asset_skips）。成功目标与授权查询
-   * 错误不会成为禁止项。不创建/修改任何资产、授权或意图。
-   */
-  async rememberTaskAssetDenials(
-    taskID: number,
-    hosts: string[],
-    assetIDs: number[],
-    scopes: string[] = [],
-  ): Promise<TaskAssetSkip[]> {
-    const normalized: string[] = [];
-    for (const host of hosts) {
-      try {
-        normalized.push(normalizeAgentHost(host, true));
-      } catch {
-        /* 非法主机不入记忆 */
-      }
-    }
-    const res = await this.exec<{ host: string; state: string; attempts: string }>(
-      `WITH targets AS (
- SELECT unnest($2::text[]) host UNION SELECT task_asset_host(a) FROM assets a WHERE a.id=ANY($3::bigint[])
- AND EXISTS(SELECT 1 FROM task_asset_links l WHERE l.asset_id=a.id AND
- (l.task_id=$1 OR l.task_id IN (SELECT source_task_id FROM task_relations WHERE task_id=$1)))
- ), denied AS MATERIALIZED (
- SELECT host,task_host_approval_state($1,host) state FROM targets WHERE host<>''
- ), saved AS (
- INSERT INTO task_asset_skips(task_id,host,observer_scopes) SELECT $1,host,COALESCE($4::text[],'{}') FROM denied WHERE state IN ('pending','revoked','blocked') ORDER BY host
- ON CONFLICT(task_id,host) DO UPDATE SET last_seen=now(),attempts=task_asset_skips.attempts+1,
- observer_scopes=ARRAY(SELECT DISTINCT scope FROM unnest(task_asset_skips.observer_scopes || EXCLUDED.observer_scopes) scope ORDER BY scope)
- RETURNING host,attempts
- ) SELECT saved.host,denied.state,saved.attempts FROM saved JOIN denied USING(host) ORDER BY host`,
-      [taskID, normalized, assetIDs, scopes],
-    );
-    return res.rows.map((r) => ({ host: r.host, state: r.state, attempts: Number(r.attempts) }));
-  }
-
-  /** 仍处于 pending/revoked/blocked 的拒绝记忆（按当前授权实时过滤）。 */
-  async activeTaskAssetSkips(taskID: number, scope = ""): Promise<TaskAssetSkip[]> {
-    const res = await this.exec<{ host: string; state: string | null; attempts: string }>(
-      `SELECT host,state,attempts FROM (
- SELECT host,task_host_approval_state(task_id,host) state,attempts FROM task_asset_skips WHERE task_id=$1
- AND ($2='' OR $2=ANY(observer_scopes) OR ($2='planner' AND EXISTS(
- SELECT 1 FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id
- WHERE t.id=$1 AND n.kind='intent' AND n.state IN ('open','running','paused')
- AND ('worker:'||n.id::text)=ANY(observer_scopes))))
- ) active WHERE state IN ('pending','revoked','blocked') ORDER BY host`,
-      [taskID, scope],
-    );
-    return res.rows.map((r) => ({ host: r.host, state: r.state ?? "", attempts: Number(r.attempts) }));
-  }
-
-  // ─── task_asset_links 审批读写（Approve/Revoke/MarkTested）────────────────
-
-  /** 只改当前任务链接并移除匹配墓碑，恢复手工重挂资产的测试资格。 */
-  async approveTaskAssets(taskID: number, assetIDs: number[], actor: string, reason: string): Promise<number[]> {
-    const ids = normalizeTaskAssetIDs(assetIDs);
-    actor = actor.trim();
-    if (actor === "") actor = "user";
-    reason = reason.trim();
-    const client = await this.db.pool.connect();
-    try {
-      await client.query("BEGIN");
-      // 与发现写入共用同一全局资产写锁（Go resolveApprovalSelection 里的 lockCompanyScopeMutation）。
-      await client.query(`SELECT pg_advisory_xact_lock($1)`, [COMPANY_SCOPE_MUTATION_LOCK]);
-      const done = await this.approveInTx(client, taskID, ids, actor, reason);
-      await client.query("COMMIT");
-      return done;
-    } catch (err) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
-  private async approveInTx(client: PoolClient, taskID: number, ids: number[], actor: string, reason: string) {
-    await rejectDerivedApprovalAssets(client, ids);
-    const assets = await lockTaskAssetApprovalRows(client, taskID, ids);
-    await rejectDeletedApprovalAssets(client, taskID, ids);
-    await client.query(
-      `UPDATE task_asset_links SET approval_state='approved', approved_at=now(), approved_by=$3,
-      approval_reason=$4 WHERE task_id=$1 AND asset_id=ANY($2::bigint[])`,
-      [taskID, ids, actor, reason],
-    );
-    for (const id of ids) {
-      const { key } = assetKey(assets.get(id) ?? null);
-      await client.query(`DELETE FROM task_asset_blocks WHERE task_id=$1 AND block_kind='manual' AND (asset_id=$2 OR asset_key=$3)`, [
-        taskID,
-        id,
-        key,
-      ]);
-    }
-    return ids;
-  }
-
-  /** 撤回当前任务授权；封禁资产需先批准或重新关联，不能直接撤回。 */
-  async revokeTaskAssets(taskID: number, assetIDs: number[], actor: string, reason: string): Promise<number[]> {
-    const ids = normalizeTaskAssetIDs(assetIDs);
-    actor = actor.trim();
-    if (actor === "") actor = "user";
-    reason = reason.trim();
-    if (reason === "") reason = "用户撤回测试授权";
-    const client = await this.db.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(`SELECT pg_advisory_xact_lock($1)`, [COMPANY_SCOPE_MUTATION_LOCK]);
-      await rejectDerivedApprovalAssets(client, ids);
-      await lockTaskAssetApprovalRows(client, taskID, ids);
-      const blocked = await client.query<{ ok: boolean }>(
-        `SELECT EXISTS(SELECT 1 FROM unnest($2::bigint[]) id WHERE task_asset_blocked($1,id)) AS ok`,
-        [taskID, ids],
-      );
-      if (blocked.rows[0]?.ok === true) {
-        throw new TaskAssetBlockedError("task asset is blocked: 封禁资产需先批准或重新关联，不能直接撤回");
-      }
-      await client.query(
-        `UPDATE task_asset_links SET approval_state='revoked', approval_reason=$3,
-        approved_by=$4 WHERE task_id=$1 AND asset_id=ANY($2::bigint[])`,
-        [taskID, ids, reason, actor],
-      );
-      await client.query("COMMIT");
-      return ids;
-    } catch (err) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
-  /** 记录当前任务 agent 对这些资产产出过 fact/finding。任务局部，不跨任务泄漏测试态。 */
   async markTaskAssetsTested(taskID: number, assetIDs: number[], agentKey: string): Promise<void> {
     if (taskID <= 0 || assetIDs.length === 0) return;
     const ids = normalizeTaskAssetIDs(assetIDs);
     await this.exec(
       `UPDATE task_asset_links
       SET tested=true, tested_at=COALESCE(tested_at,now()), tested_by=COALESCE(NULLIF($3,''),tested_by)
-       WHERE task_id=$1 AND asset_id=ANY($2::bigint[]) AND task_asset_effectively_approved(task_id,asset_id)`,
+       WHERE task_id=$1 AND asset_id=ANY($2::bigint[]) AND NOT tested`,
       [taskID, ids, agentKey.trim()],
     );
   }
@@ -1129,61 +604,3 @@ OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g'))=$1)`;
 
 // 企业范围编辑互斥锁（db/companies.go companyScopeMutationLock）。
 const COMPANY_SCOPE_MUTATION_LOCK = 7337741003;
-
-/** 服务/接口资产派生自父域名/IP，不允许单独审批（Go rejectDerivedApprovalAssets）。 */
-async function rejectDerivedApprovalAssets(client: PoolClient, ids: number[]): Promise<void> {
-  if (ids.length === 0) return;
-  const res = await client.query<{ ok: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM assets WHERE id=ANY($1::bigint[]) AND type NOT IN ('root_domain','subdomain','ip')) AS ok`,
-    [ids],
-  );
-  if (res.rows[0]?.ok === true) {
-    throw new TaskAssetInvalidError("invalid task asset association: 服务和接口无需单独审批，请操作父域名/IP");
-  }
-}
-
-/** 事务内锁任务/链接行并取资产行（用于 AssetKey）；任务不存在/资产不齐时报错。 */
-async function lockTaskAssetApprovalRows(client: PoolClient, taskID: number, ids: number[]): Promise<Map<number, AssetIdentity>> {
-  const task = await client.query<{ ok: boolean }>(`SELECT EXISTS(SELECT 1 FROM tasks WHERE id=$1 AND deleted_at IS NULL) AS ok`, [
-    taskID,
-  ]);
-  if (task.rows[0]?.ok !== true) throw new TaskAssetTaskNotFoundError();
-  const res = await client.query<Record<string, unknown>>(
-    `SELECT a.id,a.type,COALESCE(a.domain,'') AS domain,COALESCE(a.root_domain,'') AS root_domain,
-    COALESCE(a.ip,'') AS ip,COALESCE(a.url,'') AS url,COALESCE(a.method,'') AS method,COALESCE(a.service_name,'') AS service_name,COALESCE(a.port,0) AS port
-    FROM task_asset_links l JOIN assets a ON a.id=l.asset_id
-    WHERE l.task_id=$1 AND l.asset_id=ANY($2::bigint[]) FOR UPDATE OF l`,
-    [taskID, ids],
-  );
-  const assets = new Map<number, AssetIdentity>();
-  for (const row of res.rows) {
-    const id = Number(row["id"]);
-    assets.set(id, {
-      id,
-      type: String(row["type"]),
-      domain: row["domain"] as string,
-      root_domain: (row["root_domain"] as string) || null,
-      ip: row["ip"] as string,
-      url: row["url"] as string,
-      method: row["method"] as string,
-      service_name: row["service_name"] as string,
-      port: Number(row["port"] ?? 0),
-    });
-  }
-  if (assets.size !== ids.length) throw new TaskAssetNotFoundError();
-  return assets;
-}
-
-/** 删除/非法封禁资产不能直接批准（Go rejectDeletedApprovalAssets）。 */
-async function rejectDeletedApprovalAssets(client: PoolClient, taskID: number, ids: number[]): Promise<void> {
-  if (ids.length === 0) return;
-  const res = await client.query<{ ok: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM assets a JOIN task_asset_blocks b
-    ON b.task_id=$1 AND (b.asset_id=a.id OR b.asset_key=task_asset_identity_key(a))
-    WHERE a.id=ANY($2::bigint[]) AND b.block_kind IN ('deleted','invalid')) AS ok`,
-    [taskID, ids],
-  );
-  if (res.rows[0]?.ok === true) {
-    throw new TaskAssetBlockedError("task asset is blocked: 删除封禁资产请先重新关联；非法资产必须先纠正，不能直接批准");
-  }
-}

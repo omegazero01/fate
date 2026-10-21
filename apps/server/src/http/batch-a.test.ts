@@ -93,8 +93,8 @@ beforeAll(async () => {
   createdAssetIDs.push(assetID);
   await db!.query(`INSERT INTO exploration_anchors(node_id, asset_id) VALUES ($1,$2)`, [intentID, assetID]);
   await db!.query(
-    `INSERT INTO task_asset_links(task_id, asset_id, source, source_summary, tested, approval_state)
-     VALUES ($1,$2,'manual','批次A单测',false,'approved')`,
+    `INSERT INTO task_asset_links(task_id, asset_id, source, source_summary, tested)
+     VALUES ($1,$2,'manual','批次A单测',false)`,
     [taskID, assetID],
   );
   // token 总览用：mainagent/planner/work 各一条 result 行（不同用量便于断言分组）。
@@ -209,14 +209,14 @@ describe.skipIf(!haveDB)("批次A：主对话链", () => {
     const page = r.json() as { items: { kind: string; id: number; label: string; description: string }[]; next_cursor: string };
     const intent = page.items.find((i) => i.kind === "intent");
     expect(intent).toMatchObject({ id: intentID, label: "SQL 注入探测 mention" });
-    const asset = page.items.find((i) => i.id === assetID);
+    const asset = page.items.find((i) => i.kind === "subdomain" && i.id === assetID);
     expect(asset).toMatchObject({ kind: "subdomain", label: runStampDomain });
 
     // q 过滤：关键词只命中意图。
     const r2 = await authed("GET", `/api/chat/mentions?task=${String(taskID)}&q=${encodeURIComponent("注入")}`);
-    const page2 = (r2.json() as { items: { id: number }[] }).items;
-    expect(page2.some((i) => i.id === intentID)).toBe(true);
-    expect(page2.some((i) => i.id === assetID)).toBe(false);
+    const page2 = (r2.json() as { items: { kind: string; id: number }[] }).items;
+    expect(page2.some((i) => i.kind === "intent" && i.id === intentID)).toBe(true);
+    expect(page2.some((i) => i.kind === "subdomain" && i.id === assetID)).toBe(false);
 
     expect((await authed("GET", "/api/chat/mentions")).statusCode).toBe(400);
   });
@@ -325,11 +325,14 @@ describe.skipIf(!haveDB)("批次A：任务总览数据", () => {
       [taskID],
     );
     expect(chain.rows.map((r) => Number(r.profile_id))).toEqual([pidA, pidB]);
+    // Reopening the settings dialog must receive the complete saved chain.
+    expect((await authed("GET", `/api/tasks/${taskID}`)).json().llm_profile_ids).toEqual([pidA, pidB]);
 
     const put2 = await authed("PUT", `/api/tasks/${String(taskID)}/llm`, { llm_profile_ids: [] });
     expect((put2.json() as { ok: boolean }).ok).toBe(true);
     const t2 = (await db!.query(`SELECT llm_profile_id, active_llm_profile_id FROM tasks WHERE id=$1`, [taskID])).rows[0]!;
     expect(t2["llm_profile_id"]).toBeNull();
+    expect((await authed("GET", `/api/tasks/${taskID}`)).json().llm_profile_ids).toEqual([]);
     expect((await db!.query(`SELECT count(*) AS n FROM task_llm_profiles WHERE task_id=$1`, [taskID])).rows[0]!["n"]).toBe("0");
   });
 
@@ -365,7 +368,7 @@ describe.skipIf(!haveDB)("批次A：任务总览数据", () => {
     expect(page.assets.some((a) => Number(a.id) === assetID)).toBe(true);
     const hit = page.assets.find((a) => Number(a.id) === assetID)!;
     expect(hit.tested).toBe(false);
-    expect(hit.approval_state).toBe("approved");
+    expect(hit).not.toHaveProperty("approval_state");
     expect(hit.task_source).toBe("manual");
 
     // tested=true 过滤后不再命中（链接行 tested=false）。

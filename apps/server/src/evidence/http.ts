@@ -1,5 +1,6 @@
 import type {ToolRunContext} from '../tools/context.js';
 import {recordExchange} from './store.js';
+import {targetFetch} from './target-transport.js';
 export async function evidenceRequest(ctx:ToolRunContext,input:{url:string;method?:string;headers?:Record<string,string>;body?:string},signal?:AbortSignal,check?:(input:Record<string,unknown>)=>Promise<void>){
  let url=input.url,method=input.method??'GET',body=input.body;
  const headers={...input.headers};
@@ -9,14 +10,9 @@ export async function evidenceRequest(ctx:ToolRunContext,input:{url:string;metho
   const target=new URL(url);if(!['http:','https:'].includes(target.protocol))throw new Error('仅支持 HTTP/HTTPS');
   const host=target.hostname.replace(/^\[|\]$/g,''),port=Number(target.port)||(target.protocol==='https:'?443:80);
   if(ctx.networkTargets!==undefined&&!ctx.networkTargets.some(t=>t.host.replace(/^\[|\]$/g,'')===host.toLowerCase()&&(t.port===null||t.port===port)))throw new Error('请求或重定向超出本次定向复测范围');
-  if(ctx.intentID){
-   const intent=await ctx.db.exploration(ctx.expID).getNode(ctx.intentID);
-   if(!intent||intent.kind!=='intent')throw new Error('执行意图不存在');
-   await ctx.db.taskScope().validateIntentHostPort(ctx.taskID,intent,host,port);
-  }else if(ctx.role==='mainagent'&&ctx.mainSegment!==undefined&&ctx.hooks.assertOwnership){await ctx.hooks.assertOwnership(ctx.db);await ctx.db.taskScope().validateWorkerHostPort(ctx.taskID,host,port);}
-  else await ctx.db.taskScope().validateTaskHostPort(ctx.taskID,host,port);
+  await ctx.hooks.assertOwnership?.(ctx.db);
   await check?.({url,method,body});
-  const response=await fetch(url,{method,headers,body,signal,redirect:'manual'});
+  const response=await targetFetch(url,{method,headers,body,signal,redirect:'manual'});
   const reader=response.body?.getReader(),chunks:Buffer[]=[];let length=0,truncated=false;
   try{while(reader){const next=await reader.read();if(next.done)break;const remaining=8*1024*1024-length;if(next.value.length>remaining){chunks.push(Buffer.from(next.value.subarray(0,remaining)));truncated=true;break;}chunks.push(Buffer.from(next.value));length+=next.value.length;}}finally{await reader?.cancel();}
   const bytes=Buffer.concat(chunks);

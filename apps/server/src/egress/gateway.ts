@@ -1,32 +1,15 @@
-// 瘦身出口网关（M6）：任务 scope → 网络出口授权。
-//
-// 替代已删除的 MITM 流量录制：Node 原生 http 服务器，零额外依赖。
-// - HTTP CONNECT 隧道：解析 host:port → 鉴权（Proxy-Authorization 里的签名任务标签）→
-//   授权校验（worker 口径，pending 可放行）→ net.connect 上游原样管道转发；拒绝时 403 + 短文案
-// - 普通 HTTP 代理请求（绝对 URI）：校验 Host → http.request 转发（保持方法/头/体）→ 回写响应；
-//   Proxy-Authorization 里的内部凭据在转发前删除，绝不能到目标
-// - HTTPS 不解密（无 MITM、无 CA、无录制）——只做 CONNECT 级 allowlist
-//
-// 未带（或非 series-task-）凭据的流量直接放行：独立聊天/enrich/UI 不打标——与 Go 版
-// traffic.authorizeTaskRequest 的未打标分支一致；此处仅 console.debug 留痕。
-
+// 任务代理：记录流量，验证执行身份、租约和暂停状态。
+import {stripHostPort} from "../db/task_scope.js";
 import http from "node:http";
 import net from "node:net";
 import type { Duplex } from "node:stream";
 import type { Database } from "../db/index.js";
-import { stripHostPort } from "../db/task_scope.js";
 import { parseAndVerify } from "./credentials.js";
 
 /** 请求放行/拒绝判定结果。 */
 type GateDecision = { allowed: true } | { allowed: false; status: number; message: string };
 
-/**
- * 任务级出口授权（Go traffic.authorizeTaskRequest 的打标分支）：
- * strip 端口 → validateWorkerHosts（worker 口径：approved 或 pending 均放行）；
- * 校验失败 rememberTaskAssetDenials 记忆（忽略记忆错误本身）后抛出带文案的错误。
- */
 export async function authorizeTaskRequest(db: Database, taskID: number, host: string, port=443,scope=''): Promise<void> {
-  const bare = stripHostPort(host);
   try {
     const task=await db.tasks().getTask(taskID);
     if(!task||task.paused||task.queued||['done','failed','stopped','timeout'].includes(task.status))throw new Error('任务已暂停、终止或不可执行');
@@ -35,25 +18,18 @@ export async function authorizeTaskRequest(db: Database, taskID: number, host: s
       const intent=await db.exploration(task.exploration_id).getNode(Number(worker[1]));
       if(!intent||intent.kind!=='intent'||intent.state!=='running'||intent.payload.cancelled_by_user===true)throw new Error('意图已停止或不属于当前任务');
       if(worker[2]&&!(await db.query('SELECT 1 FROM engine_task_leases WHERE task_id=$1 AND token=$2 AND expires_at>clock_timestamp()',[taskID,worker[2]])).rowCount)throw new Error('执行租约已失效');
-      await db.taskScope().validateIntentHostPort(taskID,intent,bare,port);
     }else if(scope.startsWith('main:')){
       const main=/^main:(\d+):(\d+):(.+)$/.exec(scope);
       if(!main||Number(main[1])!==taskID||!(await db.query('SELECT 1 FROM runtime_session_leases WHERE key=$1 AND token=$2 AND expires_at>clock_timestamp() AND NOT stop_requested',[`main:${taskID}:${main[2]}`,main[3]])).rowCount)throw new Error('Main 会话租约已失效');
-      await db.taskScope().validateWorkerHostPort(taskID,bare,port);
     }else{
       const planner=/^planner:(.+)$/.exec(scope);
       if(planner&&!(await db.query('SELECT 1 FROM engine_task_leases WHERE task_id=$1 AND token=$2 AND expires_at>clock_timestamp()',[taskID,planner[1]])).rowCount)throw new Error('Planner 租约已失效');
       const conversation=/^conversation:(\d+):(.+)$/.exec(scope);
       if(conversation&&!(await db.query('SELECT 1 FROM runtime_session_leases WHERE key=$1 AND token=$2 AND expires_at>clock_timestamp() AND NOT stop_requested',[`conversation:${conversation[1]}`,conversation[2]])).rowCount)throw new Error('会话租约已失效');
-      await db.taskScope().validateTaskHostPort(taskID,bare,port);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await db
-      .taskScope()
-      .rememberTaskAssetDenials(taskID, [bare], [])
-      .catch(() => undefined);
-    throw new Error(`任务资产执行被阻止: ${msg}`);
+    throw new Error(`执行已停止: ${msg}`);
   }
 }
 

@@ -16,7 +16,7 @@ export function trafficBodyTool(ctx:ToolRunContext){return domainTool<{traffic_i
  async run(args,c){
   const r=await c.db.query<{task_id:string;intent_id:string|null;url:string}>('SELECT task_id,intent_id,url FROM traffic_evidence_snapshots WHERE id=$1 AND task_id=$2',[args.traffic_id,c.taskID]);
   const exchange=r.rows[0];if(!exchange)throw new Error('证据不属于本任务');
-  await authorizeEvidence(c.db,exchange,c.taskID,c.role==='mainagent'?'main':c.role==='worker');
+  await authorizeEvidence(c.db,exchange,c.taskID);
   return evidenceBody(c.db,args.traffic_id,args.side??'response',args.offset);
  }
 },ctx);}

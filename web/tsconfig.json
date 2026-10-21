@@ -30,26 +30,10 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    ".next-ui-20261019/types/**/*.ts",
-    ".next-ui-20261019/dev/types/**/*.ts",
-    ".next-real-mcp/types/**/*.ts",
-    ".next-real-mcp/dev/types/**/*.ts",
-    ".next-mcp-acceptance/types/**/*.ts",
-    ".next-mcp-acceptance/dev/types/**/*.ts",
-    ".next-neo-preview/types/**/*.ts",
-    ".next-neo-preview/dev/types/**/*.ts",
-    ".next-neo-turn-20261019/types/**/*.ts",
-    ".next-neo-turn-20261019/dev/types/**/*.ts",
-    ".next-neo-final/types/**/*.ts",
-    ".next-neo-final/dev/types/**/*.ts",
-    ".next-real-mcp-final/types/**/*.ts",
-    ".next-real-mcp-final/dev/types/**/*.ts",
-    ".next-overview-fix/types/**/*.ts",
-    ".next-overview-fix/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

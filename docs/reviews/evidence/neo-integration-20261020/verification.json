@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-20",
+  "head_ui": "0a2b8096",
+  "branch": "main",
+  "backup": "/Users/pphua/.local/share/fate/backups/neo-ui-integration-20261020-100629",
+  "tracked_snapshot": "25d663e3d4f0e8bbdb1254ba913e72b1ee8b3f90",
+  "preexisting_files_verified": 817,
+  "unrelated_changes_lost": 0,
+  "conflicts_resolved": [
+    "apps/server/src/http/workspace-ui.test.ts",
+    "web/src/app/(main)/function/tasks/detail/page.tsx",
+    "web/src/app/(main)/function/tasks/detail/_tabs/sessions-tab.tsx"
+  ],
+  "server_tests": {
+    "files": 46,
+    "passed": 481,
+    "failed": 0,
+    "skipped": 1,
+    "duration_seconds": 255.77
+  },
+  "frontend_tests": {
+    "passed": 64,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typechecks": "server and web passed",
+  "builds": "server compilation and Next production build passed",
+  "deployment": {
+    "started_at": "2026-10-20T02:16:40.570Z",
+    "finished_at": "2026-10-20T02:16:45.633Z",
+    "backend_pid": 98638,
+    "web_pid": 98659,
+    "health": {
+      "status": "ok",
+      "version": "planner-review-20261020+neo-ui",
+      "runtime": "node/25.1.0",
+      "uptime_seconds": 1
+    },
+    "task_states_preserved": true,
+    "routes": [
+      "http/routes/tasks.js",
+      "http/routes/evidence.js"
+    ],
+    "frontend_dist": ".next-neo-integrated-20261020"
+  },
+  "browser": {
+    "origin": "http://localhost:5173",
+    "actual_width": 653,
+    "no_root_overflow": true,
+    "font": "Public Sans",
+    "code_font": "Geist Mono 11px",
+    "tasks": [
+      4843,
+      4845
+    ],
+    "settings_model_selection": "existing DeepSeek-Flash, 1-entry chain displayed without save",
+    "network_total": 17,
+    "network_4xx_filtered": 9,
+    "network_body": "stored robots.txt response, 25 bytes",
+    "findings_total": 2,
+    "high_severity_filtered": 1,
+    "draft_preserved_and_cleared": true,
+    "overview_loaded": true,
+    "console_errors": 0,
+    "new_messages_sent": 0,
+    "new_tasks_created": 0
+  },
+  "logs": {
+    "server-final": {
+      "sha256": "e0c48bd15877572123c55758f53d8ab911edb73af082bae8eae7ef7b036fcd7a",
+      "bytes": 162509
+    },
+    "all-front-tests": {
+      "sha256": "474a7d8d89d2f2ef8b221f718a16a63b5869dd33bb77a01ba95060a7ea3c22d6",
+      "bytes": 5772
+    },
+    "server-typecheck": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "web-typecheck": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "server-build": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "web-build": {
+      "sha256": "48bc86a62be46fcabc3186404983e2946350d14f4e45a9457f1130ea82f4af81",
+      "bytes": 1483
+    }
+  }
+}

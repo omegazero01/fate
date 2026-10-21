@@ -31,10 +31,10 @@ export async function writeOrigin(c:ToolRunContext):Promise<Node>{
 }
 
 export async function writeAnchors(c:ToolRunContext,origin:Node,explicit?:number[]){
- const anchors=explicit?.length?explicit:await c.db.exploration(c.expID).anchorAssetIDs(origin.id);
- if(origin.kind==='intent')await c.db.taskScope().validateIntentAssets(c.taskID,origin,anchors);
- else if(c.role==='mainagent'&&c.mainSegment!==undefined&&c.hooks.assertOwnership)await c.db.taskScope().validateWorkerAssets(c.taskID,anchors);
- else await c.db.taskScope().validateTaskAssetsApproved(c.taskID,anchors);
+ // A broad mandate is not evidence that every discovered/anchored asset is affected.
+ if(explicit!==undefined&&(!Array.isArray(explicit)||explicit.some(id=>!Number.isSafeInteger(id)||id<=0)))throw new Error('asset_ids 需要有效正整数 ID 数组');
+ const anchors=[...new Set(explicit??[])].sort((a,b)=>a-b);
+ await c.db.taskScope().validateTaskAssets(c.taskID,anchors);
  return anchors;
 }
 

@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-20",
+  "scope": "Tools management display only; API, tool registration, execution and transcript unchanged",
+  "frontend_tests": {
+    "passed": 64,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typecheck": "passed",
+  "production_build": "passed in isolated web build workspace; pnpm dependency preflight warned about symlinked node_modules; Next compile, typecheck and prerender succeeded",
+  "browser_url": "http://localhost:5173/system/tools",
+  "current_platform_count": 36,
+  "history_platform_count": 40,
+  "custom_count": 1,
+  "pi_native_hidden": [
+    "read",
+    "bash",
+    "write",
+    "edit",
+    "tool_search"
+  ],
+  "shell_retained": [
+    "shell_open",
+    "shell_send",
+    "shell_read",
+    "shell_close",
+    "shell_list"
+  ],
+  "role_counts": {
+    "goals": [
+      5,
+      0
+    ],
+    "planner": [
+      8,
+      9
+    ],
+    "mainagent": [
+      11,
+      9
+    ],
+    "worker": [
+      6,
+      7
+    ],
+    "auto": [
+      7,
+      7
+    ],
+    "pentest": [
+      6,
+      4
+    ],
+    "reporter": [
+      4,
+      1
+    ]
+  },
+  "role_count_columns": [
+    "platform_resident",
+    "platform_deferred"
+  ],
+  "runtime_schema_bytes": "unchanged; label includes pi and custom tools, MCP schemas remain excluded",
+  "history_check": {
+    "task": 4846,
+    "intent": 32351,
+    "tool": "bash",
+    "arguments_and_result_expanded": true
+  },
+  "model_requests": 0,
+  "target_requests": 0,
+  "review": "No blocking issue found in source filtering, counts, search, editors or historical transcript display. Existing uncommitted changes excluded from this commit."
+}

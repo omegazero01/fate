@@ -76,6 +76,21 @@ it('task conversations include retests linked through the original finding',asyn
  const result=await app.inject({url:`/api/conversations?task=${task}`,headers});expect(result.statusCode).toBe(200);expect(result.json().conversations).toEqual(expect.arrayContaining([expect.objectContaining({id:conversation,task_id:task,running:false})]));
  const unrelated=await app.inject({url:`/api/conversations?task=${other}`,headers});expect(unrelated.json().conversations.some((r:any)=>r.id===conversation)).toBe(false);
 });
-it('authentication and revoked asset scopes are enforced on every read',async()=>{
- expect((await app.inject({url:url('')})).statusCode).toBe(401);const parent=Number((await db.query("SELECT a.id FROM assets a JOIN task_asset_links l ON l.asset_id=a.id WHERE l.task_id=$1 AND a.type='ip' AND a.ip='127.0.0.1'",[task])).rows[0]!.id);await db.taskScope().revokeTaskAssets(task,[parent],'user','LOCAL revoke fixture');expect((await app.inject({url:url(`/content?ref=work:i${intent}/report.txt`),headers})).statusCode).toBe(403);expect((await app.inject({url:`/api/traffic/exchange/${traffic}/body?task=${task}&side=response`,headers})).statusCode).toBe(403);expect((await app.inject({url:`/api/traffic?task=${task}`,headers})).json().total).toBe(0);
+it('network navigation is task scoped and exact paths include query variants',async()=>{
+ const input={taskID:task,url:'http://127.0.0.1:18899/synthetic?query=2',method:'POST',status:404,reqHead:'POST /synthetic HTTP/1.1',respHead:'HTTP/1.1 404',request:Buffer.alloc(0),response:Buffer.from('LOCAL')};
+ await recordExchange(db,input);await recordExchange(db,{...input,url:'http://127.0.0.1:18899',status:204});
+ const hosts=await app.inject({url:`/api/traffic/hosts?task=${task}`,headers});expect(hosts.json().hosts).toEqual([{host:'127.0.0.1',count:3}]);
+ expect((await app.inject({url:`/api/traffic/hosts?task=${other}`,headers})).json().hosts).toEqual([]);
+ const paths=(await app.inject({url:`/api/traffic/paths?task=${task}&host=127.0.0.1`,headers})).json();expect(paths.total).toBe(2);expect(paths.paths).toEqual([{path:'/',count:1},{path:'/synthetic',count:2}]);
+ expect((await app.inject({url:`/api/traffic?task=${task}&path_exact=/synthetic`,headers})).json().total).toBe(2);
+ expect((await app.inject({url:`/api/traffic?task=${task}&path_exact=/`,headers})).json().total).toBe(1);
+ expect((await app.inject({url:`/api/traffic?task=${task}&status_class=4`,headers})).json().total).toBe(1);
+ expect((await app.inject({url:`/api/traffic?task=${task}&status_class=2`,headers})).json().total).toBe(2);
+ expect((await app.inject({url:`/api/traffic?task=${task}&status_class=invalid`,headers})).statusCode).toBe(400);
+ expect((await app.inject({url:'/api/traffic/hosts?task=invalid',headers})).statusCode).toBe(400);
+ expect((await app.inject({url:'/api/traffic/paths?host=127.0.0.1',headers})).statusCode).toBe(400);
+ expect((await app.inject({url:`/api/traffic/paths?task=${task}&host=127.0.0.1`})).statusCode).toBe(401);
+});
+it('authentication and existing task evidence remain available without asset approval',async()=>{
+ expect((await app.inject({url:url('')})).statusCode).toBe(401);const parent=Number((await db.query("SELECT a.id FROM assets a JOIN task_asset_links l ON l.asset_id=a.id WHERE l.task_id=$1 AND a.type='ip' AND a.ip='127.0.0.1'",[task])).rows[0]!.id);expect((await app.inject({url:url(`/content?ref=work:i${intent}/report.txt`),headers})).statusCode).toBe(200);expect((await app.inject({url:`/api/traffic/exchange/${traffic}/body?task=${task}&side=response`,headers})).statusCode).toBe(200);expect((await app.inject({url:`/api/traffic?task=${task}`,headers})).json().total).toBeGreaterThan(0);
 });

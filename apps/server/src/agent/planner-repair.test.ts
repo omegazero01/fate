@@ -1,0 +1,22 @@
+import {beforeAll,afterAll,it,expect} from 'vitest';
+import pg from 'pg';
+import {openDatabase,type Database} from '../db/index.js';
+import {PLANNER_PROMPT,migrateSeriesPlannerPrompt,resolveRolePrompt} from './prompts.js';
+const name=`fate_planner_repair_${process.pid}`;let db:Database;
+beforeAll(async()=>{process.env.SERIES_PG_DSN=`postgres://series:series@127.0.0.1:5433/${name}`;db=await openDatabase();});
+afterAll(async()=>{await db.close();const c=new pg.Client({connectionString:'postgres://series:series@127.0.0.1:5433/postgres'});await c.connect();await c.query(`DROP DATABASE ${name}`);await c.end();});
+it('repairs only the known leaked fixture, retains history and is idempotent',async()=>{
+ const agent=(await db.platform().getAgentByKey('planner'))!;
+ await db.platform().savePrompt(agent.id,'测试模板 {{Goal}}','单测','user');
+ const before=(await db.query('SELECT current_prompt_id FROM agents WHERE id=$1',[agent.id])).rows[0]!.current_prompt_id;
+ await db.query("DELETE FROM settings WHERE key='series_planner_prompt_v2'");
+ await migrateSeriesPlannerPrompt(db);
+ expect(await resolveRolePrompt(db,'planner')).toMatchObject({template:PLANNER_PROMPT,source:'builtin'});
+ expect((await db.query('SELECT template_text FROM agent_prompts WHERE id=$1',[before])).rows[0]!.template_text).toBe('测试模板 {{Goal}}');
+ const count=Number((await db.query('SELECT count(*) FROM agent_prompts WHERE agent_id=$1',[agent.id])).rows[0]!.count);
+ await migrateSeriesPlannerPrompt(db);
+ expect(Number((await db.query('SELECT count(*) FROM agent_prompts WHERE agent_id=$1',[agent.id])).rows[0]!.count)).toBe(count);
+ await db.platform().savePrompt(agent.id,'Operator custom prompt {{Goal}}','custom','user');
+ await db.query("DELETE FROM settings WHERE key='series_planner_prompt_v2'");await migrateSeriesPlannerPrompt(db);
+ expect(await resolveRolePrompt(db,'planner')).toMatchObject({template:'Operator custom prompt {{Goal}}',source:'custom'});
+});

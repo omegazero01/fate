@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { ExplorationGraph } from "@/components/exploration-graph";
@@ -8,6 +9,7 @@ import { api } from "@/lib/api";
 import type { Edge, TaskNode } from "@/lib/types";
 
 export function GraphTab({ taskId }: { taskId: string }) {
+  const focusNodeId = useSearchParams().get("node");
   const [nodes, setNodes] = React.useState<TaskNode[]>([]);
   const [edges, setEdges] = React.useState<Edge[]>([]);
   // 上一次图数据的签名:轮询拿到相同数据时跳过 setState,避免整图无谓重建(拖动时
@@ -48,7 +50,7 @@ export function GraphTab({ taskId }: { taskId: string }) {
   return (
     <Card>
       <CardContent className="p-0">
-        <ExplorationGraph nodes={nodes} edges={edges} className="h-[72vh]" />
+        <ExplorationGraph focusNodeId={focusNodeId} taskId={taskId} nodes={nodes} edges={edges} className="h-[72vh]" />
       </CardContent>
     </Card>
   );

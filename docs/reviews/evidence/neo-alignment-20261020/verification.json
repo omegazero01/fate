@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-20",
+  "scope": "任务顶部导航字号、居中及网络流量布局；仅修改 globals.css",
+  "reference": {
+    "url": "https://neo.projectdiscovery.io/task/6e09def9-56bb-4700-bf5b-63e01f1bc7f9?view=all&taskView=network",
+    "viewport": [
+      985,
+      796
+    ],
+    "tabFontPx": 12,
+    "tabWeight": 500,
+    "tabLineHeightPx": 16,
+    "networkTreePx": 260,
+    "payloadFontPx": 11,
+    "payloadLineHeightPx": 17.875
+  },
+  "changes": [
+    "左右等宽网格，使任务导航在内容区域居中",
+    "按参考页面对齐标签字号、字重、行高、圆角和图标",
+    "基于内容区域宽度响应布局，避免侧栏影响断点",
+    "流量主机栏恢复 260px，窄屏保留表格区域内部滚动",
+    "修复窄屏标签内部裁切；紧凑任务控制保留 aria-label"
+  ],
+  "validation": {
+    "frontendTests": {
+      "passed": 64,
+      "failed": 0,
+      "skipped": 0
+    },
+    "nextProductionBuild": "passed",
+    "typescript": "passed as part of production build",
+    "responsiveWidths": [
+      390,
+      846,
+      936,
+      985,
+      1280,
+      1440
+    ],
+    "centerDeltaPx": 0,
+    "overlapAndClipping": false,
+    "lightAndDark": "passed; restored system theme",
+    "taskAndSettingsNavigation": "passed; no settings saved",
+    "existingTrafficDetails": "passed; persisted 25-byte response preview preserved across tabs",
+    "browserConsoleErrors": 0,
+    "preexistingDirtyFilesUnchanged": 113,
+    "serverRestarted": false,
+    "liveModelRequests": 0,
+    "externalTargetRequests": 0
+  },
+  "deployment": {
+    "port": 5173,
+    "distDir": ".next-neo-alignment-final-20261020",
+    "processId": 8412
+  },
+  "review": {
+    "result": "No remaining overlap, clipping or centering defects observed in the tested widths. No data or agent behavior changed.",
+    "limits": [
+      "Chinese labels and existing brand retained",
+      "Existing 256px global sidebar preference retained; Neo sidebar measured 264px",
+      "Local header height 50px; reference rendered 49.64px",
+      "This focused CSS fix does not claim pixel-identical full-page content or revalidate backend execution"
+    ]
+  }
+}

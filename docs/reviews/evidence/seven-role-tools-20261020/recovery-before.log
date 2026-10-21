@@ -1,0 +1,29 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+ ❯ src/pi/internal-discovery.test.ts (6 tests | 2 failed) 96ms
+   × restores current resident record_fact missing from the previous loadout 20ms
+     → expected [ 'tool_search' ] to include 'record_fact'
+   × restores current resident tool_search missing from the previous loadout 6ms
+     → expected [ 'record_fact' ] to include 'tool_search'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pi/internal-discovery.test.ts > restores current resident record_fact missing from the previous loadout
+AssertionError: expected [ 'tool_search' ] to include 'record_fact'
+ ❯ src/pi/internal-discovery.test.ts:43:29
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/pi/internal-discovery.test.ts > restores current resident tool_search missing from the previous loadout
+AssertionError: expected [ 'record_fact' ] to include 'tool_search'
+ ❯ src/pi/internal-discovery.test.ts:43:29
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+   Start at  21:04:24
+   Duration  932ms (transform 102ms, setup 0ms, collect 673ms, tests 96ms, environment 0ms, prepare 40ms)

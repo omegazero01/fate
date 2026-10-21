@@ -32,7 +32,7 @@ it('Planner ends on one normal response without a decision tool or an extra mode
 });
 it('Main receives a host dispatch receipt with one model request and keeps the real source on writes',async()=>{
  const {task,s}=await fixture(),{f,source}=await model('artex-main-receipt');
- f.setResponses([ctx=>{expect(ctx.messages.flatMap(m=>m.role==='system'?m.toolsAdded?.map(t=>t.name)??[]:[])).toEqual(expect.arrayContaining(['bash','write','edit','record_fact','shell_open']));return fauxAssistantMessage([fauxToolCall('record_fact',{summary:'Main LOCAL evidence',evidence:'fixture',confidence:'high'}),fauxToolCall('add_intent',{intents:[{summary:'Main explicit LOCAL work'}]})]);}]);
+ f.setResponses([ctx=>{expect(ctx.messages.flatMap(m=>m.role==='system'?m.toolsAdded?.map(t=>t.name)??[]:[])).toEqual(expect.arrayContaining(['bash','write','edit','record_fact','tool_search']));return fauxAssistantMessage([fauxToolCall('record_fact',{summary:'Main LOCAL evidence',evidence:'fixture',confidence:'high'}),fauxToolCall('add_intent',{intents:[{summary:'Main explicit LOCAL work'}]})]);}]);
  const r=await runMainChat({db,taskID:task.id,expID:task.exploration_id,goal:task.goal,model:source,dataDir:dir,segment:7,message:'LOCAL request',maxTurns:5,hooks:{assertOwnership:async()=>{},dispatchIntent:async(_,id)=>({intent_id:id,status:'waiting_for_worker'})},onActivity:()=>{}});
  expect(f.state.callCount).toBe(1);expect(r.lastAssistantText).toContain('waiting_for_worker');
  const fact=(await s.listByKind('fact')).find(n=>n.payload.summary==='Main LOCAL evidence')!;expect(fact.payload).toMatchObject({source_main_segment:7,source_task_id:task.id});expect(fact.payload.from_intent).toBeUndefined();
@@ -90,7 +90,7 @@ it('limits concurrent Planner probes to three and stops probing once Worker evid
 
 it('Main goal editing does not start a Worker pool',async()=>{
  const {task,s}=await fixture('managed'),{f,source}=await model('artex-main-goal');
- f.setResponses([fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'LOCAL deliverable'}]})]),fauxAssistantMessage('Goal saved')]);
+ f.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'set_goals'})]),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'LOCAL deliverable'}]})]),fauxAssistantMessage('Goal saved')]);
  const e=new Engine(db,defaultEngineConfig(),async()=>source,dir);engines.push(e);await e.mainChat(task.id,'Save this LOCAL goal only');
  expect((await s.listByKind('goal')).length).toBe(1);
  expect((await db.query('SELECT 1 FROM engine_task_leases WHERE task_id=$1',[task.id])).rowCount).toBe(0);
@@ -102,16 +102,13 @@ it('Main goal editing does not start a Worker pool',async()=>{
  },fauxAssistantMessage('Paused goal saved')]);
  await e.mainChat(task.id,'Only update this paused task goal');expect((await db.tasks().getTask(task.id))?.paused).toBe(true);
 });
-it('Main can reread pending-asset evidence without changing approval, and revocation is immediate',async()=>{
- const {task}=await fixture();await db.query("UPDATE tasks SET asset_approval_template='explicit_targets' WHERE id=$1",[task.id]);const c=runContext(db,task.id,task.exploration_id,'mainagent',{mainSegment:2,hooks:{assertOwnership:async()=>{}}});
- const saved=await call(insertAssetsTool(c),{items:[{type:'root_domain',domain:'artex-fixture.invalid'}]});const aid=saved.assets[0].asset_id;
- await db.query("UPDATE task_asset_links SET approval_state='pending' WHERE task_id=$1 AND asset_id=$2",[task.id,aid]);
+it('Main and Planner can immediately reread discovered asset evidence',async()=>{
+ const {task}=await fixture();const c=runContext(db,task.id,task.exploration_id,'mainagent',{mainSegment:2,hooks:{assertOwnership:async()=>{}}});
+ const saved=await call(insertAssetsTool(c),{items:[{type:'root_domain',domain:'artex-fixture.invalid'}]});
  const owner={task_id:task.id,intent_id:null,url:'https://artex-fixture.invalid/'};
- await authorizeEvidence(db,owner,task.id,'main');
- expect((await db.query('SELECT approval_state FROM task_asset_links WHERE task_id=$1 AND asset_id=$2',[task.id,aid])).rows[0].approval_state).toBe('pending');
- await expect(authorizeEvidence(db,owner,task.id)).rejects.toThrow('授权');
- await db.query("UPDATE task_asset_links SET approval_state='blocked' WHERE task_id=$1 AND asset_id=$2",[task.id,aid]);
- await expect(authorizeEvidence(db,owner,task.id,'main')).rejects.toThrow('授权');
+ await expect(authorizeEvidence(db,owner,task.id)).resolves.toBeUndefined();
+ await db.taskScope().validateTaskAssets(task.id,[saved.assets[0].asset_id]);
+ await expect(authorizeEvidence(db,owner,task.id+99999)).rejects.toThrow('不属于');
 });
 it('upgrades recognized legacy configuration once and quarantines inactive proposals',async()=>{
  const {task,s}=await fixture('managed'),old=await s.addIntent({summary:'LOCAL legacy proposal',planning_round:'old',dispatch_requested:false},5,[],'planner');
@@ -191,4 +188,21 @@ it('exposes discovered MCP names to Planner and rejects invented contract aliase
   expect(()=>validateWorkerToolNames(['mcp__catalog_fixture__ask_question'],catalog)).toThrow('不存在');
   expect(()=>validateWorkerToolNames(['mcp__catalog_fixture__ask_wiki_question'],catalog)).not.toThrow();
  }finally{await db.platform().deleteMCP(mid);}
+});
+
+it('accepts SERIES single and batch forms, retains all factual parents and rejects mixed input before writing',async()=>{
+ const {task,s,c}=await fixture('managed');await db.query("UPDATE tasks SET status='running' WHERE id=$1",[task.id]);
+ const a=await s.addNode('fact',{summary:'LOCAL first parent'},0,'confirmed','test',[]);
+ const b=await s.addNode('fact',{summary:'LOCAL second parent'},0,'confirmed','test',[]);
+ const one=await call(addIntentTool(c),{summary:'LOCAL single series direction',parent_ids:[String(a),b],priority:0});
+ expect(one.ids).toEqual([one.intents[0].intent_id]);
+ const node=(await s.getNode(one.ids[0]))!;
+ expect(node.priority).toBe(5);expect(node.payload.parent_ids).toEqual([a,b]);
+ expect((node.payload.contract as any).basis.map((r:any)=>r.node_id)).toEqual([a,b]);
+ await expect(call(addIntentTool(c),{summary:'outer',parent_ids:[a,b],intents:[{summary:'LOCAL mixed must not exist'}]})).rejects.toThrow('不能混合');
+ expect(await s.listByKind('intent')).toHaveLength(1);
+ const batch=await call(addIntentTool(c),{intents:[{summary:'LOCAL batch first',parent_ids:[a]},{summary:'LOCAL batch second',parent_id:b}]});
+ expect(batch.ids).toHaveLength(2);
+ expect((await s.getNode(batch.ids[0]))?.payload.parent_ids).toEqual([a]);
+ expect((await s.getNode(batch.ids[1]))?.payload.parent_ids).toEqual([b]);
 });

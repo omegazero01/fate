@@ -44,6 +44,8 @@ export function projectTurn(rows:Row[],attempts:Row[],runtime?:Row) {
    failed_requests:auditKnown?attempts.filter(a=>['failed','aborted'].includes(a.status)).length:null,
    failed_request_tokens:auditKnown?attempts.filter(a=>['failed','aborted'].includes(a.status)).reduce((n,a)=>n+tokenTotal(a.usage),0):null}:null,
   final_activity:final?activityDTO(final):null,
+  writebacks:first.node_id&&(start?.metadata.role==='worker'||String(first.worker).startsWith('work#'))
+    ?{version:1,intent_id:String(first.node_id),available:!!terminal||status==='interrupted'}:undefined,
   error:terminal&&(terminal.is_error||['failed','blocked','exhausted','stopped','paused'].includes(status))?statusOverride?'模型请求预算耗尽；本轮未自然完成':String(terminal.summary??''):null};
 }
 

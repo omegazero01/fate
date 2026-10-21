@@ -1,5 +1,7 @@
 "use client";
 
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+
 import * as React from "react";
 
 import {
@@ -134,38 +136,6 @@ function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
 function SourceCell({ asset }: { asset: Asset }) {
   const source = firstText([asset.task_source], "legacy");
   const summary = firstText([asset.task_source_summary], "由历史任务资产关联迁移，暂无更详细来源说明");
-  const derived = asset.type === "service" || asset.type === "endpoint";
-  let approvalBadge: React.ReactNode;
-  if (asset.blocked) {
-    approvalBadge = (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge variant="destructive" className="shrink-0">
-            {asset.block_direct ? "已封禁" : "继承封禁"}
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent>{asset.block_reason ?? "该资产受当前任务删除墓碑影响，禁止再次测试"}</TooltipContent>
-      </Tooltip>
-    );
-  } else if (asset.approval_state === "pending") {
-    approvalBadge = (
-      <Badge variant="outline" className="shrink-0">
-        {derived ? "父资产待审批" : "待审批"}
-      </Badge>
-    );
-  } else if (asset.approval_state === "revoked") {
-    approvalBadge = (
-      <Badge variant="secondary" className="shrink-0">
-        {derived ? "父资产已撤回" : "已撤回"}
-      </Badge>
-    );
-  } else {
-    approvalBadge = (
-      <Badge variant="default" className="shrink-0">
-        {derived ? "继承父资产授权" : "已批准"}
-      </Badge>
-    );
-  }
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Tooltip>
@@ -191,20 +161,19 @@ function SourceCell({ asset }: { asset: Asset }) {
               来源任务 #{asset.task_source_task_id} · 只读
             </Badge>
           </TooltipTrigger>
-          <TooltipContent>授权状态由来源任务维护；当前任务只能将其排除，或手动重新关联为自己的资产。</TooltipContent>
+          <TooltipContent>来源任务资产只读，可以手动关联到当前任务。</TooltipContent>
         </Tooltip>
       ) : null}
-      {approvalBadge}
       <Tooltip>
         <TooltipTrigger asChild>
           <Badge variant={asset.tested ? "default" : "secondary"} className="shrink-0">
-            {asset.tested ? "已测试" : "未测试"}
+            {asset.tested ? "有范围测试记录" : asset.legacy_tested ? "历史范围待核实" : "暂无明确记录"}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
           {asset.tested
-            ? `测试时间：${asset.tested_at ? new Date(asset.tested_at).toLocaleString() : "未知"}${asset.tested_by ? ` · Agent：${asset.tested_by}` : ""}`
-            : "尚未记录 Agent 对该任务资产的事实或漏洞发现"}
+            ? `记录时间：${asset.tested_at ? new Date(asset.tested_at).toLocaleString() : "未知"}${asset.tested_by ? ` · Agent：${asset.tested_by}` : ""}`
+            : asset.legacy_tested ? "原始记录仍保留，需读取证据核实实际测试范围" : "缺少明确资产、范围或实测证据；不能据此认定从未测试"}
         </TooltipContent>
       </Tooltip>
     </div>
@@ -408,15 +377,9 @@ export function AssetsTab({ taskId }: { taskId: string }) {
   const [dslError, setDslError] = React.useState("");
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [testedFilter, setTestedFilter] = React.useState<"all" | "true" | "false">("all");
-  const [approvalFilter, setApprovalFilter] = React.useState<"all" | "approved" | "pending" | "revoked" | "blocked">(
-    "all",
-  );
   const [addOpen, setAddOpen] = React.useState(false);
   const [removeTarget, setRemoveTarget] = React.useState<Asset | null>(null);
   const [removing, setRemoving] = React.useState(false);
-  const [approvalTarget, setApprovalTarget] = React.useState<Asset | null>(null);
-  const approvalConfirmLabel = approvalTarget?.blocked ? "批准并恢复测试资格" : "确认撤回";
-  const [changingApproval, setChangingApproval] = React.useState(false);
   const assetsRequestRef = React.useRef(0);
   const dslMode = query.trim() !== "";
 
@@ -453,8 +416,8 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         // searchTaskAssets both pin task_id server-side.
         const [current, nextCounts] = await Promise.all([
           dsl
-            ? api.searchTaskAssets(taskId, dsl, tab, size, page * size, testedFilter, approvalFilter)
-            : api.taskAssets(taskId, tab, size, page * size, testedFilter, approvalFilter),
+            ? api.searchTaskAssets(taskId, dsl, tab, size, page * size, testedFilter)
+            : api.taskAssets(taskId, tab, size, page * size, testedFilter),
           api.assetCounts(taskId),
         ]);
         if (!active || assetsRequestRef.current !== request) return;
@@ -465,13 +428,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
       } catch (reason) {
         if (!active || assetsRequestRef.current !== request) return;
         const message = String((reason as Error)?.message ?? reason);
-        if (dsl) {
-          setDslError(message);
-          setRows([]);
-          setTotal(0);
-        } else {
-          toast.error(`加载任务资产失败：${message}`);
-        }
+        setDslError(message);
       } finally {
         inFlight = false;
         if (active && assetsRequestRef.current === request) {
@@ -488,7 +445,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
       clearTimeout(debounce);
       clearInterval(timer);
     };
-  }, [approvalFilter, page, query, refreshKey, size, tab, taskId, testedFilter]);
+  }, [page, query, refreshKey, size, tab, taskId, testedFilter]);
 
   React.useEffect(() => {
     const maxPage = Math.max(0, Math.ceil(total / size) - 1);
@@ -516,45 +473,9 @@ export function AssetsTab({ taskId }: { taskId: string }) {
   };
 
   const removeButton = (asset: Asset) => {
-    const derived = !["root_domain", "subdomain", "ip"].includes(asset.type);
-    let approvalAction: React.ReactNode = null;
-    if (asset.blocked && asset.block_direct && asset.block_kind === "manual" && !asset.task_read_only && !derived) {
-      approvalAction = (
-        <Button size="xs" variant="outline" disabled={changingApproval} onClick={() => setApprovalTarget(asset)}>
-          批准
-        </Button>
-      );
-    } else if (asset.blocked && asset.block_direct) {
-      approvalAction = (
-        <Button size="xs" variant="outline" disabled={changingApproval} onClick={() => void restoreAsset(asset)}>
-          {changingApproval ? <Spinner data-icon="inline-start" /> : null}
-          重新关联
-        </Button>
-      );
-    } else if (asset.blocked) {
-      approvalAction = <span className="text-muted-foreground text-xs">由父资产封禁</span>;
-    } else if (!derived && !asset.task_read_only && asset.approval_state === "pending") {
-      approvalAction = (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={changingApproval}
-          onClick={() => void changeApproval(asset, true)}
-        >
-          批准
-        </Button>
-      );
-    } else if (!derived && !asset.task_read_only && asset.approval_state === "approved") {
-      approvalAction = (
-        <Button size="xs" variant="ghost" disabled={changingApproval} onClick={() => setApprovalTarget(asset)}>
-          撤回
-        </Button>
-      );
-    }
     return (
       <div className="flex items-center gap-1">
-        {approvalAction}
-        {!asset.blocked || !asset.block_direct || asset.block_kind === "manual" ? (
+        {!asset.task_read_only ? (
           <Button
             variant="ghost"
             size="icon-sm"
@@ -568,33 +489,6 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         ) : null}
       </div>
     );
-  };
-
-  const changeApproval = async (asset: Asset, approve: boolean) => {
-    setChangingApproval(true);
-    try {
-      if (approve) await api.approveTaskAssets(taskId, [asset.id]);
-      else await api.revokeTaskAssets(taskId, [asset.id]);
-      toast.success(approve ? "资产已批准" : "资产已撤回，相关 Worker 将停止");
-      refresh();
-    } catch (reason) {
-      toast.error(`审批操作失败：${String((reason as Error)?.message ?? reason)}`);
-    } finally {
-      setChangingApproval(false);
-    }
-  };
-
-  const restoreAsset = async (asset: Asset) => {
-    setChangingApproval(true);
-    try {
-      await api.attachTaskAssets(taskId, [asset.id], "用户在任务资产页重新关联");
-      toast.success("资产已重新关联并批准，删除封禁已解除");
-      refresh();
-    } catch (reason) {
-      toast.error(`重新关联失败：${String((reason as Error)?.message ?? reason)}`);
-    } finally {
-      setChangingApproval(false);
-    }
   };
 
   const commonCardProps = { loaded, onPage: setPage, onSize: setSize, page, size, total };
@@ -618,10 +512,11 @@ export function AssetsTab({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {dslError && <Alert variant="destructive"><AlertTitle>资产查询失败</AlertTitle><AlertDescription>{dslError}。请修正条件或刷新重试；本次错误不代表没有资产。</AlertDescription></Alert>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-medium text-sm">测试资产</h2>
-          <p className="text-muted-foreground text-xs">当前任务共关联 {totalAll} 项资产</p>
+          <p className="text-muted-foreground text-xs">{dslError ? "资产查询失败；显示上次成功结果" : loaded ? `当前任务及直接来源共关联 ${totalAll} 项资产` : "正在读取资产统计…"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -637,28 +532,8 @@ export function AssetsTab({ taskId }: { taskId: string }) {
             <SelectContent>
               <SelectGroup>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="false">未测试</SelectItem>
-                <SelectItem value="true">已测试</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Select
-            value={approvalFilter}
-            onValueChange={(value) => {
-              setApprovalFilter(value as typeof approvalFilter);
-              setPage(0);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="all">全部审批</SelectItem>
-                <SelectItem value="pending">待审批</SelectItem>
-                <SelectItem value="approved">已批准</SelectItem>
-                <SelectItem value="revoked">已撤回</SelectItem>
-                <SelectItem value="blocked">已封禁</SelectItem>
+                <SelectItem value="false">暂无明确记录</SelectItem>
+                <SelectItem value="true">有范围测试记录</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -889,40 +764,6 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={Boolean(approvalTarget)}
-        onOpenChange={(open) => !open && !changingApproval && setApprovalTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {approvalTarget?.blocked ? "批准并解除主动封禁？" : "撤回资产测试授权？"}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="[overflow-wrap:anywhere]">
-              {approvalTarget?.blocked
-                ? `将批准“${assetLabel(approvalTarget)}”并解除自身主动封禁，恢复测试资格；父资产封禁不会解除。`
-                : `将撤回“${approvalTarget ? assetLabel(approvalTarget) : ""}”的测试授权。当前任务中命中该资产的运行中 Worker 会立即停止，后续测试也会被阻止。`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={changingApproval}>取消</AlertDialogCancel>
-            <AlertDialogAction
-              variant={approvalTarget?.blocked ? "default" : "destructive"}
-              disabled={changingApproval || !approvalTarget}
-              onClick={(event) => {
-                event.preventDefault();
-                if (approvalTarget)
-                  void changeApproval(approvalTarget, Boolean(approvalTarget.blocked)).then(() =>
-                    setApprovalTarget(null),
-                  );
-              }}
-            >
-              {changingApproval ? <Spinner data-icon="inline-start" /> : null}
-              {changingApproval ? "处理中" : approvalConfirmLabel}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

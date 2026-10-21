@@ -1,0 +1,36 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+(node:45866) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ src/agent/seven-role-loadout.test.ts (10 tests | 1 failed) 3594ms
+   ✓ planner actual entrypoint matches preview and required tools execute 1060ms
+   × revoking interactive shell removes it from discovery and blocks execution without blocking writeback 180ms
+     → expected 'Loaded 1 tool. They are available fro…' not to contain '- shell_open:'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/agent/seven-role-loadout.test.ts > revoking interactive shell removes it from discovery and blocks execution without blocking writeback
+AssertionError: expected 'Loaded 1 tool. They are available fro…' not to contain '- shell_open:'
+
+- Expected
++ Received
+
+- - shell_open:
++ Loaded 1 tool. They are available from your next call:
++ - shell_open: 打开当前执行会话的交互终端；普通命令使用 bash。句柄在本次执行结束或暂停时失效。
+
+ ❯ src/agent/seven-role-loadout.test.ts:143:27
+    141|   await runWorkerIntent({db,taskID:f.task.id,expID:f.task.exploration_…
+    142|   const search=activities.find(a=>a.kind==='tool_end'&&a.toolName==='t…
+    143|   expect(search.text).not.toContain('- shell_open:');
+       |                           ^
+    144|   const execution=activities.find(a=>a.kind==='tool_end'&&a.toolName==…
+    145|   expect(execution.isError).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  22:10:45
+   Duration  4.99s (transform 437ms, setup 0ms, collect 1.23s, tests 3.59s, environment 0ms, prepare 46ms)

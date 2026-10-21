@@ -58,8 +58,7 @@ async function main(): Promise<void> {
   const db = await openDatabase();
   console.log("[db] schema 迁移完成（幂等）");
 
-  // 出口网关：-proxy 非空时启动；打标流量按任务 scope 做 CONNECT 级 allowlist，
-  // 未打标流量（独立聊天/enrich/UI）原样放行。HTTPS 不解密。
+  // 出口代理：-proxy 非空时启动，验证执行身份和暂停状态并记录流量。
   let gateway: EgressGateway | null = null;
   if (flags.proxy !== "") {
     gateway = await startEgressGateway(db, flags.proxy, flags.dataDir);

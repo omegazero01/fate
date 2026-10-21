@@ -19,7 +19,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
-import type { Agent, Tool } from "@/lib/types";
+import type { Agent, Tool, RoleToolPreview } from "@/lib/types";
+
+const historic = (t: Tool) => t.implementation_status === "retired" || t.implementation_status === "unsupported";
+const stateLabel = { active: "当前实现", compatibility: "兼容入口", retired: "已退役", unsupported: "无当前实现" };
+// Older catalogs may omit source. Keep their platform entries visible without
+// exposing pi or MCP helpers in this management view.
+const NON_PLATFORM_LEGACY_KEYS = new Set([
+  "read", "bash", "write", "edit", "tool_search",
+  "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource",
+]);
+const isPlatformTool = (tool: Tool) =>
+  tool.system && (tool.source ? tool.source === "platform" : !NON_PLATFORM_LEGACY_KEYS.has(tool.key));
 
 // Traffic tools are host tools gated by the global 流量捕获 switch: bindable, but
 // only usable when capture is on. Keep in sync with traffic.SeedToolMetas.
@@ -141,7 +152,9 @@ function ToolEditor({
   onClose: () => void;
 }) {
   // traffic tools can't be bound/enabled until the global 流量捕获 switch is on.
-  const trafficGated = TRAFFIC_TOOL_KEYS.has(tool.key) && !captureOn;
+  const readOnly = historic(tool);
+  const schemaReadOnly = tool.schema_read_only !== false;
+  const trafficGated = readOnly || TRAFFIC_TOOL_KEYS.has(tool.key) && !captureOn;
   const [description, setDescription] = React.useState(tool.description);
   const [bound, setBound] = React.useState<string[]>(tool.agents);
   const [enabled, setEnabled] = React.useState(tool.enabled);
@@ -157,7 +170,7 @@ function ToolEditor({
     try {
       await api.saveTool(tool.key, {
         description,
-        schema: applyRows(tool.schema, rows),
+        ...(schemaReadOnly ? {} : {schema: applyRows(tool.schema, rows)}),
         agents: bound,
         enabled,
       });
@@ -184,7 +197,8 @@ function ToolEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
-        {trafficGated && (
+        {readOnly && <p className="text-muted-foreground text-sm">历史配置仅供查看，此工具不能启用或执行。</p>}
+        {trafficGated && !readOnly && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
             该工具依赖<b>流量捕获</b>。请先在「系统配置」开启流量捕获，才能绑定给 Agent 并启用。
           </div>
@@ -210,7 +224,7 @@ function ToolEditor({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Switch checked={enabled} onCheckedChange={setEnabled} id={`en-${tool.key}`} />
+            <Switch disabled={readOnly} checked={enabled} onCheckedChange={setEnabled} id={`en-${tool.key}`} />
             <Label htmlFor={`en-${tool.key}`} className="text-sm">
               启用
             </Label>
@@ -224,13 +238,14 @@ function ToolEditor({
             className="font-mono text-xs"
             rows={6}
             value={description}
+            readOnly={readOnly}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
         {/* params */}
         <div className="grid gap-2">
-          <Label className="text-muted-foreground text-xs">参数（名称 / 类型 / 必填只读；描述与默认值可改）</Label>
+          <Label className="text-muted-foreground text-xs">{tool.schema_source === "unavailable" ? "历史参数 Schema（无当前实现，只读）" : "参数 Schema（来自实际实现，只读）"}</Label>
           {rows.length === 0 && <span className="text-muted-foreground text-xs">（无参数）</span>}
           {rows.map((r, i) => (
             <div
@@ -258,6 +273,7 @@ function ToolEditor({
                   <Input
                     className="text-xs"
                     value={r.description}
+                    readOnly={schemaReadOnly}
                     onChange={(e) => setRow(i, { description: e.target.value })}
                   />
                 </div>
@@ -266,7 +282,7 @@ function ToolEditor({
                   <Input
                     className="text-xs"
                     placeholder={r.scalar ? "（空=无默认）" : "仅标量支持"}
-                    disabled={!r.scalar}
+                    disabled={schemaReadOnly || !r.scalar}
                     value={r.defaultStr}
                     onChange={(e) => setRow(i, { defaultStr: e.target.value })}
                   />
@@ -279,10 +295,10 @@ function ToolEditor({
 
       <Separator className="mt-4" />
       <div className="flex flex-wrap gap-2 p-4">
-        <Button size="sm" onClick={save} disabled={saving}>
+        <Button size="sm" onClick={save} disabled={saving || readOnly}>
           <SaveIcon /> 保存
         </Button>
-        <Button size="sm" variant="outline" onClick={reset}>
+        <Button size="sm" variant="outline" disabled={readOnly} onClick={reset}>
           <RotateCcwIcon /> 恢复默认
         </Button>
       </div>
@@ -302,13 +318,15 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         <span className="font-mono text-sm font-medium">{tool.key}</span>
         {tool.system ? (
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-            系统
+            平台
           </Badge>
         ) : (
           <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
             自定义·{tool.kind}
           </Badge>
         )}
+        {tool.implementation_status && <Badge variant="outline">{stateLabel[tool.implementation_status]}</Badge>}
+        {tool.canonical_name && tool.canonical_name !== tool.key && <span className="text-xs text-muted-foreground">→ {tool.canonical_name}</span>}
         {tool.deferred && (
           <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
             deferred
@@ -322,9 +340,9 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         <Badge
           variant="secondary"
           className="ml-auto px-1.5 py-0 text-[10px] tabular-nums"
-          title={`累计调用 ${tool.calls ?? 0} 次`}
+          title={tool.calls == null ? "历史统计未记录" : `累计调用 ${tool.calls} 次`}
         >
-          调用 {tool.calls ?? 0}
+          调用 {tool.calls ?? "未记录"}
         </Badge>
       </div>
       <p className="text-muted-foreground line-clamp-1 h-4 text-xs">{tool.description || "（无描述）"}</p>
@@ -332,7 +350,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         {tool.agents.length === 0 && <span className="text-muted-foreground text-[10px]">（未绑定 Agent）</span>}
         {tool.agents.map((a) => (
           <Badge key={a} variant="outline" className="px-1.5 py-0 text-[10px]">
-            {a}
+            {a}{tool.loading?.[a] ? ` · ${tool.loading[a] === "resident" ? "常驻" : "按需"}` : ""}
           </Badge>
         ))}
       </div>
@@ -342,6 +360,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
 
 export default function ToolsPage() {
   const [tools, setTools] = React.useState<Tool[]>([]);
+  const [roles, setRoles] = React.useState<RoleToolPreview[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [captureOn, setCaptureOn] = React.useState(false);
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
@@ -349,8 +368,8 @@ export default function ToolsPage() {
 
   const reload = React.useCallback(() => {
     api
-      .tools()
-      .then(setTools)
+      .toolCatalog()
+      .then((r) => { setTools(r.tools); setRoles(r.roles ?? []); })
       .catch((error: Error) => toast.error("工具列表读取失败：" + error.message));
   }, []);
   React.useEffect(() => {
@@ -371,7 +390,9 @@ export default function ToolsPage() {
 
   const [query, setQuery] = React.useState("");
 
-  const selected = tools.find((t) => t.key === selectedKey) ?? null;
+  const platformTools = tools.filter(isPlatformTool);
+  const platformKeys = new Set(platformTools.map((t) => t.key));
+  const selected = platformTools.find((t) => t.key === selectedKey) ?? null;
   const matchTool = React.useCallback(
     (t: Tool) => {
       const q = query.trim().toLowerCase();
@@ -384,9 +405,12 @@ export default function ToolsPage() {
     },
     [query],
   );
-  const systemTools = tools.filter((t) => t.system && matchTool(t));
+  const currentPlatformTools = platformTools.filter((t) => !historic(t) && t.implementation_status !== "compatibility");
+  const historicPlatformTools = platformTools.filter((t) => historic(t) || t.implementation_status === "compatibility");
+  const systemTools = currentPlatformTools.filter(matchTool);
   const customTools = tools.filter((t) => !t.system && matchTool(t));
-  const allSystemCount = tools.filter((t) => t.system).length;
+  const historyTools = historicPlatformTools.filter(matchTool);
+  const allSystemCount = currentPlatformTools.length;
   const allCustomCount = tools.filter((t) => !t.system).length;
   // clicking a built-in tool opens the binding drawer; a custom tool opens its full editor.
   const openTool = (t: Tool) => (t.system ? setSelectedKey(t.key) : setCustomEdit(t));
@@ -397,7 +421,7 @@ export default function ToolsPage() {
         <div>
           <PageHeading title={<>工具</>}/>
           <p className="text-muted-foreground text-sm">
-            系统工具的描述/绑定，以及自定义工具(shell/command/script/http)
+            平台内置工具的描述/绑定，以及自定义工具(shell/command/script/http)
           </p>
         </div>
         <div className="relative w-64">
@@ -411,26 +435,48 @@ export default function ToolsPage() {
         </div>
       </div>
 
+      {roles.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>角色装配预览</CardTitle>
+            <CardDescription>
+              工具数量仅统计平台内置工具；运行 Schema 含 pi 和自定义工具。新会话使用当前绑定，独立会话按已绑定任务预览。MCP Schema 未连接、不计入。旧会话及自定义提示词可能保留兼容工具。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {roles.map((r) => (
+              <div key={r.role} className="rounded-md border p-3 text-sm">
+                <strong>{r.role}</strong>
+                <p>平台常驻 {r.resident.filter((key) => platformKeys.has(key)).length} · 平台按需 {r.deferred.filter((key) => platformKeys.has(key)).length}</p>
+                <p className="text-muted-foreground text-xs">运行 Schema（含 pi 和自定义工具）{(r.schema_bytes.resident / 1024).toFixed(1)} KiB</p>
+                <p className="text-muted-foreground text-xs">{r.policy_version}</p>
+                {r.fallback && <p className="text-xs">{r.fallback}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       <Tabs defaultValue="system">
         <TabsList>
-          <TabsTrigger value="system">系统工具</TabsTrigger>
+          <TabsTrigger value="system">现行工具</TabsTrigger>
+          <TabsTrigger value="history">历史与兼容</TabsTrigger>
           <TabsTrigger value="custom">自定义工具</TabsTrigger>
         </TabsList>
 
         <TabsContent value="system">
           <Card>
             <CardHeader>
-              <CardTitle>系统工具</CardTitle>
+              <CardTitle>平台内置工具</CardTitle>
               <CardDescription>
                 {query.trim()
-                  ? `${systemTools.length} / ${allSystemCount} 个匹配，点击卡片编辑描述、参数默认值与 Agent 绑定`
-                  : `共 ${allSystemCount} 个，点击卡片编辑描述、参数默认值与 Agent 绑定`}
+                  ? `${systemTools.length} / ${allSystemCount} 个匹配，点击卡片编辑描述、只读参数及 Agent 绑定`
+                  : `共 ${allSystemCount} 个，点击卡片编辑描述、只读参数及 Agent 绑定`}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {systemTools.length === 0 ? (
                 <p className="text-muted-foreground py-6 text-center text-sm">
-                  {query.trim() ? "没有匹配的系统工具" : "（暂无系统工具，等待后端 seed）"}
+                  {query.trim() ? "没有匹配的平台内置工具" : "暂无平台内置工具"}
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -443,6 +489,25 @@ export default function ToolsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>平台历史与兼容工具</CardTitle>
+              <CardDescription>
+                {query.trim() ? `${historyTools.length} / ${historicPlatformTools.length} 个匹配。` : `共 ${historicPlatformTools.length} 个。`}
+                兼容入口保留旧绑定和子能力开关；已退役及无实现条目不可运行，原配置仍可查阅。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {historyTools.map((t) => <ToolGridCard key={t.key} tool={t} onClick={() => openTool(t)} />)}
+              {historyTools.length === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  {query.trim() ? "没有匹配的平台历史工具" : "暂无平台历史与兼容工具"}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="custom">
           <Card>
             <CardHeader>
@@ -483,7 +548,7 @@ export default function ToolsPage() {
             <>
               <SheetHeader className="px-4">
                 <SheetTitle className="font-mono">{selected.key}</SheetTitle>
-                <SheetDescription>编辑描述、参数默认值与 Agent 绑定</SheetDescription>
+                <SheetDescription>编辑描述、只读参数及 Agent 绑定</SheetDescription>
               </SheetHeader>
               <ToolEditor
                 key={selected.key}

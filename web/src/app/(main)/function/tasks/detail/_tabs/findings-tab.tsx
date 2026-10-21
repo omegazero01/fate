@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import {useWorkspaceState} from "@/hooks/use-workspace-state";
-import { Input } from "@/components/ui/input";
-import { Select,SelectTrigger,SelectValue,SelectContent,SelectItem } from "@/components/ui/select";
-import { PageHeading, WorkspaceToolbar } from "@/components/workspace";
+import { useWorkspaceState } from "@/hooks/use-workspace-state";
+import { SearchIcon } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
 
 import { FindingWorkspaceDetail } from "@/components/finding-detail-content";
 import { FindingLayoutToggle, FindingPresentation, useFindingPresentation } from "@/components/finding-presentation";
@@ -12,7 +12,6 @@ import { FindingSelector } from "@/components/finding-selector";
 import { TablePagination } from "@/components/table-pagination";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { findingRowKey, selectFinding } from "@/lib/findings";
@@ -26,9 +25,9 @@ export function FindingsTab({ taskId }: { taskId: string }) {
 function TaskFindings({ taskId }: { taskId: string }) {
   const presentation = useFindingPresentation("series_task_findings_layout");
   const [sort, setSort] = useStoredSortPreference("series_task_findings_sort", FIELDS, "time", "desc");
-  const [query,setQuery]=useWorkspaceState(`task:${taskId}`,"finding-query","");
-  const [severity,setSeverity]=useWorkspaceState(`task:${taskId}`,"finding-severity","all");
-  const [status,setStatus]=useWorkspaceState(`task:${taskId}`,"finding-status","all");
+  const [query, setQuery] = useWorkspaceState(`task:${taskId}`, "finding-query", "");
+  const [severity, setSeverity] = useWorkspaceState(`task:${taskId}`, "finding-severity", "all");
+  const [status, setStatus] = useWorkspaceState(`task:${taskId}`, "finding-status", "all");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
   const [data, setData] = React.useState<FindingsPage | null>(null);
@@ -41,7 +40,11 @@ function TaskFindings({ taskId }: { taskId: string }) {
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
-        const value = await api.taskFindingsPage(taskId, page, pageSize, sort.direction,{...(query?{q:query}:{}),...(severity!=="all"?{severity}:{}),...(status!=="all"?{status}:{})});
+        const value = await api.taskFindingsPage(taskId, page, pageSize, sort.direction, {
+          ...(query ? { q: query } : {}),
+          ...(severity !== "all" ? { severity } : {}),
+          ...(status !== "all" ? { status } : {}),
+        });
         if (!active) return;
         if (page > Math.max(1, Math.ceil(value.total / pageSize))) {
           setPage(Math.max(1, Math.ceil(value.total / pageSize)));
@@ -64,52 +67,132 @@ function TaskFindings({ taskId }: { taskId: string }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [taskId, page, pageSize, sort.direction, revision,query,severity,status]);
+  }, [taskId, page, pageSize, sort.direction, revision, query, severity, status]);
   const selected = data ? selectFinding(data.items, selectedKey) : null;
-  return (<div className="flex flex-col gap-6"><PageHeading title="发现" description="已发布的漏洞、完整证据与复测结论。"/>
-    <WorkspaceToolbar><Input aria-label="搜索发现" placeholder="搜索名称、摘要或漏洞类型" className="min-w-48 flex-1" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
-      <Select value={severity} onValueChange={v=>{setSeverity(v);setPage(1);}}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent>{[['all','所有严重性'],['critical','严重'],['high','高危'],['medium','中危'],['low','低危']].map(([v,t])=><SelectItem value={v} key={v}>{t}</SelectItem>)}</SelectContent></Select>
-      <Select value={status} onValueChange={v=>{setStatus(v);setPage(1);}}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent>{[['all','所有状态'],['pending','待处理'],['in_progress','处理中'],['confirmed','已确认'],['resolved','已处理'],['fixed','已修复'],['false_positive','误报'],['ignored','忽略'],['duplicate','重复'],['risk_accepted','风险接受']].map(([v,t])=><SelectItem value={v} key={v}>{t}</SelectItem>)}</SelectContent></Select>
-    </WorkspaceToolbar><FindingPresentation
-      {...presentation}
-      onOpenChange={presentation.setDetailOpen}
-      detail={
-        selected ? (
-          <FindingWorkspaceDetail
-            finding={selected}
-            contextTask={taskId}
-            onChanged={refresh}
-            onDelete={async (finding, reason) => {
-              if (!finding.finding_id) return;
-              await api.deleteFinding(finding.finding_id, reason);
-              setSelectedKey(null);
-              presentation.setDetailOpen(false);
-              refresh();
+  return (
+    <div className="task-findings flex flex-col gap-7">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-xl font-medium">所有发现</h2>
+        <span className="text-sm text-muted-foreground">
+          {data ? `${data.total} 项发现` : error ? "加载失败" : "加载中…"}
+        </span>
+      </div>
+      <div className="findings-search">
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label="搜索发现"
+            placeholder="搜索发现"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
             }}
           />
-        ) : (
-          <p>请选择漏洞查看详情。</p>
-        )
-      }
-    >
-      <Card className="min-w-0">
-        <CardHeader className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <CardTitle className="shrink-0">漏洞 · {data?.total ?? "…"}</CardTitle>
-          <div className="flex shrink-0 items-center gap-2">
-            <FindingLayoutToggle value={presentation.layout} onChange={presentation.changeLayout} />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSort({ field: "time", direction: sort.direction === "asc" ? "desc" : "asc" });
-                setPage(1);
+        </InputGroup>
+        <Select
+          value={sort.direction}
+          onValueChange={(v) => {
+            setSort({ field: "time", direction: v as "asc" | "desc" });
+            setPage(1);
+          }}
+        >
+          <SelectTrigger aria-label="发现排序">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="desc">最新发现</SelectItem>
+              <SelectItem value="asc">最早发现</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="findings-filters">
+        <Select
+          value={status}
+          onValueChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger aria-label="发现状态">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {[
+                ["all", "所有状态"],
+                ["pending", "待处理"],
+                ["in_progress", "处理中"],
+                ["confirmed", "已确认"],
+                ["resolved", "已处理"],
+                ["fixed", "已修复"],
+                ["false_positive", "误报"],
+                ["ignored", "忽略"],
+                ["duplicate", "重复"],
+                ["risk_accepted", "风险接受"],
+              ].map(([v, t]) => (
+                <SelectItem value={v} key={v}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Select
+          value={severity}
+          onValueChange={(v) => {
+            setSeverity(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger aria-label="发现严重性">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {[
+                ["all", "所有严重性"],
+                ["critical", "严重"],
+                ["high", "高危"],
+                ["medium", "中危"],
+                ["low", "低危"],
+              ].map(([v, t]) => (
+                <SelectItem value={v} key={v}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <FindingLayoutToggle value={presentation.layout} onChange={presentation.changeLayout} />
+      </div>
+      <FindingPresentation
+        {...presentation}
+        onOpenChange={presentation.setDetailOpen}
+        detail={
+          selected ? (
+            <FindingWorkspaceDetail
+              finding={selected}
+              contextTask={taskId}
+              onChanged={refresh}
+              onDelete={async (finding, reason) => {
+                if (!finding.finding_id) return;
+                await api.deleteFinding(finding.finding_id, reason);
+                setSelectedKey(null);
+                presentation.setDetailOpen(false);
+                refresh();
               }}
-            >
-              发现时间 {sort.direction === "asc" ? "↑" : "↓"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-0">
+            />
+          ) : (
+            <p>请选择漏洞查看详情。</p>
+          )
+        }
+      >
+        <div className="flex min-w-0 flex-col gap-4">
           {error && (
             <Alert>
               <AlertDescription>
@@ -126,6 +209,7 @@ function TaskFindings({ taskId }: { taskId: string }) {
             </div>
           ) : (
             <FindingSelector
+              appearance="neo"
               flat={presentation.layout === "flat"}
               items={data?.items ?? []}
               selectedKey={selected ? findingRowKey(selected) : null}
@@ -151,8 +235,8 @@ function TaskFindings({ taskId }: { taskId: string }) {
               }}
             />
           )}
-        </CardContent>
-      </Card>
-    </FindingPresentation></div>
+        </div>
+      </FindingPresentation>
+    </div>
   );
 }

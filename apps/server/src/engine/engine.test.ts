@@ -111,7 +111,7 @@ describe.skipIf(!haveDB)("engine 端到端（faux 模型）", () => {
       fauxAssistantMessage('LOCAL planning complete'),
     ]);
     faux.setResponses([
-      fauxAssistantMessage([fauxToolCall("record_fact", { summary: "登录口存在注入", evidence: "curl ' OR 1=1 -- → 200", confidence: "high" })]),
+      fauxAssistantMessage([fauxToolCall("record_fact", { summary: "登录口存在注入", observation_type: "observed", evidence: "curl ' OR 1=1 -- → 200", confidence: "high" })]),
       fauxAssistantMessage('LOCAL observations saved; execution finished.'),
       fauxAssistantMessage("意图执行完成：发现注入并已写回 fact。"),
     ]);

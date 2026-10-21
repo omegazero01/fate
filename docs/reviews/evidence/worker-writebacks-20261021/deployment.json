@@ -1,0 +1,68 @@
+{
+  "checked_at": "2026-10-21T03:13:59.814Z",
+  "health": {
+    "status": "ok",
+    "version": "direction-writeback-v1-20261021",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 394
+  },
+  "state": [
+    {
+      "id": "4842",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    },
+    {
+      "id": "4844",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    },
+    {
+      "id": "4846",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    }
+  ],
+  "counts": {
+    "runtimes": "0",
+    "slots": "0",
+    "conversations": "0"
+  },
+  "pause": {
+    "id": "21",
+    "status": "acknowledged",
+    "acknowledged_at": "2026-10-21T03:05:29.454Z"
+  },
+  "components": [
+    {
+      "file": "engine/worker-writebacks.js",
+      "sha256": "fd2aee1d4fef71d643055a32ebe0832fb537a0d9cbf2a6c90a5c1f651256e26a",
+      "matches_verified_build": true
+    },
+    {
+      "file": "engine/turn-summary.js",
+      "sha256": "21e942c2d5c17472c55714ef8da71c51efb2386787edb0753f5b9e8a1306fee3",
+      "matches_verified_build": true
+    },
+    {
+      "file": "http/routes/turns.js",
+      "sha256": "a4b204ba42b2eac1a519456f96e0e0ca1f19b80a30dd35b432e440522397cfcd",
+      "matches_verified_build": true
+    },
+    {
+      "file": "agent/worker-writeback-prompt.js",
+      "sha256": "e58bcd27f909c5ce1f8fe502f54fb588e9c3d5893927e5c3207d2fd29394dc0e",
+      "matches_verified_build": true
+    },
+    {
+      "file": "agent/prompts.js",
+      "sha256": "bf04ff127fb0661e5eb65cd7c753c9ebcc73453815c0043e0bb0efe323e4d177",
+      "matches_verified_build": true
+    }
+  ],
+  "release_note": "本轮部署脚本因源文件并发变化在重启前停止；并行发布已加载相同功能产物。本轮重启了 5173 并完成只读复核。",
+  "requests_after_pause": 0
+}

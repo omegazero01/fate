@@ -9,10 +9,9 @@ import { fauxProvider,fauxAssistantMessage,fauxToolCall } from '@earendil-works/
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { openDatabase,type Database } from './src/db/index.js';
 import { Engine,defaultEngineConfig } from './src/engine/engine.js';
-import { RetestService } from './src/engine/retests.js';
+import {retireRetester} from './src/db/retire-retester.js';
 import { buildApp } from './src/http/app.js';
 import { signJWT } from './src/http/auth.js';
-import { interceptGate } from './src/intercept/gate.js';
 import { buildGraphOverview } from './src/tools/overview.js';
 import { runContext } from './src/tools/context.js';
 import { compactColdGraph } from './src/agent/coldgraph.js';
@@ -123,33 +122,6 @@ describe('migration invariants',()=>{
   await e.run(t.id);for(let i=0;i<25&&faux.state.callCount===0;i++)await new Promise(r=>setTimeout(r,20));await e.stop(t.id);
   expect(faux.state.callCount).toBe(0);
  });
- it('R5 HTTP custom tools must not bypass a blocked host by passing a URL',async()=>{
-  const {t}=await fixture();
-  await db.query("INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key) VALUES($1,'review:blocked','subdomain','blocked.review.test')",[t.id]);
-  await expect(db.taskScope().validateWorkerHosts(t.id,['blocked.review.test'])).rejects.toThrow();
-  const fetch=vi.fn().mockResolvedValue(new Response('fixture',{status:200}));vi.stubGlobal('fetch',fetch);
-  try{
-   const proxy={platform:()=>({listTools:async()=>[{key:'review_http',kind:'http',exec:{url:'https://blocked.review.test/'},schema:{type:'object',properties:{}},description:'fixture',agents:['worker'],enabled:true,system:false}]}),taskScope:()=>db.taskScope()} as unknown as Database;
-   const tool=(await customWorkerTools(runContext(proxy,t.id,t.exploration_id,'worker'),dir))[0]!;
-   await expect(tool.execute('fixture',{},undefined,undefined,{} as never)).rejects.toThrow();
-   expect(fetch).not.toHaveBeenCalled();
-  }finally{vi.unstubAllGlobals();}
- });
- it('R5 an explicitly linked service asset limits egress to its approved port',async()=>{
-  const {t}=await fixture();
-  await db.assets().upsertHTTPService({url:'http://port.review.test:9080/',taskID:t.id});
-  await db.taskScope().addAgentScope(t.id,'subdomain','port.review.test','single-port acceptance fixture','manual');
-  await expect(db.taskScope().validateWorkerHostPort(t.id,'port.review.test',9080)).resolves.toBeUndefined();
-  await expect(db.taskScope().validateWorkerHostPort(t.id,'port.review.test',9081)).rejects.toThrow('port is not approved');
- });
- it('R6 newly saved deny rules must apply to the worker gate',async()=>{
-  const {t,post,app}=await fixture();await db.query('DELETE FROM intercept_rules');await app.interceptor.setEnabledTools(['bash']);
-  const gate=interceptGate(db,{taskID:t.id,agentName:'worker'});
-  const input={toolName:'bash',toolCallId:'fixture',args:{command:'echo review_cache_marker'}};
-  expect(await gate(input)).toBeUndefined();
-  const res=await post('/api/intercept/rules',{name:'review deny',enabled:true,priority:999999,match_target:'tool_input',match_type:'string',pattern:'review_cache_marker',action:'deny',message:'fixture'});
-  expect(res.statusCode).toBe(201);expect((await gate(input))?.block).toBe(true);
- });
  it('R7 cancellation must not mutate an intent in a different task',async()=>{
   const a=await fixture(),b=await fixture();const id=await b.s.addIntent({summary:'other task'},5,[],'user');
   await a.post(`/api/tasks/${a.t.id}/intents/${id}/control`,{action:'cancel'});
@@ -200,9 +172,6 @@ describe('migration invariants',()=>{
   const page=(await get(`/api/exploration/nodes?task=${child.id}&kind=fact&size=1`)).json();expect(page.items).toHaveLength(1);expect(page.total).toBeGreaterThan(1);
   expect((await get(`/api/exploration/intents?task=${child.id}`)).json().items).toHaveLength(0);
   const cancel=await app.inject({method:'POST',url:`/api/tasks/${child.id}/intents/${intent}/cancel`,payload:{},headers:{'X-Series-Token':signJWT(key)}});expect(cancel.statusCode).not.toBe(200);expect((await source.s.getNode(intent))?.state).toBe('done');
-  await db.query("INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key) VALUES($1,'source:block','root_domain','source-projection.review.test')",[source.t.id]);
-  const revoked=(await get(`/api/exploration/graph?task=${child.id}`)).json();expect(revoked.nodes.some((n:{id:string})=>n.id===String(fact))).toBe(false);
-  expect((await get(`/api/exploration/nodes/${fact}?task=${child.id}`)).statusCode).toBe(404);
  });
  it('R10 UI feedback is retained without forwarding Worker prose to Main',async()=>{
   const {t,s,source,faux}=await fixture();const id=await s.addIntent({summary:'feedback task'},1,[],'user');
@@ -258,19 +227,13 @@ describe('migration invariants',()=>{
    expect(row.rows[0]).toMatchObject({status:'acknowledged',detail:'superseded by explicit task resume'});
   }finally{await e.stop(t.id);}
  });
- it('G6 retest completion changes only the finding triage version captured at start',async()=>{
-  const {t}=await fixture();const retests=new RetestService(db,async()=>{throw new Error('not used');},dir,1);
-  const create=async(manualChange:boolean)=>{
-   const f=(await db.query("INSERT INTO findings(task_id,name,status) VALUES($1,'retest fixture','pending') RETURNING *",[t.id])).rows[0]!;
-   const token='fixture-'+String(f.id),snapshot=JSON.stringify(f);
-   const row=await db.query(`INSERT INTO finding_retests(finding_id,status,verdict,snapshot,lease_token,lease_until)
-    VALUES($1,'running','fixed',$2::jsonb,$3,now()+interval '1 minute') RETURNING id`,[f.id,snapshot,token]);
-   if(manualChange)await db.query("UPDATE findings SET status='confirmed' WHERE id=$1",[f.id]);
-   await retests.finish(Number(row.rows[0]!.id),token,'completed');
-   return (await db.query('SELECT status FROM findings WHERE id=$1',[f.id])).rows[0]!.status;
-  };
-  expect(await create(false)).toBe('fixed');
-  expect(await create(true)).toBe('confirmed');
+ it('retirement preserves saved verdicts without updating the finding status',async()=>{
+  const {t}=await fixture();
+  const f=(await db.query("INSERT INTO findings(task_id,name,status) VALUES($1,'LOCAL retirement','confirmed') RETURNING *",[t.id])).rows[0]!;
+  const r=(await db.query("INSERT INTO finding_retests(finding_id,status,verdict,snapshot) VALUES($1,'pending','fixed',$2::jsonb) RETURNING id",[f.id,JSON.stringify(f)])).rows[0]!;
+  await retireRetester(db);await retireRetester(db);
+  expect((await db.query('SELECT status,verdict FROM finding_retests WHERE id=$1',[r.id])).rows[0]).toEqual({status:'stopped',verdict:'fixed'});
+  expect((await db.query('SELECT status FROM findings WHERE id=$1',[f.id])).rows[0]?.status).toBe('confirmed');
  });
  it('G5 an admitted Planner actually executing a model request starts the task deadline',async()=>{
   const {t,s,e,faux}=await fixture();await s.addGoal({text:'planner-only fixture'},'user');
@@ -292,8 +255,8 @@ describe('migration invariants',()=>{
    const tool=addIntentTool(runContext(db,t.id,t.exploration_id,'mainagent',{hooks:{dispatchIntent:async(_expID,id)=>{await e.dispatchIntent(t.id,id);}}}));
    const result=await tool.execute('main-add',{intents:[{summary:'committed before grant'}]},undefined,undefined,{} as never);
    expect(result.isError).not.toBe(true);
-   const intent=(await db.query("SELECT payload->>'dispatch_requested' requested,payload->'pending_asset_execution' AS execution_grant FROM exploration_nodes WHERE exploration_id=$1 AND kind='intent' ORDER BY id DESC LIMIT 1",[t.exploration_id])).rows[0];
-   expect(intent).toMatchObject({requested:'true'});expect(intent?.execution_grant?.issuer).toBe('mainagent');
+   const intent=(await db.query("SELECT payload->>'dispatch_requested' requested,payload->>'dispatch_source' AS dispatch_source FROM exploration_nodes WHERE exploration_id=$1 AND kind='intent' ORDER BY id DESC LIMIT 1",[t.exploration_id])).rows[0];
+   expect(intent).toMatchObject({requested:'true'});expect(intent?.dispatch_source).toBe('mainagent');
   }finally{await db.query("UPDATE agents SET enabled=$1 WHERE key='worker'",[worker]);await e.stop(t.id);}
  });
  it('G2 model request audit accepts an unbound platform conversation',async()=>{
@@ -302,7 +265,7 @@ describe('migration invariants',()=>{
   expect(row.rowCount).toBe(1);
   await db.query("DELETE FROM llm_request_attempts WHERE id=$1",[row.rows[0]!.id]);
  });
- it('R14 graph and asset tools hide records after authorization is revoked',async()=>{
+ it('R14 graph, assets and immutable evidence are readable without asset approval',async()=>{
   const {t,s,app}=await fixture();const asset=await db.assets().upsertRootDomain({domain:'projection.review.test',taskID:t.id});
   const node=await s.addNode('finding',{summary:'projection marker'},0,'confirmed','worker',[asset]);
   const findingID=Number((await db.query(`INSERT INTO findings(task_id,node_id,name,vulnclass,severity,summary,asset_ids) VALUES($1,$2,'projection','fixture','low','projection marker',$3::jsonb) RETURNING id`,[t.id,node,JSON.stringify([asset])])).rows[0]!.id);
@@ -320,16 +283,6 @@ describe('migration invariants',()=>{
   const visible=async(tool:ReturnType<typeof listFindingsTool>|ReturnType<typeof listAssetsTool>)=>JSON.parse((await tool.execute('projection',{},undefined,undefined,{} as never)).content[0]!.text);
   expect((await visible(findings)).findings).toHaveLength(1);
   expect((await visible(assets)).assets.some((a:{id:number})=>a.id===asset)).toBe(true);
-  await db.query(`INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key) VALUES($1,'projection:block','root_domain','projection.review.test')`,[t.id]);
-  expect((await app.inject({url:`/api/exploration/findings/${findingID}/traffic/${bindingID}/body`,headers})).statusCode).toBe(403);
-  expect((await app.inject({url:`/api/exploration/findings/${findingID}/traffic`,headers})).statusCode).toBe(403);
-  expect((await visible(findings)).findings).toHaveLength(0);
-  expect((await visible(assets)).assets.some((a:{id:number})=>a.id===asset)).toBe(false);
-  expect((await app.inject({url:`/api/exploration/graph?task=${t.id}`,headers})).json().nodes.some((n:{id:string})=>Number(n.id)===node)).toBe(false);
-  expect((await app.inject({url:`/api/exploration/${t.exploration_id}/nodes`,headers})).json().items.some((n:{id:number})=>n.id===node)).toBe(false);
-  expect((await app.inject({url:`/api/exploration/activity?task=${t.id}&since=0`,headers})).json().items.some((n:{seq:number})=>n.seq===activityID)).toBe(false);
-  expect((await app.inject({url:`/api/exploration/activity/${activityID}`,headers})).statusCode).toBe(404);
-  expect((await app.inject({url:`/api/exploration/findings/${node}`,headers})).statusCode).toBe(404);
  });
  it('G4 activity forward cursor never skips events beyond the requested page',async()=>{
   const {t,s,app}=await fixture(),headers={'X-Series-Token':signJWT(key)},expected:number[]=[];
@@ -342,26 +295,23 @@ describe('migration invariants',()=>{
   }
   expect(seen).toEqual(expected);
  });
- it('R13 explicit main dispatch of pending assets must issue a trusted execution grant',async()=>{
+ it('R13 Main can explicitly dispatch newly discovered assets',async()=>{
   const {t,s,e,faux}=await fixture();
-  await db.query("UPDATE tasks SET asset_approval_template='explicit_targets' WHERE id=$1",[t.id]);
   const asset=await db.assets().upsertRootDomain({domain:'pending.review.test',taskID:t.id});
-  await db.query("UPDATE task_asset_links SET approval_state='pending',source='agent' WHERE task_id=$1 AND asset_id=$2",[t.id,asset]);
+  await db.query("UPDATE task_asset_links SET source='agent' WHERE task_id=$1 AND asset_id=$2",[t.id,asset]);
   const id=await s.addIntent({summary:'explicit dispatch'},1,[asset],'user');
-  expect((await db.taskScope().taskAssetApprovalStates(t.id,[asset])).get(asset)).toBe('pending');
   faux.setResponses([fauxAssistantMessage([fauxToolCall('dispatch_intents',{intent_ids:[id]})]),fauxAssistantMessage('dispatched')]);
   try{
    await e.mainChat(t.id,'execute');const node=await s.getNode(id);
    expect(await s.hasOpenIntent()||['running','done'].includes(node?.state??'')).toBe(true);
   }finally{await e.stop(t.id);}
  });
- it('R14 prove_goal must reject evidence whose asset was blocked',async()=>{
+ it('R14 prove_goal accepts confirmed evidence without asset approval',async()=>{
   const {t,s}=await fixture();const asset=await db.assets().upsertRootDomain({domain:'proof.review.test',taskID:t.id});
-  const fact=await s.addNode('fact',{summary:'restricted evidence'},1,'confirmed','worker',[asset]);const goal=await s.addGoal({text:'prove fixture'},'user');
-  await db.query("INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key) VALUES($1,'review:proof','root_domain','proof.review.test')",[t.id]);
+  const fact=await s.addNode('fact',{summary:'verified evidence',evidence:'LOCAL observed fixture result'},1,'confirmed','worker',[asset]);const goal=await s.addGoal({text:'prove fixture'},'user');
   const tool=proveGoalTool(runContext(db,t.id,t.exploration_id,'planner'));
-  await tool.execute('fixture',{goal_id:goal,evidence_node_id:fact},undefined,undefined,{} as never);
-  expect((await s.getNode(goal))?.state).toBe('open');
+  const result=await tool.execute('fixture',{goal_id:goal,evidence_node_id:fact},undefined,undefined,{} as never);
+  expect(result.isError).not.toBe(true);expect((await s.getNode(goal))?.state).toBe('met');
  });
  it('R15 report_finding failure must roll back its graph node',async()=>{
   const {t,s}=await fixture();const id=await s.addIntent({summary:'write fixture'},1,[],'user');
@@ -369,21 +319,6 @@ describe('migration invariants',()=>{
   const result=await tool.execute('fixture',{vulnclass:'fixture',severity:'medium',summary:'nul'+String.fromCharCode(0),evidence:'fixture'},undefined,undefined,{} as never);
   expect(result.isError).toBe(true);
   expect((await s.listByKind('finding')).length).toBe(0);
- });
-
- it('R16 worker discoveries must obey the explicit approval template',async()=>{
-  const {t,s}=await fixture();await db.query("UPDATE tasks SET asset_approval_template='explicit_targets' WHERE id=$1",[t.id]);
-  const intentID=await s.addIntent({summary:'discovery fixture'},1,[],'user');
-  const tool=insertAssetsTool(runContext(db,t.id,t.exploration_id,'worker',{intentID,workerName:'work#1'}));
-  const out=await tool.execute('fixture',{items:[{type:'root_domain',domain:'new-discovery.review.test'}]},undefined,undefined,{} as never);
-  expect(out.isError).not.toBe(true);
-  const row=(await db.query("SELECT approval_state,source FROM task_asset_links WHERE task_id=$1",[t.id])).rows[0];
-  expect(row).toMatchObject({approval_state:'pending',source:'agent'});
- });
- it('R17 related-assets grants must not extend to another tenant on a private suffix',async()=>{
-  const {t}=await fixture();await db.query("UPDATE tasks SET asset_approval_template='related_assets' WHERE id=$1",[t.id]);
-  await db.taskScope().addAgentScope(t.id,'subdomain','alice.github.io','fixture authorization','manual');
-  await expect(db.taskScope().validateTaskHostsApproved(t.id,['unrelated.github.io'])).rejects.toThrow();
  });
 
  it('R18 deleting an intent must leave it stopped',async()=>{
@@ -475,16 +410,15 @@ describe('restored feature contracts',()=>{
    await runner.prompt('invoke fixture');expect(executed).toBe(0);
   }finally{await runner.dispose();await db.query("DELETE FROM tools WHERE key='runtime_fixture'");}
  });
- it('a remote Retester stop stays pending until the executor acknowledges or its lease expires',async()=>{
-  const {t}=await fixture();const service=new RetestService(db,async()=>{throw new Error('unused');},dir,1);
-  const fid=Number((await db.query("INSERT INTO findings(task_id,name) VALUES($1,'LOCAL stop fixture') RETURNING id",[t.id])).rows[0]!.id);
-  const cid=Number((await db.query("INSERT INTO conversations(agent_key,title) VALUES('retester','LOCAL stop fixture') RETURNING id")).rows[0]!.id);
-  const rid=Number((await db.query("INSERT INTO finding_retests(finding_id,conversation_id,snapshot,status,lease_token,lease_until) VALUES($1,$2,'{}','running','other-instance',now()+interval '15 seconds') RETURNING id",[fid,cid])).rows[0]!.id);
-  expect(await service.stop(cid)).toEqual({status:'stopping'});
-  expect((await db.query('SELECT status,stop_requested FROM finding_retests WHERE id=$1',[rid])).rows[0]).toEqual({status:'running',stop_requested:true});
-  expect(await service.finish(rid,'other-instance','completed')).toBeUndefined();
-  await db.query("UPDATE finding_retests SET lease_until=now()-interval '1 second' WHERE id=$1",[rid]);
-  await service.pump();expect(await service.stop(cid)).toEqual({status:'stopped'});
+ it('retirement waits for a remote executor lease before freeing its occupancy',async()=>{
+  const {t}=await fixture();const f=(await db.query("INSERT INTO findings(task_id,name) VALUES($1,'LOCAL retirement') RETURNING id",[t.id])).rows[0]!;
+  const r=(await db.query("INSERT INTO finding_retests(finding_id,snapshot,status,lease_token,lease_until) VALUES($1,'{}','running','old',now()+interval '1 minute') RETURNING id",[f.id])).rows[0]!;
+  try{
+   await expect(retireRetester(db)).rejects.toThrow('等待旧 Retester');
+   expect((await db.query('SELECT status,stop_requested,lease_token FROM finding_retests WHERE id=$1',[r.id])).rows[0]).toEqual({status:'running',stop_requested:true,lease_token:'old'});
+   await db.query("UPDATE finding_retests SET lease_until=now()-interval '1 second' WHERE id=$1",[r.id]);await retireRetester(db);
+   expect((await db.query('SELECT status,lease_until FROM finding_retests WHERE id=$1',[r.id])).rows[0]).toEqual({status:'stopped',lease_until:null});
+  }finally{await db.query('DELETE FROM finding_retests WHERE id=$1',[r.id]);}
  });
  it('a bound native Pentest writes facts with conversation provenance without creating runnable intents',async()=>{
   const {t,e,faux,post}=await fixture();
@@ -523,25 +457,16 @@ describe('restored feature contracts',()=>{
  });
  it('checks a directed retest scope again on redirects before sending a second request',async()=>{
   const {t}=await fixture();const {evidenceRequest}=await import('./src/evidence/http.js');
-  const fetch=vi.fn().mockResolvedValue(new Response('',{status:302,headers:{location:'http://other.review.test:9080/'}}));vi.stubGlobal('fetch',fetch);
+  const {createServer}=await import('node:http');let firstHits=0,secondHits=0;
+  const second=createServer((_q,r)=>{secondHits++;r.end('must not reach');});
+  await new Promise<void>(r=>second.listen(0,'127.0.0.1',r));const secondPort=(second.address() as any).port;
+  const first=createServer((_q,r)=>{firstHits++;r.writeHead(302,{location:`http://127.0.0.1:${secondPort}/`});r.end();});
+  await new Promise<void>(r=>first.listen(0,'127.0.0.1',r));const firstPort=(first.address() as any).port;
   try{
-   const ctx=runContext(db,t.id,t.exploration_id,'retester',{networkTargets:[{host:'only.review.test',port:9080}]});
-   await expect(evidenceRequest(ctx,{url:'http://only.review.test:9080/'})).rejects.toThrow('定向复测范围');
-   expect(fetch).toHaveBeenCalledTimes(1);
-  }finally{vi.unstubAllGlobals();}
- });
- it('requires an intent-specific pending grant on HTTP egress',async()=>{
-  const {t,s}=await fixture();await db.query("UPDATE tasks SET asset_approval_template='explicit_targets' WHERE id=$1",[t.id]);
-  const asset=await db.assets().upsertRootDomain({domain:'pending-http.review.test',taskID:t.id});
-  await db.query("UPDATE task_asset_links SET approval_state='pending',source='agent' WHERE task_id=$1",[t.id]);
-  const intent=await s.addIntent({summary:'pending egress fixture'},1,[asset],'user');
-  const {evidenceRequest}=await import('./src/evidence/http.js');const fetch=vi.fn().mockResolvedValue(new Response('allowed'));vi.stubGlobal('fetch',fetch);
-  const ctx=runContext(db,t.id,t.exploration_id,'worker',{intentID:intent});
-  try{
-   await expect(evidenceRequest(ctx,{url:'https://pending-http.review.test/'})).rejects.toThrow();expect(fetch).not.toHaveBeenCalled();
-   await db.query(`UPDATE exploration_nodes SET payload=payload||'{"pending_asset_execution":{"issuer":"mainagent"}}'::jsonb WHERE id=$1`,[intent]);
-   await expect(evidenceRequest(ctx,{url:'https://pending-http.review.test/'})).resolves.toMatchObject({status:200});expect(fetch).toHaveBeenCalledTimes(1);
-  }finally{vi.unstubAllGlobals();}
+   const ctx=runContext(db,t.id,t.exploration_id,'retester',{networkTargets:[{host:'127.0.0.1',port:firstPort}]});
+   await expect(evidenceRequest(ctx,{url:`http://127.0.0.1:${firstPort}/`})).rejects.toThrow('定向复测范围');
+   expect(firstHits).toBe(1);expect(secondHits).toBe(0);
+  }finally{for(const server of [first,second]){server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}}
  });
  it('fences proxy requests from an expired task lease and a paused intent',async()=>{
   const {t,s}=await fixture();const {Coordinator}=await import('./src/engine/coordinator.js');const {authorizeTaskRequest}=await import('./src/egress/gateway.js');
@@ -588,17 +513,11 @@ describe('restored feature contracts',()=>{
   const activity=await db.query("SELECT metadata FROM activity WHERE exploration_id=$1 AND kind='user'",[t.exploration_id]);
   expect(activity.rows[0]?.metadata.attachments[0].path).toBe(attachments[0].path);
  });
- it('runs an independent native pi retest and retains the original finding status',async()=>{
-  const {t,post,faux}=await fixture();
-  const row=await db.query("INSERT INTO findings(task_id,name,status) VALUES($1,'fixture','confirmed') RETURNING id",[t.id]);
-  const fid=Number(row.rows[0]!.id);
-  faux.setResponses([fauxAssistantMessage([fauxToolCall('record_finding_retest_result',{verdict:'inconclusive',summary:'fixture has no target',evidence:'offline fixture'})]),fauxAssistantMessage('recorded')]);
-  const started=await post(`/api/exploration/findings/${fid}/retests`,{notes:'do not access network'});
-  expect(started.statusCode).toBe(200);const retestID=Number(started.json().retest.id);
-  await until(async()=>!(await db.query("SELECT id FROM finding_retests WHERE id=$1 AND status IN ('pending','running')",[retestID])).rowCount);
-  const retest=(await db.query('SELECT status,verdict,error FROM finding_retests WHERE id=$1',[retestID])).rows[0];
-  expect(retest).toMatchObject({status:'completed',verdict:'inconclusive',error:''});
-  expect((await db.query('SELECT status FROM findings WHERE id=$1',[fid])).rows[0]?.status).toBe('confirmed');
+ it('rejects a retired retest without invoking pi or changing a finding',async()=>{
+  const {t,post,faux}=await fixture();const f=(await db.query("INSERT INTO findings(task_id,name,status) VALUES($1,'LOCAL','confirmed') RETURNING id",[t.id])).rows[0]!;
+  const started=await post(`/api/exploration/findings/${f.id}/retests`,{notes:'LOCAL'});
+  expect(started.statusCode).toBe(410);expect(started.json()).toMatchObject({code:'RETESTER_RETIRED'});expect(faux.state.callCount).toBe(0);
+  expect((await db.query('SELECT status FROM findings WHERE id=$1',[f.id])).rows[0]?.status).toBe('confirmed');
  });
  it('prevents a second engine from resetting another owner’s running intent',async()=>{
   const {t,s,e,faux,source}=await fixture();await db.tasks().setExecutionMode(t.exploration_id,'manual');

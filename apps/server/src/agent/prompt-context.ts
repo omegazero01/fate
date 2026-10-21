@@ -12,7 +12,7 @@ export function plannerRoundMessage(overview:Record<string,unknown>,todos:unknow
     if(Array.isArray(situation[key]))situation[key]=[...situation[key]].sort((a,b)=>Number(a.id)-Number(b.id));
   }
   const json=(value:unknown)=>clampOutput(JSON.stringify(value??[]));
-  return `【读取约定】\n态势是有界摘要，不是全量图谱。派单前 context_search 查询已有意图与结果；用 ref/version 和 context_get 按需续读，未展示不表示不存在。\n`+
+  return `【读取约定】\n态势是有界摘要，不是全量图谱。资产图记录资产身份与观察；探索图记录目标、意图、事实和证据。派单前按本轮 asset_readers 使用 asset_search/asset_get 定位真实资产，使用 context_search 按 asset_id 查询已有意图与结果（包括冷图）；有续页时继续读取或缩小筛选，并用 context_get 读相关否定事实的证据。关键词是字面短语，空结果或冷图摘要截断不能证明“从未测试”。根据两图选择尚未覆盖的方向，不猜资产 ID。覆盖度只代表接触记录，不证明测试完毕。用 ref/version 和 context_get 按需续读，未展示不表示不存在。\n`+
     (worker_capabilities?`【Worker 能力】\n${json(worker_capabilities)}\n`:'')+
     `【任务目标索引】\n${json(goals)}\n`+
     `【跨轮共享待办（串行利用链，用 todo_write 更新）】\n${json(todos)}\n`+

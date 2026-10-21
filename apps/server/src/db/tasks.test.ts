@@ -10,9 +10,7 @@ import { TaskStore, isTerminalTaskStatus, normalizeHeartbeat, MIN_PLAN_HEARTBEAT
 import { EXECUTION_MANAGED, EXECUTION_MANUAL } from "./exploration.js";
 import {
   TaskScopeStore,
-  assetKey,
   domainKey,
-  intentAssetAllowedSQL,
   ipToHostCIDR,
   normalizeAgentHost,
   normalizeTaskAssetIDs,
@@ -134,20 +132,6 @@ describe("task helpers (unit)", () => {
     expect(parseURL("http://a.com").port).toBe(80);
   });
 
-  it("assetKey：任务本地稳定身份（域名/IP/服务/接口）", () => {
-    expect(assetKey({ id: 1, type: "root_domain", domain: "Example.COM." })).toEqual({ key: "root_domain:example.com", host: "example.com" });
-    expect(assetKey({ id: 2, type: "ip", ip: "2001:DB8::1" }).key).toBe("ip:2001:db8::1");
-    expect(assetKey({ id: 3, type: "endpoint", url: "http://a.com/x", method: "get" }).key).toBe("endpoint:http://a.com/x:GET");
-    expect(assetKey(null)).toEqual({ key: "", host: "" });
-  });
-
-  it("intentAssetAllowedSQL：按 intent 派发 SQL 片段", () => {
-    const sql = intentAssetAllowedSQL("t.id", "ea.asset_id", "n");
-    expect(sql).toContain("n.payload->'pending_asset_execution'->>'issuer'='mainagent'");
-    expect(sql).toContain("task_asset_worker_executable(t.id,ea.asset_id)");
-    expect(sql).toContain("task_asset_effectively_approved(t.id,ea.asset_id)");
-  });
-
   it("normalizeTaskAssetIDs：去重、正数校验、上限", () => {
     expect(normalizeTaskAssetIDs([3, 1, 3, 2])).toEqual([3, 1, 2]);
     expect(() => normalizeTaskAssetIDs([])).toThrow(TaskAssetInvalidError);
@@ -169,7 +153,6 @@ describe.skipIf(!haveDB)("task store + scope (integration)", () => {
   it("CreateTask：exploration + tasks 行 + origin fact 同事务；SourceTaskIDs 只读继承", async () => {
     const store = tasks();
     const t1 = await store.createTaskWithOptions("测试源任务", "验证创建事务", {
-      assetApprovalTemplate: "related_assets",
       name: "源",
       timeoutSeconds: -1, // 负值归零
       planHeartbeatSeconds: 10, // 低值抬到 600
@@ -180,7 +163,6 @@ describe.skipIf(!haveDB)("task store + scope (integration)", () => {
     expect(t1.id).toBeGreaterThan(0);
     expect(t1.exploration_id).toBeGreaterThan(0);
     expect(t1.status).toBe("created");
-    expect(t1.asset_approval_template).toBe("related_assets");
     expect(t1.execution_mode).toBe(EXECUTION_MANAGED);
     expect(t1.timeout_seconds).toBe(0);
     expect(t1.plan_heartbeat_seconds).toBe(600);
@@ -343,199 +325,5 @@ describe.skipIf(!haveDB)("task store + scope (integration)", () => {
     expect(await store.setExecutionMode(t.exploration_id, EXECUTION_MANAGED)).toBe(true);
     expect(await store.executionMode(t.exploration_id)).toBe(EXECUTION_MANAGED);
     await expect(store.setExecutionMode(t.exploration_id, "bogus")).rejects.toThrow(/managed\|manual/);
-  });
-
-  it("种 scope → AddAgentScope(manual) 授权 → 覆盖度计数 → Validate 通过/拒绝 → 墓碑清理", async () => {
-    const store = tasks();
-    const sc = scope();
-    // explicit_targets：未授权主机 fail-closed（all_assets 会放行新主机）
-    const t = await store.createTaskWithOptions("测试范围授权", "覆盖度链路", {
-      coverageEnabled: true,
-      assetApprovalTemplate: "explicit_targets",
-    });
-    cleanup.taskIDs.push(t.id);
-    cleanup.expIDs.push(t.exploration_id);
-
-    // 种两个全局资产：root_domain + subdomain（root_domain 范围两条都命中）
-    const rootIns = await db!.query<{ id: string }>(
-      `INSERT INTO assets(type, domain, root_domain) VALUES ('root_domain',$1,$1) RETURNING id`,
-      [rootDomainName],
-    );
-    const subIns = await db!.query<{ id: string }>(
-      `INSERT INTO assets(type, domain, root_domain) VALUES ('subdomain',$1,$2) RETURNING id`,
-      [`www.${rootDomainName}`, rootDomainName],
-    );
-    const rootID = Number(rootIns.rows[0]!.id);
-    const subID = Number(subIns.rows[0]!.id);
-    cleanup.assetIDs.push(rootID, subID);
-
-    // AddAutoScope：worker 显式插入资产的保守范围
-    await sc.addAutoScope(t.id, "root_domain", rootDomainName, "", "");
-    await sc.addAutoScope(t.id, "subdomain", `WWW.${rootDomainName}.`, "", "");
-    let scopes = await sc.listTaskScope(t.id);
-    expect(scopes.length).toBe(2);
-    expect(scopes.every((s) => s.source === "auto")).toBe(true);
-
-    // 授权前：资产不在任务上，有效状态为 revoked（Go task_asset_effective_approval_state
-    // 对「无链接且无继承来源」返回 revoked），Validate 拒绝
-    await expect(sc.validateTaskAssetsApproved(t.id, [rootID])).rejects.toThrow(/状态为 revoked/);
-
-    // AddAgentScope manual：task_scope(manual) + grants + 重挂资产(approved) + 清墓碑
-    const ts = await sc.addAgentScope(t.id, "root_domain", rootDomainName, "运营手工授权", "manual");
-    expect(ts.source).toBe("manual");
-    expect(ts.domain).toBe(rootDomainName); // .test TLD：整个域即 eTLD+1
-    // 同键 scope 幂等去重（uq_task_scope_v3 ON CONFLICT DO NOTHING）——既有 auto 行不重标
-    scopes = await sc.listTaskScope(t.id);
-    expect(scopes.length).toBe(2);
-
-    // 授权记录与链接
-    const grants = await db!.query<{ cnt: string }>(
-      `SELECT count(*) AS cnt FROM task_asset_grants WHERE task_id=$1 AND kind='domain' AND value=$2`,
-      [t.id, rootDomainName],
-    );
-    expect(Number(grants.rows[0]!.cnt)).toBe(1);
-    const links = await db!.query<{ asset_id: string; approval_state: string; source: string }>(
-      `SELECT asset_id, approval_state, source FROM task_asset_links WHERE task_id=$1 ORDER BY asset_id`,
-      [t.id],
-    );
-    expect(links.rows.length).toBe(2);
-    expect(links.rows.every((r) => r.approval_state === "approved" && r.source === "manual")).toBe(true);
-
-    // Validate 通过（资产与主机两条路径）
-    await expect(sc.validateTaskAssetsApproved(t.id, [rootID, subID])).resolves.toBeUndefined();
-    await expect(sc.validateTaskHostsApproved(t.id, [rootDomainName, `www.${rootDomainName}`])).resolves.toBeUndefined();
-    // Worker 校验同样通过
-    await expect(sc.validateWorkerAssets(t.id, [rootID, subID])).resolves.toBeUndefined();
-    // 未知资产 → 拒绝
-    await expect(sc.validateTaskAssetsApproved(t.id, [rootID + 1000000])).rejects.toThrow(/asset not found/);
-    // 未知主机 → 显式模板 fail-closed
-    await expect(sc.validateTaskHostsApproved(t.id, ["unknown-host.example.org"])).rejects.toThrow();
-
-    // 覆盖度：分母=2（root+sub），分子=0
-    let cov = await sc.taskCoverage(t.id, t.exploration_id);
-    expect(cov.enabled).toBe(true);
-    expect(cov.scopeRows).toBe(2);
-    expect(cov.denominator).toBe(2);
-    expect(cov.tested).toBe(0);
-    expect(cov.pct).toBe(0);
-    const rootType = cov.byType.find((b) => b.type === "root_domain")!;
-    const subType = cov.byType.find((b) => b.type === "subdomain")!;
-    expect(rootType.total).toBe(1);
-    expect(subType.total).toBe(1);
-
-    // 标记已测 → 覆盖度 1/2；未测列表只剩另一条
-    await sc.markTaskAssetsTested(t.id, [rootID], "worker#1");
-    cov = await sc.taskCoverage(t.id, t.exploration_id);
-    expect(cov.tested).toBe(1);
-    expect(cov.pct).toBe(0.5);
-    const untested = await sc.listUntestedAssets(t.id, t.exploration_id, "", 10, 0);
-    expect(untested.total).toBe(1);
-    expect(untested.page[0]!.id).toBe(subID);
-    const typed = await sc.listUntestedAssets(t.id, t.exploration_id, "root_domain", 10, 0);
-    expect(typed.total).toBe(0);
-
-    // 撤回 → Validate 拒绝 + 拒绝记忆；manual AddAgentScope 重新授权 → 恢复
-    await sc.revokeTaskAssets(t.id, [subID], "user", "测试撤回");
-    await expect(sc.validateTaskAssetsApproved(t.id, [subID])).rejects.toThrow(/状态为 revoked/);
-    const skips = await sc.rememberTaskAssetDenials(t.id, [`www.${rootDomainName}`], [subID], ["worker:1"]);
-    expect(skips.length).toBe(1);
-    expect(skips[0]!.state).toBe("revoked");
-    const active = await sc.activeTaskAssetSkips(t.id);
-    expect(active.map((s) => s.host)).toContain(`www.${rootDomainName}`);
-
-    // 派生资产（服务/接口）不允许直接审批
-    const svcIns = await db!.query<{ id: string }>(
-      `INSERT INTO assets(type, url, service_type) VALUES ('service',$1,'http') RETURNING id`,
-      [`http://www.${rootDomainName}/`],
-    );
-    const svcID = Number(svcIns.rows[0]!.id);
-    cleanup.assetIDs.push(svcID);
-    await db!.query(`INSERT INTO task_asset_links(task_id,asset_id,source) VALUES ($1,$2,'agent')`, [t.id, svcID]);
-    await expect(sc.approveTaskAssets(t.id, [svcID], "user", "试图直接批准服务")).rejects.toThrow(
-      /服务和接口无需单独审批/,
-    );
-
-    // 墓碑：手工 block → AddAgentScope manual 按范围身份清除
-    await db!.query(
-      `INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key,asset_id,reason,blocked_by,block_kind)
-       VALUES ($1,$2,'subdomain',$3,$4,'用户封禁','user','manual')`,
-      [t.id, `subdomain:www.${rootDomainName}`, `www.${rootDomainName}`, subID],
-    );
-    await expect(sc.validateTaskAssetsApproved(t.id, [subID])).rejects.toThrow(/已封禁/);
-    await sc.addAgentScope(t.id, "root_domain", rootDomainName, "再次授权并清墓碑", "manual");
-    await expect(sc.validateTaskAssetsApproved(t.id, [subID, rootID])).resolves.toBeUndefined();
-    const blocks = await db!.query<{ cnt: string }>(
-      `SELECT count(*) AS cnt FROM task_asset_blocks WHERE task_id=$1 AND block_kind<>'invalid'`,
-      [t.id],
-    );
-    expect(Number(blocks.rows[0]!.cnt)).toBe(0);
-
-    // 范围删除 + agent source 只写 scope 行、不动资产授权
-    const manualSub = await sc.addAgentScope(t.id, "subdomain", `del.${rootDomainName}`, "临时", "manual");
-    expect(manualSub.domain).toBe(`del.${rootDomainName}`);
-    const manualScopeRow = (await sc.listTaskScope(t.id)).find(
-      (s) => s.source === "manual" && s.kind === "subdomain",
-    )!;
-    expect(await sc.deleteTaskScope(t.id, manualScopeRow.id!)).toBe(true);
-    expect(await sc.deleteTaskScope(t.id, manualScopeRow.id!)).toBe(false);
-    const agentScope = await sc.addAgentScope(t.id, "subdomain", `agent.${rootDomainName}`, "agent 补充", "agent");
-    expect(agentScope.source).toBe("agent");
-    const agentLinks = await db!.query<{ cnt: string }>(
-      `SELECT count(*) AS cnt FROM task_asset_links l JOIN assets a ON a.id=l.asset_id WHERE l.task_id=$1 AND a.domain=$2`,
-      [t.id, `agent.${rootDomainName}`],
-    );
-    expect(Number(agentLinks.rows[0]!.cnt)).toBe(0);
-
-    // ip scope：裸 IP → /32；cidr/kind 校验
-    const ipScope = await sc.addAgentScope(t.id, "ip", "10.1.2.3", "agent ip", "agent");
-    expect(ipScope.kind).toBe("ip");
-    expect(ipScope.net).toBe("10.1.2.3/32");
-    await expect(sc.addAgentScope(t.id, "cidr", "10.0.0.0/33", "", "agent")).rejects.toThrow(/无效 ip\/cidr/);
-    await expect(sc.addAgentScope(t.id, "bogus", "x", "", "agent")).rejects.toThrow(/不支持的 kind/);
-  });
-
-  it("ValidateIntent*：AllowsPendingAssets 分流（pending 对 main-agent 派发可执行）", async () => {
-    const store = tasks();
-    const sc = scope();
-    const t = await store.createTaskWithOptions("测试意图校验", "pending 分流", {
-      assetApprovalTemplate: "explicit_targets",
-    });
-    cleanup.taskIDs.push(t.id);
-    cleanup.expIDs.push(t.exploration_id);
-
-    const ins = await db!.query<{ id: string }>(
-      `INSERT INTO assets(type, domain, root_domain) VALUES ('root_domain',$1,$1) RETURNING id`,
-      [`${runTag}-p.test`],
-    );
-    const assetID = Number(ins.rows[0]!.id);
-    cleanup.assetIDs.push(assetID);
-    // 挂任务（触发器建 system 链接）再压成 agent/pending：
-    // explicit_targets 模板无授权记录 → BEFORE 触发器不会把 pending 改回 approved。
-    await db!.query(`UPDATE assets SET task_ids=array_append(task_ids,$1) WHERE id=$2`, [t.id, assetID]);
-    await db!.query(
-      `INSERT INTO task_asset_links(task_id,asset_id,source,approval_state)
-       VALUES ($1,$2,'agent','pending')
-       ON CONFLICT (task_id,asset_id) DO UPDATE SET source='agent', approval_state='pending'`,
-      [t.id, assetID],
-    );
-    const link = await db!.query<{ approval_state: string }>(
-      `SELECT approval_state FROM task_asset_links WHERE task_id=$1 AND asset_id=$2`,
-      [t.id, assetID],
-    );
-    expect(link.rows[0]!.approval_state).toBe("pending");
-
-    const strictNode = { id: 0, kind: "intent", payload: {}, priority: 0, state: "open", created_at: "" };
-    const mainAgentNode = {
-      id: 0,
-      kind: "intent",
-      payload: { pending_asset_execution: { issuer: "mainagent" } },
-      priority: 0,
-      state: "open",
-      created_at: "",
-    };
-    await expect(sc.validateIntentAssets(t.id, strictNode, [assetID])).rejects.toThrow(/状态为 pending/);
-    await expect(sc.validateIntentAssets(t.id, mainAgentNode, [assetID])).resolves.toBeUndefined();
-    await expect(sc.validateIntentHosts(t.id, strictNode, [`${runTag}-p.test`])).rejects.toThrow();
-    await expect(sc.validateIntentHosts(t.id, mainAgentNode, [`${runTag}-p.test`])).resolves.toBeUndefined();
   });
 });

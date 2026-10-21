@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExecutionControl } from "./execution-control";
+import { TaskSettings } from "./task-settings";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -9,22 +9,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   PanelRightIcon,
-  ShieldCheckIcon,
   FolderIcon,
   Settings2Icon,
   ArchiveIcon,
   ArrowLeftIcon,
-  BrainIcon,
   CheckIcon,
-  CircleAlertIcon,
   PauseIcon,
   PlayIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
-import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,31 +32,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import type { InterceptApprovalRow, LLMProfile, Stats, Task } from "@/lib/types";
+import type { LLMProfile, Stats, Task } from "@/lib/types";
 
 import { taskNavigation, taskViewURL } from "@/lib/task-navigation";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { SessionsTab } from "./_tabs/sessions-tab";
 
 // Secondary tabs (graphs and tables) are not on the session
 // startup path. Load their code only when the corresponding tab mounts.
-const AssetApprovalsTab = dynamic(() => import("./_tabs/asset-approvals-tab").then((m) => m.AssetApprovalsTab), {
-  loading: TaskDetailLoading,
-});
 const BroadcastTab = dynamic(() => import("./_tabs/broadcast-tab").then((m) => m.BroadcastTab), {
   loading: TaskDetailLoading,
 });
@@ -73,9 +55,6 @@ const FindingsTab = dynamic(() => import("./_tabs/findings-tab").then((m) => m.F
   loading: TaskDetailLoading,
 });
 const GraphTab = dynamic(() => import("./_tabs/graph-tab").then((m) => m.GraphTab), { loading: TaskDetailLoading });
-const InterceptTab = dynamic(() => import("./_tabs/intercept-tab").then((m) => m.InterceptTab), {
-  loading: TaskDetailLoading,
-});
 const OverviewTab = dynamic(() => import("./_tabs/overview-tab").then((m) => m.OverviewTab), {
   loading: TaskDetailLoading,
 });
@@ -91,13 +70,6 @@ const TABS = [
   { value: "files", label: "文件" },
   { value: "traffic", label: "流量" },
 ];
-
-function taskProfileIDs(task: Task): string[] {
-  if (task.llm_profile_ids && task.llm_profile_ids.length > 0) {
-    return task.llm_profile_ids.map(String);
-  }
-  return task.llm_profile_id ? [String(task.llm_profile_id)] : [];
-}
 
 function mergeTaskStats(task: Task, stats: Stats | null): Task {
   const active = stats?.active_task;
@@ -118,138 +90,6 @@ function TaskDetailLoading() {
       <Spinner className="size-6 text-muted-foreground" aria-label="正在加载任务" />
       <p className="text-muted-foreground text-sm">正在加载任务…</p>
     </div>
-  );
-}
-
-function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: LLMProfile[]; onUpdated: () => void }) {
-  const [open, setOpen] = React.useState(false);
-  const [profileIDs, setProfileIDs] = React.useState<string[]>(() => taskProfileIDs(task));
-  const [activeProfileID, setActiveProfileID] = React.useState(
-    task.active_llm_profile_id ? String(task.active_llm_profile_id) : (taskProfileIDs(task)[0] ?? ""),
-  );
-  const [saving, setSaving] = React.useState(false);
-  const popoverContentRef = React.useRef<HTMLDivElement>(null);
-
-  const chain = taskProfileIDs(task);
-  const exhausted = task.llm_failover_state === "chain_exhausted";
-  // 任何状态都可以改链,终态也不例外:任务结束后主 Agent 对话仍走这条链,
-  // 链上模型出问题时必须能换掉,否则已完成任务就没法继续交互。
-  const terminal = ["done", "failed", "timeout"].includes(task.status);
-  // A null active profile on an exhausted, non-empty chain is a persisted end
-  // cursor. Keep the status display honest; choosing the first profile is only
-  // the editor's reset draft and does not mean it is currently active.
-  let activeID = chain[0] ?? "";
-  if (exhausted) activeID = "";
-  if (task.active_llm_profile_id) activeID = String(task.active_llm_profile_id);
-  const activeProfile = profiles.find((profile) => profile.id === activeID);
-  const currentLabel = exhausted
-    ? "配置链已耗尽"
-    : (activeProfile?.name ?? (activeID ? `配置 #${activeID}` : "跟随默认配置"));
-  const activeIndex = chain.indexOf(activeID);
-  const backupCount = activeIndex >= 0 ? Math.max(0, chain.length - activeIndex - 1) : 0;
-  const currentTitle = [currentLabel, activeProfile?.model, backupCount > 0 ? `${backupCount} 个备用` : ""]
-    .filter(Boolean)
-    .join(" · ");
-  let editorDescription = "调整顺序或当前配置后，将从下一次 LLM 调用开始生效。";
-  if (terminal) editorDescription = "任务已结束，改动只影响后续的主 Agent 对话。";
-  let saveLabel = "保存";
-  if (exhausted) saveLabel = "保存并重置";
-  if (saving) saveLabel = "保存中";
-
-  const syncDraft = React.useCallback(() => {
-    const next = taskProfileIDs(task);
-    setProfileIDs(next);
-    setActiveProfileID(task.active_llm_profile_id ? String(task.active_llm_profile_id) : (next[0] ?? ""));
-  }, [task]);
-
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (next) syncDraft();
-  };
-
-  const handleProfileIDsChange = (next: string[]) => {
-    setProfileIDs(next);
-    setActiveProfileID((current) => (next.includes(current) ? current : (next[0] ?? "")));
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const result = await api.updateTaskLLMProfiles(
-        task.id,
-        profileIDs.map(Number),
-        activeProfileID ? Number(activeProfileID) : undefined,
-      );
-      if (result.switch_event) {
-        toast.info(result.switch_event.summary, { id: `task-${task.id}-llm-${result.switch_event.seq}` });
-      } else {
-        toast.success(
-          result.reopened_intents > 0
-            ? `LLM 配置已更新，并恢复 ${result.reopened_intents} 条额度阻塞意图`
-            : "LLM 配置已更新",
-        );
-      }
-      setOpen(false);
-      onUpdated();
-    } catch (error) {
-      toast.error(`更新失败：${(error as Error).message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          size="sm"
-          variant={exhausted ? "destructive" : "outline"}
-          aria-label="查看或切换任务 LLM 配置"
-          title={currentTitle}
-        >
-          <BrainIcon data-icon="inline-start" />
-          <span className="hidden max-w-36 truncate lg:inline">{currentLabel}</span>
-          {backupCount > 0 && <span className="hidden text-muted-foreground xl:inline">+{backupCount}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent ref={popoverContentRef} align="start" className="w-[min(28rem,calc(100vw-2rem))] gap-4 p-4">
-        <PopoverHeader>
-          <PopoverTitle>任务 LLM 配置链</PopoverTitle>
-          <PopoverDescription>{editorDescription}</PopoverDescription>
-        </PopoverHeader>
-
-        {exhausted && (
-          <Alert variant="destructive">
-            <CircleAlertIcon />
-            <AlertTitle>配置链额度已耗尽</AlertTitle>
-            <AlertDescription>
-              {task.llm_failover_reason ?? "所有已选配置均被判定为额度不足。保存配置链可重置故障状态。"}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <TaskLLMProfileChain
-          profiles={profiles}
-          value={profileIDs}
-          onValueChange={handleProfileIDsChange}
-          activeProfileId={activeProfileID}
-          onActiveProfileChange={setActiveProfileID}
-          inputId="task-llm-profiles"
-          disabled={saving}
-          portalContainer={popoverContentRef}
-        />
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
-            关闭
-          </Button>
-          <Button type="button" size="sm" onClick={save} disabled={saving}>
-            {saving && <Spinner data-icon="inline-start" />}
-            {saveLabel}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -276,26 +116,6 @@ function TaskDetailInner() {
     setProcessOpen(window.matchMedia("(min-width:1280px)").matches);
   }, []);
   const [findingCount, setFindingCount] = React.useState<number | null>(null);
-  const [pendingAssets, setPendingAssets] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    const load = () =>
-      api
-        .taskAssetApprovals(id)
-        .then((rows) => {
-          if (live)
-            setPendingAssets(rows.filter((r) => !r.inherited && r.approval_state === "pending" && !r.blocked).length);
-        })
-        .catch(() => {
-          if (live) setPendingAssets(null);
-        });
-    void load();
-    const timer = setInterval(load, 10000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [id]);
   const [controlling, setControlling] = React.useState(false);
   React.useEffect(() => {
     let alive = true;
@@ -315,7 +135,6 @@ function TaskDetailInner() {
       clearInterval(timer);
     };
   }, [id]);
-  const [pendingIntercepts, setPendingIntercepts] = React.useState<InterceptApprovalRow[]>([]);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [archiving, setArchiving] = React.useState(false);
 
@@ -326,32 +145,6 @@ function TaskDetailInner() {
       .catch(() => setProfiles([]));
   }, []);
 
-  React.useEffect(() => {
-    let alive = true;
-    let inFlight = false;
-    setPendingIntercepts([]);
-    const load = () => {
-      if (inFlight) return;
-      inFlight = true;
-      return api
-        .interceptTask(id)
-        .then((rows) => {
-          if (alive) setPendingIntercepts(rows.filter((row) => row.status === "pending"));
-        })
-        .catch(() => {
-          // Polling is best-effort; the next interval retries automatically.
-        })
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-    void load();
-    const t = setInterval(load, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [id]);
 
   const taskLoadInFlight = React.useRef<symbol | null>(null);
   const statsLoadInFlight = React.useRef<symbol | null>(null);
@@ -535,13 +328,6 @@ function TaskDetailInner() {
             {controlling ? <Spinner /> : controlIcon}
             <span className="hidden sm:inline">{controlling ? "等待确认" : controlLabel}</span>
           </Button>
-          <Button variant="ghost" size="sm" aria-label="审批" onClick={() => navigate({ panel: "asset-approvals" })}>
-            <ShieldCheckIcon />
-            <span className="hidden sm:inline">审批</span>
-            {pendingAssets !== null && pendingAssets + pendingIntercepts.length > 0 && (
-              <span>{pendingAssets + pendingIntercepts.length}</span>
-            )}
-          </Button>
           <Button variant="ghost" size="icon-sm" aria-label="任务设置" onClick={() => navigate({ panel: "settings" })}>
             <Settings2Icon />
           </Button>
@@ -571,7 +357,7 @@ function TaskDetailInner() {
           <div hidden={section !== "chat"} className="min-h-0 flex-1">
           <SessionsTab
             taskId={id}
-            pendingIntercepts={pendingIntercepts}
+            onOpenSettings={()=>navigate({panel:"settings"})}
             workerExecutionAllowed={!task.paused && !task.queued && !task.pause_pending && task.status === "running"}
             processOpen={processOpen && tab === "sessions" && section === "chat"}
             onProcessOpenChange={setProcessOpen}
@@ -581,7 +367,7 @@ function TaskDetailInner() {
           {visitedSections.includes("broadcast") && <div hidden={section !== "broadcast"} className="task-scroll-panel min-h-0 flex-1"><BroadcastTab taskId={id} /></div>}
         </section>
         {visited.includes("findings") && (
-          <section hidden={tab !== "findings"} className="task-scroll-panel">
+          <section hidden={tab !== "findings"} className="task-scroll-panel task-findings-panel">
             <FindingsTab taskId={id} />
           </section>
         )}
@@ -611,44 +397,13 @@ function TaskDetailInner() {
           </section>
         )}
         {visited.includes("traffic") && (
-          <section hidden={tab !== "traffic"} className="task-scroll-panel">
+          <section hidden={tab !== "traffic"} className="task-network-panel h-full min-h-0">
             <TrafficTab taskId={id} />
           </section>
         )}
       </div>
-      <Sheet
-        open={!!panel}
-        onOpenChange={(open) => {
-          if (!open) navigate({ tab, panel: null });
-        }}
-      >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
-          <SheetHeader>
-            <SheetTitle>
-              {panel === "settings"
-                ? "任务设置"
-                : ["asset-approvals", "intercept"].includes(panel ?? "")
-                  ? "审批中心"
-                  : "任务详情"}
-            </SheetTitle>
-            <SheetDescription>
-              {task.name || task.description} · #{id}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="min-w-0 p-5">
-            {panel === "settings" ? (
-              <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <span>执行模式</span>
-                  <ExecutionControl task={task} onUpdated={load} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>模型配置</span>
-                  <TaskLLMControl task={task} profiles={profiles} onUpdated={load} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>归档任务</span>
-                  {canArchive ? (
+      {panel === "settings" && <TaskSettings task={task} profiles={profiles} onClose={()=>navigate({tab,panel:null})} onUpdated={load} archive={<>
+{canArchive ? (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>{archiveTrigger}</AlertDialogTrigger>
                       <AlertDialogContent>
@@ -673,25 +428,7 @@ function TaskDetailInner() {
                       <TooltipContent>{archiveDisabledReason}</TooltipContent>
                     </Tooltip>
                   )}
-                </div>
-              </div>
-            ) : ["asset-approvals", "intercept"].includes(panel ?? "") ? (
-              <Tabs value={panel!} onValueChange={(value) => navigate({ tab, panel: value })}>
-                <TabsList>
-                  <TabsTrigger value="asset-approvals">资产审批</TabsTrigger>
-                  <TabsTrigger value="intercept">拦截审批 {pendingIntercepts.length || ""}</TabsTrigger>
-                </TabsList>
-                <TabsContent value="asset-approvals">
-                  <AssetApprovalsTab taskId={id} />
-                </TabsContent>
-                <TabsContent value="intercept">
-                  <InterceptTab taskId={id} />
-                </TabsContent>
-              </Tabs>
-            ) : null}
-          </div>
-        </SheetContent>
-      </Sheet>
+</>}/>}
     </div>
   );
 }

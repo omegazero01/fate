@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Activity, TaskAssetApproval } from "../types";
+import type { Activity, Asset } from "../types";
 import { mockHandle } from "./handler";
 
 type Page = {
@@ -11,14 +11,16 @@ type Page = {
   has_newer: boolean;
 };
 
-test("审批来源可打开原始调用，窗口连续且限制在所属任务和会话", async () => {
-  const { items } = await mockHandle<{ items: TaskAssetApproval[] }>(
+test("资产来源可打开原始调用，窗口连续且限制在所属任务和会话", async () => {
+  const { assets } = await mockHandle<{ assets: Asset[] }>(
     "GET",
-    "/tasks/t-acme-web/asset-approvals?group_by=host",
+    "/assets?task_id=t-acme-web",
   );
-  const row = items.find((x) => x.name === "new-api.acme.com");
-  assert.equal(row?.approval_state, "pending");
-  const source = row?.origins?.[0];
+  const row = assets.find((x) => x.domain === "new-api.acme.com");
+  assert.ok(row);
+  const source={available:true,task_id:1,session:'main:0',activity_id:0,tool_use_id:`mock-insert-${row.id}`};
+  const history=await mockHandle<Page>('GET','/exploration/activity/history?task=1&session=main:0');
+  source.activity_id=history.items.find(x=>x.tool_use_id===source.tool_use_id && x.kind==='tool_use')!.seq;
   assert.ok(source?.available);
   const query = new URLSearchParams({
     task: String(source.task_id),

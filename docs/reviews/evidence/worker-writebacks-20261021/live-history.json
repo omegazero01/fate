@@ -1,0 +1,71 @@
+[
+  {
+    "task_id": "4846",
+    "intent_id": "32380",
+    "turn_id": "e707efed-f1fd-40f4-a468-3f44ea1035cb",
+    "seq": "42034",
+    "http_status": 200,
+    "counts": {
+      "current": {
+        "fact": 1,
+        "asset": 0,
+        "total": 1,
+        "finding": 0
+      },
+      "previous": {
+        "asset": 0,
+        "fact": 0,
+        "finding": 0,
+        "total": 0
+      }
+    },
+    "complete": true,
+    "rows": 1
+  },
+  {
+    "task_id": "4846",
+    "intent_id": "32375",
+    "turn_id": "ed75eb82-770f-4386-a090-2944b3308f44",
+    "seq": "41959",
+    "http_status": 200,
+    "counts": {
+      "current": {
+        "fact": 1,
+        "asset": 1,
+        "total": 2,
+        "finding": 0
+      },
+      "previous": {
+        "asset": 0,
+        "fact": 0,
+        "finding": 0,
+        "total": 0
+      }
+    },
+    "complete": true,
+    "rows": 2
+  },
+  {
+    "task_id": "4846",
+    "intent_id": "32366",
+    "turn_id": "d4aaa342-2af6-4a7c-8a1a-d2af961e73df",
+    "seq": "41703",
+    "http_status": 200,
+    "counts": {
+      "current": {
+        "fact": 1,
+        "asset": 3,
+        "total": 4,
+        "finding": 0
+      },
+      "previous": {
+        "asset": 0,
+        "fact": 0,
+        "finding": 0,
+        "total": 0
+      }
+    },
+    "complete": true,
+    "rows": 4
+  }
+]

@@ -6,7 +6,7 @@ const activity = activityDTO;
 function conversationDTO(row: Record<string, unknown>) {
   return { ...row, id: Number(row.id), task_id: row.task_id == null ? null : Number(row.task_id),
     llm_profile_id: row.llm_profile_id == null ? null : Number(row.llm_profile_id),
-    pinned: row.pinned_at != null, running: row.running === true };
+    read_only: row.agent_key === 'retester', retired: row.agent_key === 'retester', pinned: row.pinned_at != null, running: row.running === true };
 }
 
 export function registerConversationRoutes(app: FastifyInstance) {
@@ -121,8 +121,7 @@ export function registerConversationRoutes(app: FastifyInstance) {
 
   app.post('/api/conversations/:id/stop', async (req) => {
     const id = Number((req.params as { id: string }).id);
-    const retest = await db().query("SELECT id FROM finding_retests WHERE conversation_id=$1 AND status IN ('pending','running')", [id]);
-    if (retest.rowCount) return app.engine.retests.stop(id);
+    await service().assertWritable(id);
     return service().stop(id);
   });
 }

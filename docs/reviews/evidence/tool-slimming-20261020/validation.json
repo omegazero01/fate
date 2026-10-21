@@ -1,0 +1,82 @@
+{
+  "at": "2026-10-20T08:54:26.717355+00:00",
+  "server": {
+    "files": 57,
+    "passed": 535,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "batch-a POST /api/llm/models: no live LLM profile in isolated fixture"
+  },
+  "frontend": {
+    "passed": 64,
+    "failed": 0,
+    "skipped": 0
+  },
+  "checks": {
+    "server_typecheck": "passed",
+    "web_typecheck": "passed",
+    "server_build": "passed",
+    "web_build": "passed",
+    "web_static_build": "passed"
+  },
+  "provider_cost_acceptance": {
+    "status": "blocked",
+    "reason": "HTTP 402 Insufficient Balance",
+    "failed_physical_requests": 18,
+    "successful_requests": 0,
+    "actual_usage_available": false,
+    "target_requests": 0
+  },
+  "browser": {
+    "actual_service": "http://localhost:5173/system/tools",
+    "isolated_history": true,
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "viewport": "current in-app narrow viewport only",
+    "screenshots": [
+      "tools-live.png",
+      "history-readonly.png",
+      "retired-chat-dark.png"
+    ]
+  },
+  "logs": [
+    {
+      "name": "acceptance-fixed-tests.log",
+      "sha256": "d69ca22ee3aebc5e49dbb1904ea87e71d00b279d0ff058003673c2e31f0496dc",
+      "bytes": 183104
+    },
+    {
+      "name": "web-tests-final.log",
+      "sha256": "ff35ec1bb09bdf04b061e0561f8d6b3738d0d3860038a5cca1f593b423ec7327",
+      "bytes": 5773
+    },
+    {
+      "name": "server-typecheck-final2.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "name": "web-typecheck-live.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "name": "server-build-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "name": "web-final-build.log",
+      "sha256": "bb537ac7b363060d932240024f0f543e04bc20ae776e4fbad415c4bfd7144cdf",
+      "bytes": 1984
+    },
+    {
+      "name": "web-final-static.log",
+      "sha256": "854a7e1b06e8df20bfc5d0bc096bab0ec6012fca036f9c97c28e6739c5c86fc6",
+      "bytes": 2080
+    }
+  ],
+  "private_log_directory": "/Users/pphua/.local/share/fate/backups/tool-slimming-20261020"
+}

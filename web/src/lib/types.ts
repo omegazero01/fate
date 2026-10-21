@@ -1,13 +1,9 @@
-// SERIES domain model — types used across the UI.
-// Derived from the functional spec (section 7: 关键数据形状).
 
-export type AssetApprovalTemplate = "all_assets" | "related_assets" | "explicit_targets";
 export type TaskStatus = "created" | "queued" | "running" | "paused" | "done" | "failed" | "timeout";
 export type EngineMode = "exploring" | "paused" | "stalled" | "idle";
 
 export interface Task {
   execution_mode?: "managed" | "manual";
-  asset_approval_template?: AssetApprovalTemplate;
   id: string;
   name?: string; // 可选任务名称;空/缺省=未命名,展示时回退到描述
   category_id?: number;
@@ -263,17 +259,9 @@ export interface Asset {
   task_inherited?: boolean;
   task_read_only?: boolean;
   tested?: boolean;
+  legacy_tested?: boolean;
   tested_at?: string;
   tested_by?: string;
-  approval_state?: "approved" | "pending" | "revoked" | "blocked";
-  approved_at?: string;
-  approved_by?: string;
-  approval_reason?: string;
-  blocked?: boolean;
-  block_direct?: boolean;
-  block_kind?: "manual" | "deleted" | "invalid";
-  blocked_at?: string;
-  block_reason?: string;
 }
 
 export interface AssetOrigin {
@@ -284,42 +272,6 @@ export interface AssetOrigin {
   asset_ids: number[];
   created_at: string;
   available: boolean;
-}
-
-export interface TaskAssetApproval {
-  origins?: AssetOrigin[];
-  group_key?: string;
-  asset_ids?: number[];
-  record_types?: string[];
-  sources?: string[];
-  mixed_state?: boolean;
-  asset_id: number;
-  asset_type: NewAssetType | string;
-  name: string;
-  source: string;
-  source_summary: string;
-  source_node_id?: number;
-  source_task_id: number;
-  inherited: boolean;
-  read_only: boolean;
-  created_at: string;
-  approval_state: "approved" | "pending" | "revoked" | "blocked";
-  approved_at?: string;
-  approved_by?: string;
-  approval_reason?: string;
-  blocked: boolean;
-  blocked_at?: string;
-  block_reason?: string;
-  blocked_by?: string;
-  block_kind?: "manual" | "deleted" | "invalid";
-  block_direct?: boolean;
-}
-
-export interface TaskAssetApprovalMutation {
-  ok: boolean;
-  asset_ids: number[];
-  approval_state: "approved" | "revoked" | "blocked";
-  items: TaskAssetApproval[];
 }
 
 export interface IntentAsset {
@@ -352,10 +304,12 @@ export interface TaskAssetScopeMutation {
 // 力导向「资产覆盖图」的一个节点。key 唯一：资产="a:<id>"、公司="c:<id>"、
 // 无资产行的根域名="r:<domain>"。in_scope=false 的是仅用于连线的灰色上下文节点。
 export interface CoverageGraphNode {
+  method?: string;
   key: string;
   kind: "company" | "root_domain" | "subdomain" | "ip" | "service" | "app" | "endpoint";
   label: string;
   tested: boolean;
+  legacy_tested?: boolean;
   in_scope: boolean;
   asset_id?: number;
   company_id?: number;
@@ -415,7 +369,7 @@ export interface WorkspaceFile {
   content?: string;
 }
 
-// 任务测试范围的一条（覆盖度分母 + 授权边界）。
+// 任务测试范围的一条（资产分类与覆盖度分母）。
 export interface TaskScopeRow {
   id: number;
   task_id: number;
@@ -500,6 +454,9 @@ export interface ExplorationNodePage {
 }
 
 export interface ExplorationNodeDetail {
+  assets?: Asset[];
+  assets_total?: number;
+  assets_next_offset?: number;
   node: TaskNode;
   payload: string;
   payload_next_offset: number;
@@ -701,7 +658,7 @@ export type ActivityKind =
   | "usage" // live cumulative token usage (per model turn); not rendered
   | "llm_switch" // automatic/manual task-level LLM switch
   | "llm_failover" // task-level provider switch / chain exhaustion audit event
-  | "intercept_request"; // user-approval request from the intercept layer
+;
 
 // ChatAttachment 是一次上传的文件:path 相对该会话/任务工作目录(即 agent 的 CWD)。
 export interface ChatAttachment {
@@ -823,6 +780,8 @@ export interface FindingRetest {
 }
 
 export interface Conversation {
+  read_only?: boolean;
+  retired?: boolean;
   id: number;
   running?: boolean; // live server state, returned with the conversation list
   agent_key: string;
@@ -972,6 +931,8 @@ export interface Audit {
 // ---- Traffic ----
 export interface TrafficExchange {
   id: string;
+  task_id?: string;
+  intent_id?: string;
   ts: string;
   host: string;
   method: string;
@@ -1300,7 +1261,18 @@ export interface MissingSkill {
 // key + handler live in Go; only these fields are page-editable. system tools lock
 // the key and the parameter *structure* (name/type/required) — the per-param
 // description/default and the agent binding are what move.
+export interface RoleToolPreview {
+  role: string; scope: string; policy_version: string; resident: string[]; deferred: string[]; compatibility: string[]; fallback?: string;
+  schema_bytes: { before: number; resident: number; registered: number };
+}
 export interface Tool {
+  implementation_status?: "active" | "compatibility" | "retired" | "unsupported";
+  canonical_name?: string;
+  source?: string;
+  aliases?: string[];
+  schema_source?: string;
+  schema_read_only?: boolean;
+  loading?: Record<string, "resident" | "deferred">;
   key: string;
   system: boolean;
   description: string;
@@ -1327,67 +1299,6 @@ export interface Stats {
   roe_enabled: boolean;
   findings_confirmed: number;
   active_task?: Partial<Task>;
-}
-
-// ---- Intercept Rules ----
-export type InterceptAction = "allow" | "deny" | "ask";
-export type InterceptMatchTarget = "tool_name" | "tool_input";
-export type InterceptMatchType = "string" | "regex";
-
-export interface InterceptRule {
-  id: number;
-  name: string;
-  enabled: boolean;
-  priority: number;
-  match_target: InterceptMatchTarget;
-  match_type: InterceptMatchType;
-  pattern: string;
-  action: InterceptAction;
-  message: string;
-  timeout_enabled: boolean;
-  timeout_seconds: number;
-  timeout_action: "deny" | "allow";
-  created_at: string;
-  updated_at: string;
-}
-
-export interface InterceptPending {
-  decision_source?: "rule" | "model" | "unknown" | "";
-  id: number;
-  rule_id?: number;
-  conversation_id?: number;
-  task_id?: string;
-  agent_name: string;
-  tool_name: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tool_input: Record<string, any>;
-  status: "pending" | "allowed" | "denied" | "timeout";
-  reason: string; // 规则 message 或模型判定理由(模型判定带 [模型] 前缀)
-  decided_at?: string;
-  created_at: string;
-}
-
-// JudgeConfig: 模型兜底审批(仅当没有任何拦截规则命中时由模型判断)的全局配置。
-export interface JudgeConfig {
-  enabled: boolean;
-  profile_id: number; // 0 = 跟随激活/默认配置
-  prompt: string; // 判定提示词;GET 未设置时后端回填内置模板全文
-  timeout_seconds: number; // 模型调用超时
-  fail_action: "allow" | "ask" | "deny"; // 模型出错/超时/不可解析时的回退
-  ask_timeout_seconds: number; // 模型判 ask 转人工后的审批等待超时
-  ask_timeout_action: "allow" | "deny"; // 审批超时后的默认动作
-}
-
-export interface InterceptApprovalFilter {
-  status?: InterceptPending["status"];
-  decision_source?: "rule" | "model" | "unknown";
-}
-
-// InterceptApprovalRow enriches InterceptPending with conversation/task and rule context.
-export interface InterceptApprovalRow extends InterceptPending {
-  conv_title: string; // "" if no linked conversation
-  conv_agent_key: string; // "" if no linked conversation
-  rule_name: string; // "" if rule was deleted
 }
 
 // ── 资产同步 (ScopeSentry 数据源) ──────────────────────────────────────────────
@@ -1470,74 +1381,6 @@ export interface LLMRecordDetail extends LLMRecordItem {
 export interface LLMTask {
   task_id: string;
   count: number;
-}
-
-// The exact JSON sent to the review model, retained for all model verdicts.
-export interface InterceptReviewInput {
-  version: number;
-  background?: {
-    // worker_summary is retained only for immutable v2/v3 snapshots.
-    source: "user_message" | "worker_summary";
-    text: string;
-    truncated?: boolean;
-  };
-  // Version 1 snapshots are immutable and remain readable in historical audits.
-  task?: {
-    task_id: number;
-    description: string;
-    goal: string;
-    constraints: { id: number; kind: string; text: string; origin: string; created_at: number }[];
-    truncated?: boolean;
-  };
-  working_directory?: string;
-  worker_intent?: string;
-  turn_input?: string;
-  background_truncated?: boolean;
-  // Legacy v1/v2 snapshots only; v3 never sends execution history.
-  history?: {
-    tool_use_id: string;
-    tool: string;
-    arguments_preview: string;
-    result: string;
-    status: "succeeded" | "failed";
-    truncated?: boolean;
-  }[];
-  history_truncated?: boolean;
-  correlation?: "exact" | "ambiguous" | "unavailable";
-  tool_name: string;
-  arguments: Record<string, unknown>;
-}
-
-// Immutable review snapshot plus separately recorded execution outcome.
-export interface InterceptAudit {
-  model_input?: InterceptReviewInput;
-  model_input_digest?: string;
-  run_id?: string;
-  tool_use_id?: string;
-  correlation: "exact" | "ambiguous" | "unavailable";
-  input_digest: string;
-  user_message: string;
-  user_truncated?: boolean;
-  context:
-    | { kind: string; tool?: string; tool_use_id?: string; text: string; is_error?: boolean; truncated?: boolean }[]
-    | null;
-  context_truncated?: boolean;
-  captured_at: string;
-  model_fallback?: boolean;
-  initial_action: "allow" | "ask" | "deny";
-  initial_reason: string;
-  effective_action?: "allow" | "deny";
-  decision_reason?: string;
-  rule_name?: string;
-  config_digest?: string;
-  profile_id?: number;
-  execution_status: "not_started" | "not_executed" | "awaiting_result" | "succeeded" | "failed" | "unknown";
-  output?: string;
-  output_truncated?: boolean;
-  execution_ended_at?: string;
-}
-export interface InterceptDetail extends InterceptApprovalRow {
-  audit: InterceptAudit | null;
 }
 
 export type TrafficEvidenceRole = "baseline" | "proof" | "verification" | "supporting";
@@ -1632,15 +1475,6 @@ export interface UpdateProgress {
   error?: string;
 }
 
-// Original execution selected from an approval, never submitted to the reviewer.
-export interface InterceptExecution {
-  conversation_id: number | null;
-  task_id: string | null;
-  session: string;
-  seq: number;
-  items: Activity[];
-}
-
 export interface HTTPAuthSettings { enabled: boolean; username: string; password_set: boolean; }
 
 // 通知模块已在重构中移除；保留最小类型供 mock 兼容层引用。
@@ -1652,7 +1486,7 @@ export interface NotificationSummary {
   items: unknown[];
   total: number;
   unread: number;
-  counts: { findings: number; assets: number; intercepts: number };
+  counts: { findings: number; assets: number };
 }
 
 export interface TaskFileEntry { ref:string; name:string; kind:'file'|'directory'; size:number; modified_at:string; version:string; origin:'attachment'|'work'; intent_id?:string }

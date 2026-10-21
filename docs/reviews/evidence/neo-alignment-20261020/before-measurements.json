@@ -1,0 +1,21 @@
+{
+  "viewport": [
+    985,
+    796
+  ],
+  "header": {
+    "x": 256,
+    "width": 729,
+    "height": 56
+  },
+  "tabs": {
+    "x": 393.84375,
+    "width": 361.21875,
+    "height": 44,
+    "centerDelta": -46.046875,
+    "fontSize": "14px",
+    "fontWeight": "400",
+    "lineHeight": "20px"
+  },
+  "treeWidth": 180
+}

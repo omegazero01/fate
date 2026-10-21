@@ -1,0 +1,110 @@
+[
+  {
+    "view": "current",
+    "count": 36,
+    "hiddenNative": true,
+    "shell": [
+      "shell_close",
+      "shell_list",
+      "shell_open",
+      "shell_read",
+      "shell_send"
+    ]
+  },
+  {
+    "view": "current-search",
+    "query": "read",
+    "keys": [
+      "shell_read"
+    ],
+    "pass": true
+  },
+  {
+    "view": "current-search",
+    "query": "bash",
+    "keys": [],
+    "pass": true
+  },
+  {
+    "view": "current-search",
+    "query": "write",
+    "keys": [
+      "todo_write"
+    ],
+    "pass": true
+  },
+  {
+    "view": "current-search",
+    "query": "edit",
+    "keys": [
+      "record_fact"
+    ],
+    "pass": true
+  },
+  {
+    "view": "current-search",
+    "query": "tool_search",
+    "keys": [],
+    "pass": true
+  },
+  {
+    "view": "history",
+    "count": 40,
+    "hiddenNative": true,
+    "hiddenMCP": true
+  },
+  {
+    "view": "history-search",
+    "query": "read",
+    "keys": [
+      "read_attachment",
+      "read_tool_output"
+    ],
+    "pass": true
+  },
+  {
+    "view": "history-search",
+    "query": "bash",
+    "keys": [
+      "create_custom_tool"
+    ],
+    "pass": true
+  },
+  {
+    "view": "history-search",
+    "query": "write",
+    "keys": [],
+    "pass": true
+  },
+  {
+    "view": "history-search",
+    "query": "edit",
+    "keys": [],
+    "pass": true
+  },
+  {
+    "view": "history-search",
+    "query": "tool_search",
+    "keys": [],
+    "pass": true
+  },
+  {
+    "view": "custom-editor",
+    "key": "ct_test_shell_metadata",
+    "editable": true
+  },
+  {
+    "view": "platform-editor",
+    "key": "shell_open",
+    "bindingsVisible": true,
+    "schemaReadOnly": true
+  },
+  {
+    "view": "transcript",
+    "taskId": 4846,
+    "intentId": 32351,
+    "tool": "bash",
+    "command": "pwd && ls -la",
+    "argumentsAndResultExpanded": true
+  }
+]

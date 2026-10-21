@@ -83,18 +83,20 @@ export class TerminalSessions {
     this.cleanup=Promise.all([...this.sessions.keys()].map(id=>this.close(id))).then(()=>{this.sessions.clear();});return this.cleanup;
   }
 }
-export function terminalExtension(cwd:string,env:Record<string,string>,signal?:AbortSignal):ExtensionFactory{
- return api=>{
-  const manager=new TerminalSessions(cwd,env,signal);
+export function terminalToolDefinitions(manager?:TerminalSessions){
   const readProperties={session_id:{type:'string'},since_cursor:{type:'integer',minimum:0},max_lines:{type:'integer',minimum:1,maximum:1000},max_bytes:{type:'integer',minimum:1,maximum:32768},wait:{type:'boolean'},timeout_ms:{type:'integer',minimum:0,maximum:120000},quiet_ms:{type:'integer',minimum:0,maximum:120000}};
   const definitions=[
-   ['shell_open','打开当前执行会话的交互终端；普通命令使用 bash。句柄在本次执行结束或暂停时失效。',{command:{type:'string'},mode:{type:'string',enum:['handsfree','interactive']},rows:{type:'integer'},cols:{type:'integer'},timeout_ms:readProperties.timeout_ms,quiet_ms:readProperties.quiet_ms},[],(a:any,s?:AbortSignal)=>manager.open(a,s)],
-   ['shell_send','发送文本、回车或控制键到当前会话的终端；默认等待安静或退出，最多 120 秒。',{...readProperties,text:{type:'string'},submit:{type:'boolean'},keys:{type:'array',items:{type:'string',enum:Object.keys(KEYS)}}},['session_id'],(a:any,s?:AbortSignal)=>manager.send(a,s)],
-   ['shell_read','按增量游标读取终端输出；默认最多 200 行、8192 字节。',readProperties,['session_id'],(a:any,s?:AbortSignal)=>manager.read(a,s)],
-   ['shell_close','关闭当前会话的终端并等待进程退出。',{session_id:{type:'string'}},['session_id'],(a:any)=>manager.close(a.session_id)],
-   ['shell_list','列出当前执行会话拥有的终端。',{},[],()=>Promise.resolve({sessions:manager.list()})],
+   ['shell_open','打开当前执行会话的交互终端；普通命令使用 bash。句柄在本次执行结束或暂停时失效。',{command:{type:'string'},mode:{type:'string',enum:['handsfree','interactive']},rows:{type:'integer'},cols:{type:'integer'},timeout_ms:readProperties.timeout_ms,quiet_ms:readProperties.quiet_ms},[],(a:any,s?:AbortSignal)=>manager!.open(a,s)],
+   ['shell_send','发送文本、回车或控制键到当前会话的终端；默认等待安静或退出，最多 120 秒。',{...readProperties,text:{type:'string'},submit:{type:'boolean'},keys:{type:'array',items:{type:'string',enum:Object.keys(KEYS)}}},['session_id'],(a:any,s?:AbortSignal)=>manager!.send(a,s)],
+   ['shell_read','按增量游标读取终端输出；默认最多 200 行、8192 字节。',readProperties,['session_id'],(a:any,s?:AbortSignal)=>manager!.read(a,s)],
+   ['shell_close','关闭当前会话的终端并等待进程退出。',{session_id:{type:'string'}},['session_id'],(a:any)=>manager!.close(a.session_id)],
+   ['shell_list','列出当前执行会话拥有的终端。',{},[],()=>Promise.resolve({sessions:manager!.list()})],
   ] as const;
-  for(const [name,description,properties,required,run] of definitions)api.registerTool(defineTool({name,label:name,description,executionMode:'sequential',parameters:{type:'object',properties,required} as never,async execute(_id,args,signal){try{return {content:[{type:'text' as const,text:JSON.stringify(await run(args,signal))}],details:undefined};}catch(e){return {content:[{type:'text' as const,text:JSON.stringify({error:e instanceof Error?e.message:String(e)})}],isError:true,details:undefined};}}}));
+  return definitions.map(([name,description,properties,required,run])=>defineTool({name,label:name,description,executionMode:'sequential',parameters:{type:'object',properties,required} as never,async execute(_id,args,signal){try{return {content:[{type:'text' as const,text:JSON.stringify(await run(args,signal))}],details:undefined};}catch(e){return {content:[{type:'text' as const,text:JSON.stringify({error:e instanceof Error?e.message:String(e)})}],isError:true,details:undefined};}}}));
+}
+export function terminalExtension(cwd:string,env:Record<string,string>,signal?:AbortSignal):ExtensionFactory{
+ return api=>{const manager=new TerminalSessions(cwd,env,signal);
+  for(const tool of terminalToolDefinitions(manager))api.registerTool(tool);
   api.on('session_shutdown',()=>manager.shutdown());
  };
 }

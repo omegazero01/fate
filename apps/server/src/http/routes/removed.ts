@@ -21,8 +21,6 @@ const REMOVED_PATHS = [
   // 侧问（side questions）
   "/api/side-questions",
   "/api/side-questions/*",
-  // 拦截 LLM judge 配置
-  "/api/intercept/judge",
   // findings 复测（retests）
   // 任务通知聚合
   "/api/tasks/notifications",

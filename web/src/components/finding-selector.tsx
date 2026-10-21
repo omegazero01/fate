@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronRightIcon } from "lucide-react";
+import { statusMeta } from "@/lib/status";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 export function FindingSelector({
   flat = false,
+  appearance = "default",
   items,
   selectedKey,
   onSelect,
@@ -19,6 +22,7 @@ export function FindingSelector({
   selectAllLabel = "选择当前页全部",
 }: {
   flat?: boolean;
+  appearance?: "default" | "neo";
   items: Finding[];
   selectedKey: string | null;
   onSelect: (finding: Finding) => void;
@@ -31,6 +35,13 @@ export function FindingSelector({
     (item): item is Finding & { finding_id: string } => !!item.finding_id && !item.inherited,
   );
   const checked = selectable.filter((item) => selectedIds?.has(item.finding_id)).length;
+  if(appearance==="neo") return <section className="finding-list" aria-label="漏洞选择列表">
+    {items.map(item=><Button key={findingRowKey(item)} variant="outline" className="finding-list-row" aria-pressed={selectedKey===findingRowKey(item)} onClick={()=>onSelect(item)}>
+      <span className="finding-severity-dot" data-severity={item.severity} aria-hidden="true"/>
+      <span className="finding-list-copy"><span className="finding-list-title">{item.name||item.vulnclass||"未分类"}</span><span className="finding-list-meta"><span>{statusMeta("severity",item.severity).label}</span><span>·</span><span>{statusMeta("finding",item.status).label}</span><span>·</span><span>{fmtTime(item.ts)}</span>{item.assets?.length?<><span>·</span><span>{item.assets.map(a=>a.label).join("、")}</span></>:null}{item.inherited&&<Badge variant="outline">来源 #{item.source_task_id||item.task_id} · 只读</Badge>}</span></span><ChevronRightIcon data-icon="inline-end"/>
+    </Button>)}
+    {!items.length&&<p className="py-16 text-center text-muted-foreground">没有匹配的发现。</p>}
+  </section>;
   return (
     <div className="flex min-w-0 flex-col gap-2 p-3">
       {onToggleSelectedPage && (

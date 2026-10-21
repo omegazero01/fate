@@ -2,6 +2,9 @@
 "use no memo";
 
 import * as React from "react";
+import Link from "next/link";
+import { api } from "@/lib/api";
+import type { Asset } from "@/lib/types";
 
 import {
   Background,
@@ -26,6 +29,7 @@ import { Bug, Compass, Flag, FlaskConical, Layers, Lightbulb, type LucideIcon, T
 
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { type Tone, toneClasses } from "@/lib/status";
@@ -374,17 +378,45 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function NodeDetailSheet({
+  taskId,
   node,
   nodesById,
   onSelect,
   onOpenChange,
 }: {
+  taskId?: string;
   node: TaskNode | null;
   nodesById: Map<string, TaskNode>;
   onSelect: (n: TaskNode) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = React.useState(false);
+  const [assets, setAssets] = React.useState<Asset[]>([]);
+  const [assetsError, setAssetsError] = React.useState("");
+  const [assetsTotal, setAssetsTotal] = React.useState(0),
+    [assetsNext, setAssetsNext] = React.useState<number>(),
+    [loadingAssets, setLoadingAssets] = React.useState(false);
+  const currentNode = React.useRef(node?.id);
+  currentNode.current = node?.id;
+  React.useEffect(() => {
+    setAssets([]);
+    setAssetsError("");
+    setAssetsTotal(0);
+    setAssetsNext(undefined);
+    if (!taskId || !node) return;
+    const abort = new AbortController();
+    api
+      .explorationNodeDetail(taskId, node.id, 0, 0, abort.signal)
+      .then((r) => {
+        setAssets(r.assets ?? []);
+        setAssetsTotal(r.assets_total ?? 0);
+        setAssetsNext(r.assets_next_offset);
+      })
+      .catch((error) => {
+        if (!abort.signal.aborted) setAssetsError(String(error));
+      });
+    return () => abort.abort();
+  }, [taskId, node?.id]);
   const meta = node ? (typeMeta[viewKind(node)] ?? typeMeta.intent) : null;
   const Icon = meta?.icon;
   const raw = node ? JSON.stringify(node, null, 2) : "";
@@ -453,6 +485,56 @@ function NodeDetailSheet({
                   <DetailRow label="时间">{new Date(node.ts).toLocaleString("zh-CN")}</DetailRow>
                 </section>
 
+                {assetsError && (
+                  <p role="alert" className="text-destructive text-xs">
+                    关联资产读取失败：{assetsError}
+                  </p>
+                )}
+                {taskId && assets.length > 0 && (
+                  <section>
+                    <h4 className="text-muted-foreground mb-1.5 text-xs font-medium">
+                      关联资产（{assets.length}/{assetsTotal}）
+                    </h4>
+                    <div className="flex flex-col gap-1">
+                      {assets.map((a) => (
+                        <Link
+                          key={a.id}
+                          className="rounded border px-2 py-1 text-xs break-all hover:bg-muted"
+                          onNavigate={() => onOpenChange(false)}
+                          href={`/function/tasks/detail?${new URLSearchParams({ id: taskId, tab: "graph", explore: "coverage", asset: String(a.id) })}`}
+                        >
+                          #{a.id} {a.method} {a.url || a.domain || a.ip || a.app_name}
+                        </Link>
+                      ))}
+                    </div>
+                    {assetsNext !== undefined && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={loadingAssets}
+                        onClick={() => {
+                          const selectedId = node.id;
+                          setLoadingAssets(true);
+                          void api
+                            .explorationNodeDetail(taskId, selectedId, 0, 0, undefined, assetsNext)
+                            .then((r) => {
+                              if (currentNode.current === selectedId) {
+                                setAssets((prev) => [...prev, ...(r.assets ?? [])]);
+                                setAssetsTotal(r.assets_total ?? 0);
+                                setAssetsNext(r.assets_next_offset);
+                              }
+                            })
+                            .catch((error) => {
+                              if (currentNode.current === selectedId) setAssetsError(String(error));
+                            })
+                            .finally(() => setLoadingAssets(false));
+                        }}
+                      >
+                        继续读取关联资产
+                      </Button>
+                    )}
+                  </section>
+                )}
                 {node.type === "digest" && (
                   <>
                     {nodeSummary(node) && (
@@ -535,10 +617,14 @@ function NodeDetailSheet({
 // Positions are auto-laid-out and preserved across prop updates (so a polling
 // caller's graph doesn't jump); click a node to open its detail drawer.
 function ExplorationGraphInner({
+  focusNodeId,
+  taskId,
   nodes,
   edges,
   emptyHint = "暂无探索数据",
 }: {
+  taskId?: string;
+  focusNodeId?: string | null;
   nodes: TaskNode[];
   edges: Edge[];
   emptyHint?: string;
@@ -552,6 +638,24 @@ function ExplorationGraphInner({
   // Collapsed view: folded members removed, their edges rewired onto the digest.
   const { viewNodes, viewEdges } = React.useMemo(() => collapseDigestGraph(nodes, edges), [nodes, edges]);
   const isEmpty = viewNodes.length === 0;
+  const nodeFocus = focusNodeId,
+    lastFocus = React.useRef("");
+  React.useEffect(() => {
+    if (!nodeFocus) {
+      lastFocus.current = "";
+      return;
+    }
+    if (!taskId || lastFocus.current === `${taskId}:${nodeFocus}`) return;
+    const abort = new AbortController();
+    api
+      .explorationNodeDetail(taskId, nodeFocus, 0, 0, abort.signal)
+      .then((r) => {
+        lastFocus.current = `${taskId}:${nodeFocus}`;
+        setSelected(r.node);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [taskId, nodeFocus]);
 
   React.useEffect(() => {
     setSelected((cur) => (cur ? (nodesById.get(cur.id) ?? cur) : cur));
@@ -658,6 +762,7 @@ function ExplorationGraphInner({
         </Panel>
       </ReactFlow>
       <NodeDetailSheet
+        taskId={taskId}
         node={selected}
         nodesById={nodesById}
         onSelect={setSelected}
@@ -670,6 +775,8 @@ function ExplorationGraphInner({
 // ExplorationGraph is the shared探索图/攻击链路图 canvas — used by the task graph
 // tab (full graph, polled) and the finding lineage view (origin→finding subgraph).
 export function ExplorationGraph({
+  focusNodeId,
+  taskId,
   nodes,
   edges,
   className,
@@ -677,13 +784,21 @@ export function ExplorationGraph({
 }: {
   nodes: TaskNode[];
   edges: Edge[];
+  taskId?: string;
+  focusNodeId?: string | null;
   className?: string;
   emptyHint?: string;
 }) {
   return (
     <div className={cn("w-full overflow-hidden rounded-xl", className)}>
       <ReactFlowProvider>
-        <ExplorationGraphInner nodes={nodes} edges={edges} emptyHint={emptyHint} />
+        <ExplorationGraphInner
+          focusNodeId={focusNodeId}
+          taskId={taskId}
+          nodes={nodes}
+          edges={edges}
+          emptyHint={emptyHint}
+        />
       </ReactFlowProvider>
     </div>
   );

@@ -1,3 +1,5 @@
+import {assetContextCTE} from '../../db/asset-query.js';
+import {registerOperationRoutes} from './operations.js';
 import {executionSnapshot} from '../../engine/coordinator.js';
 import {prepareAttachments} from "../../evidence/attachments.js";
 // 任务路由：CRUD + 生命周期（start/pause/resume/stop|finish|control/delete）+ 意图控制 + 主对话。
@@ -25,6 +27,7 @@ async function engineNoop(p: unknown): Promise<void> {
 }
 
 export function registerTaskRoutes(app: FastifyInstance): void {
+  registerOperationRoutes(app);
   const tasks = () => app.db.tasks();
   const serializeTask = async (task: Task) => {
     const dto = taskDTO(task);
@@ -100,7 +103,6 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       timeoutSeconds: Math.max(0, Number(b["timeout_seconds"]) || 0),
       planHeartbeatSeconds: Math.max(0, Number(b["plan_heartbeat_seconds"]) || 0),
       coverageEnabled: b["coverage_enabled"] === undefined ? true : b["coverage_enabled"] !== false,
-      assetApprovalTemplate: typeof b["asset_approval_template"] === "string" ? b["asset_approval_template"] : undefined,
     });
     // 状态先落库（running），再后台跑 goals 分解 + 引擎循环；分解失败由引擎以活动事件记录。
     await app.engine.admitTask(task.id, { decompose: { description } });
@@ -112,13 +114,15 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     const task = await tasks().getTask(id);
     if (!task) return reply.code(404).send({ error: "task not found" });
     const s = app.db.exploration(task.exploration_id);
-    const [goals, counts, coverage] = await Promise.all([
+    const [goals, counts, coverage, modelChain] = await Promise.all([
       s.listByKind("goal", 500).catch(() => []),
       s.executionCounts().catch(() => ({ running: 0, goals: 0, met: 0 })),
       app.db.taskScope().taskCoverage(id, task.exploration_id).catch(() => null),
+      app.db.query('SELECT profile_id FROM task_llm_profiles WHERE task_id=$1 ORDER BY position', [id]),
     ]);
     return {
       ...await serializeTask(task),
+      llm_profile_ids: modelChain.rows.map((row) => Number(row.profile_id)),
       goals: goals.map((g) => ({ id: g.id, text: g.payload["text"] ?? "", vulnclass: g.payload["vulnclass"] ?? "", state: g.state })),
       counts,goals_total:counts.goals,goals_met:counts.met,
       coverage: coverage ?? { enabled: false, scope_rows: 0, denominator: 0, tested: 0, pct: null, by_type: [] },
@@ -389,20 +393,16 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     const assetID = Number((req.query as Record<string, unknown>)["asset_id"]);
     if (!Number.isInteger(assetID) || assetID <= 0) return reply.code(400).send({ error: "缺少或无效的 asset_id" });
     const rows = await app.db.query(
-      `SELECT n.id, n.kind, n.state,
-              COALESCE(NULLIF(n.payload->>'summary',''), NULLIF(n.payload->>'text',''), '') AS summary
-       FROM exploration_anchors x
-       JOIN exploration_nodes n ON n.id=x.node_id
-       WHERE x.asset_id=$2 AND n.exploration_id=$1
-       ORDER BY n.id DESC LIMIT 300`,
-      [expID, assetID],
-    );
+      `WITH ${assetContextCTE} SELECT n.id,n.kind,n.state,c.task_id source_task_id,c.task_id<>$1 inherited,
+       COALESCE(NULLIF(n.payload->>'summary',''),NULLIF(n.payload->>'text',''),'') summary
+       FROM exploration_anchors x JOIN exploration_nodes n ON n.id=x.node_id JOIN context_tasks c ON c.exploration_id=n.exploration_id
+       WHERE x.asset_id=COALESCE((SELECT asset_id FROM asset_id_aliases WHERE old_id=$2),$2) AND x.asset_id IN(SELECT id FROM visible) ORDER BY n.id DESC`,[taskID,assetID]);
     const bucket = (nodeKind: string) =>
       rows.rows
         .filter((r) => String(r["kind"]) === nodeKind)
         .map((r) => ({
           id: Number(r["id"]),
-          kind: String(r["kind"]),
+          kind: String(r["kind"]),source_task_id:Number(r.source_task_id),inherited:r.inherited===true,
           state: String(r["state"]),
           summary: String(r["summary"] ?? ""),
         }));

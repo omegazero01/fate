@@ -16,10 +16,6 @@ import type {
   Edge,
   Finding,
   FindingAsset,
-  InterceptApprovalRow,
-  InterceptAudit,
-  InterceptPending,
-  InterceptRule,
   LLMPoolStatus,
   LLMProfile,
   LLMTask,
@@ -2015,7 +2011,7 @@ export const activity: Activity[] = [
     intent_id: "i5",
     ts: T("2026-07-26T03:58:10Z"),
     kind: "thinking",
-    summary: "正在批量遍历 id 范围，评估可越权数据规模（暂不导出，避免触发拦截规则）。",
+    summary: "正在批量遍历 id 范围，评估可越权数据规模，将结果保存为事实。",
   },
 
   // work#3 · i3 后台用户接口枚举（running）
@@ -2054,7 +2050,7 @@ export const activity: Activity[] = [
     intent_id: "i3",
     ts: T("2026-07-26T03:58:20Z"),
     kind: "thinking",
-    summary: "确认存在批量用户数据读取入口；导出动作命中破坏性/外泄规则，已提交拦截审批等待放行。",
+    summary: "确认存在批量用户数据读取入口，已保存观察结果。",
   },
 
   // workG · ig .git 源码泄露与硬编码凭据（done）
@@ -2740,7 +2736,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-26T03:52:08Z"),
     kind: "text",
     summary:
-      "目标②是读用户敏感数据：并行推进「后台用户接口枚举」与「API IDOR」。注意批量导出会触发拦截规则，需要你审批放行。",
+      "目标②是读用户敏感数据：并行推进「后台用户接口枚举」与「API IDOR」。执行结果会写回图谱。",
   },
   {
     seq: 400,
@@ -3047,14 +3043,14 @@ export const audit: Audit = {
       ts: T("2026-07-26T00:05:00Z"),
       tool: "bash",
       action: "block",
-      reason: "数据外泄门控：secretsdump 需人工审批",
+      reason: "本次执行已暂停",
       command: "impacket-secretsdump acme.local/svc_deploy@10.10.10.10 -just-dc",
     },
     {
       ts: T("2026-07-26T00:06:00Z"),
       tool: "bash",
       action: "allow",
-      command: "impacket-secretsdump acme.local/svc_deploy@10.10.10.10 -just-dc  # 已审批放行",
+      command: "impacket-secretsdump acme.local/svc_deploy@10.10.10.10 -just-dc",
     },
   ],
 };
@@ -3522,180 +3518,6 @@ export const llmPool: LLMPoolStatus = {
   ],
 };
 
-// ── Intercept ────────────────────────────────────────────────────────────────
-export const interceptRules: InterceptRule[] = [
-  {
-    id: 1,
-    name: "破坏性命令需审批",
-    enabled: true,
-    priority: 10,
-    match_target: "tool_input",
-    match_type: "regex",
-    pattern: "rm\\s+-rf|mkfs|dd\\s+if=",
-    action: "ask",
-    message: "检测到破坏性命令，需人工审批",
-    timeout_enabled: true,
-    timeout_seconds: 120,
-    timeout_action: "deny",
-    created_at: T("2026-07-20T10:00:00Z"),
-    updated_at: T("2026-07-20T10:00:00Z"),
-  },
-  {
-    id: 2,
-    name: "外发流量直接拒绝",
-    enabled: true,
-    priority: 20,
-    match_target: "tool_input",
-    match_type: "string",
-    pattern: "exfil",
-    action: "deny",
-    message: "疑似外发数据",
-    timeout_enabled: false,
-    timeout_seconds: 0,
-    timeout_action: "deny",
-    created_at: T("2026-07-21T10:00:00Z"),
-    updated_at: T("2026-07-21T10:00:00Z"),
-  },
-];
-
-export const interceptPending: InterceptPending[] = [
-  {
-    id: 101,
-    rule_id: 1,
-    task_id: "t-acme-web",
-    agent_name: "work#3",
-    tool_name: "bash",
-    tool_input: { command: "mysqldump -h 203.0.113.10 -uroot acme_prod > /tmp/dump.sql" },
-    status: "pending",
-    reason: "数据外泄门控：整库导出需人工审批",
-    created_at: T("2026-07-26T03:58:00Z"),
-  },
-];
-
-export const interceptHistory: InterceptApprovalRow[] = [
-  {
-    id: 90,
-    rule_id: 1,
-    task_id: "t-acme-web",
-    agent_name: "work#1",
-    tool_name: "bash",
-    tool_input: { command: "dd if=/dev/zero of=/tmp/x" },
-    status: "denied",
-    reason: "破坏性命令需审批",
-    created_at: T("2026-07-25T20:00:00Z"),
-    decided_at: T("2026-07-25T20:01:00Z"),
-    conv_title: "",
-    conv_agent_key: "",
-    rule_name: "破坏性命令需审批",
-  },
-  {
-    id: 91,
-    task_id: "t-acme-api",
-    agent_name: "work#2",
-    tool_name: "bash",
-    tool_input: { command: "rm -rf /var/www/html" },
-    status: "denied",
-    reason: "[模型] 删除目标生产文件(D4)",
-    created_at: T("2026-07-25T18:00:00Z"),
-    decided_at: T("2026-07-25T18:00:05Z"),
-    conv_title: "",
-    conv_agent_key: "",
-    rule_name: "",
-  },
-  {
-    id: 92,
-    rule_id: 2,
-    task_id: "t-acme-web",
-    agent_name: "work#13",
-    tool_name: "bash",
-    tool_input: { command: "impacket-secretsdump acme.local/svc_deploy@10.10.10.10 -just-dc" },
-    status: "allowed",
-    reason: "外发流量直接拒绝",
-    created_at: T("2026-07-26T00:05:00Z"),
-    decided_at: T("2026-07-26T00:06:00Z"),
-    conv_title: "",
-    conv_agent_key: "",
-    rule_name: "外发流量直接拒绝",
-  },
-  {
-    id: 93,
-    task_id: "t-acme-web",
-    agent_name: "work#7",
-    tool_name: "bash",
-    tool_input: { command: 'mysql -e "DROP TABLE users_bak_0921"' },
-    status: "pending",
-    reason: "[模型] 疑似备份表,无法确定是否生产数据",
-    created_at: T("2026-07-25T15:14:00Z"),
-    conv_title: "",
-    conv_agent_key: "",
-    rule_name: "",
-  },
-];
-
-// Approval detail fixtures use harmless report-writing examples.
-interceptHistory.unshift({
-  id: 94,
-  task_id: "t-acme-web",
-  agent_name: "work#1",
-  tool_name: "Write",
-  tool_input: { path: "reports/summary.md", content: "# 检查摘要\n\n本轮验证已完成，整理已有证据与后续建议。" },
-  status: "allowed",
-  decision_source: "model",
-  reason: "[模型] 将已有检查结论写入本地报告，不修改业务数据。",
-  created_at: T("2026-07-26T08:00:00Z"),
-  decided_at: T("2026-07-26T08:00:02Z"),
-  conv_title: "",
-  conv_agent_key: "",
-  rule_name: "",
-});
-
-export const interceptDetails: Record<number, InterceptAudit> = {
-  94: {
-    run_id: "demo-run-report",
-    tool_use_id: "call-write-report",
-    correlation: "exact",
-    input_digest: "a3b458eca3b458eca3b458eca3b458eca3b458eca3b458eca3b458eca3b458ec1234",
-    user_message: "请整理已经完成的检查，将结论和证据索引写入 reports/summary.md。\n保留待验证项，不修改业务数据。",
-    context: [
-      { kind: "user", text: "汇总本轮已有证据，生成检查摘要。" },
-      {
-        kind: "tool_use",
-        tool: "Read",
-        tool_use_id: "call-read-evidence",
-        text: '{"path":"reports/evidence-index.json"}',
-      },
-      {
-        kind: "tool_result",
-        tool: "Read",
-        tool_use_id: "call-read-evidence",
-        text: "已读取 3 条证据索引。\n记录包含请求时间、结果摘要和本地文件位置。",
-      },
-    ],
-    captured_at: T("2026-07-26T08:00:00Z"),
-    initial_action: "allow",
-    initial_reason: "[模型] 将已有检查结论写入本地报告，不修改业务数据。",
-    effective_action: "allow",
-    config_digest: "b4c569fdb4c569fdb4c569fdb4c569fdb4c569fdb4c569fdb4c569fdb4c569fd1234",
-    profile_id: 1,
-    execution_status: "succeeded",
-    output: "Successfully wrote reports/summary.md\n共写入 68 个字符。",
-    execution_ended_at: T("2026-07-26T08:00:03Z"),
-  },
-  93: {
-    run_id: "demo-run-review",
-    tool_use_id: "call-pending-review",
-    correlation: "exact",
-    input_digest: "c5d670aec5d670aec5d670aec5d670aec5d670aec5d670aec5d670aec5d670ae1234",
-    user_message: "检查备份表的用途，涉及删除时需要先确认。",
-    context: [],
-    captured_at: T("2026-07-25T15:14:00Z"),
-    initial_action: "ask",
-    initial_reason: "[模型] 疑似备份表，无法确定是否生产数据。",
-    profile_id: 1,
-    execution_status: "not_started",
-  },
-};
-
 // ── Conversations (chat) ─────────────────────────────────────────────────────
 export const conversations: Conversation[] = [
   {
@@ -3925,7 +3747,7 @@ export const conversationMessages: Record<number, Activity[]> = {
       ts: T("2026-07-25T23:25:10Z"),
       kind: "text",
       summary:
-        "是的。svc_deploy + Domain Admins = 可以 psexec 直取 DC01。拿到后做 secretsdump 导全域哈希，收官。注意 secretsdump 会触发拦截规则，我提前帮你放行了。",
+        "是的。svc_deploy + Domain Admins = 可以 psexec 直取 DC01。拿到后做 secretsdump 导全域哈希，收官。按当前任务要求执行并保存结果。",
     },
     { seq: 10, worker: "user", ts: T("2026-07-26T00:22:00Z"), kind: "user", summary: "靶标拿下了，攻击链总结一下。" },
     {

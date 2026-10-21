@@ -4,6 +4,7 @@ export type TurnSummary={
  status:string;started_at:string|null;finished_at:string|null;queue_ms:number|null;mode:string|null;steps:number|null;tool_calls:number|null;failed_tool_calls:number|null;
  models:string[];usage:null|{input:number;output:number;cache_read:number;cache_write:number;total:number;incomplete:boolean;source:string;compaction_requests:number|null;compaction_tokens:number|null;failed_requests:number|null;failed_request_tokens:number|null};
  final_activity:Activity|null;error:string|null;
+ writebacks?:{version:number;intent_id:string;available:boolean};
 };
 export type TurnSummaryBatch={items:TurnSummary[];requested_ids:string[]};
 export function newerSummary(old:TurnSummary|undefined,value:TurnSummary){return !old||value.revision>old.revision||value.revision===old.revision&&Date.parse(value.updated_at)>=Date.parse(old.updated_at);}

@@ -1,3 +1,5 @@
+import {prepareToolLoading} from '../agent/tool-loading.js';
+import {assertToolBinding} from '../agent/tool-registry.js';
 import {domainState} from '../agent/domain-state.js';
 import {platformPolicy,validatePlatformRunner} from '../pi/platform-policy.js';
 import {resolveRolePrompt,hostProtocol} from '../agent/prompts.js';
@@ -26,10 +28,11 @@ export async function configuredRole(db:Database,taskID:number,role:string,conve
 export async function createTrackedRunner(db:Database,taskID:number,role:string,options:AgentRunnerOptions,conversationID?:number){
  validatePlatformRunner(role,options,taskID);
  const configured=await configuredRole(db,taskID,role,conversationID),id=randomUUID();
+ options={...options,...await prepareToolLoading(db,role,options,configured.platform_policy.builtinLoading==='direct',configured.platform_policy.fallback)};
  options.modelPolicy?.setRuntimeID?.(id);
  const controller=new AbortController();
  const signal=options.signal?AbortSignal.any([options.signal,controller.signal]):controller.signal;
- const effective={context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
+ const effective={tool_loading:options.toolLoading,context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
   model:configured.model,model_route:{provider:options.model.provider,id:options.model.id},streaming:options.streaming!==false,
   prompt_hash:digest(options.systemPrompt??''),tools:options.toolAllowlist??[],skills:options.allowedSkills??[],mcp:(options.mcpEntries??[]).map(e=>e.name)};
  const guard=options.guard;
@@ -50,6 +53,7 @@ export async function createTrackedRunner(db:Database,taskID:number,role:string,
    const agent=(await db.query('SELECT enabled,id,interactive_shell FROM agents WHERE key=$1',[role])).rows[0];
    if(g.toolName.startsWith('shell_')&&agent?.interactive_shell!==true)return {block:true,reason:'交互终端已禁用'};
    if(agent?.enabled===false)return {block:true,reason:'角色已禁用'};
+   try{await assertToolBinding(db,role,g.toolName);}catch{return {block:true,reason:'工具或规范入口已禁用或解除角色绑定'};}
    const tool=(await db.query('SELECT enabled,agents FROM tools WHERE key=$1',[g.toolName])).rows[0];
    if(tool&&(tool.enabled===false||!Array.isArray(tool.agents)||!tool.agents.includes(role)))return {block:true,reason:'工具已禁用或解除角色绑定'};
    if(g.toolName==='read'&&options.skillsDir&&typeof g.args.path==='string'){
@@ -60,6 +64,12 @@ export async function createTrackedRunner(db:Database,taskID:number,role:string,
     }
    }
    return guard?.(g);
+  },
+  discoveryGuard:async name=>{
+   if(name.startsWith('shell_')&&!(await db.query('SELECT 1 FROM agents WHERE key=$1 AND enabled AND interactive_shell',[role])).rowCount)
+    throw new Error('交互终端已禁用');
+   await assertToolBinding(db,role,name);
+   await options.discoveryGuard?.(name);
   },
   mcpGuard:async(server,method,tool)=>{
    if(!['tools/call','resources/read','prompts/get'].includes(method))return;

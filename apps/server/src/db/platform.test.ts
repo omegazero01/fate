@@ -10,27 +10,15 @@ import { openDatabase, type Database } from "./index.js";
 import {
   PlatformStore,
   seedBuiltins,
-  DEFAULT_INTERCEPT_ENABLED_TOOLS,
-  SETTING_INTERCEPT_ENABLED_TOOLS,
   ActiveLLMProfileDeleteError,
   LLMProfileNotFoundError,
 } from "./platform.js";
-import {
-  InterceptStore,
-  Interceptor,
-  InterceptAlreadyDecidedError,
-  compileInterceptRegex,
-  type RuleInput,
-  type InterceptAudit,
-} from "./intercept.js";
 
 const TEST_DSN = process.env.SERIES_TEST_PG_DSN ?? "postgres://series:series@127.0.0.1:5433/series_test?sslmode=disable";
 
 let haveDB = true;
 let db: Database | null = null;
 let platform: PlatformStore;
-let store: InterceptStore;
-let interceptor: Interceptor;
 
 const cleanupSQL: string[] = []; // 测试自建行的收尾 DDL
 
@@ -43,8 +31,6 @@ beforeAll(async () => {
     return;
   }
   platform = new PlatformStore(db);
-  store = new InterceptStore(db);
-  interceptor = new Interceptor(db);
 });
 
 afterAll(async () => {
@@ -61,42 +47,6 @@ async function count(sql: string): Promise<number> {
   return Number(res.rows[0]!.n);
 }
 
-/** 测试专用规则（超高优先级压过内置规则；用后删除）。 */
-async function testRule(overrides: Partial<RuleInput> & { name: string }): Promise<number> {
-  const r = await store.createInterceptRule({
-    name: overrides.name,
-    matchTarget: "tool_input",
-    matchType: "regex",
-    pattern: overrides.pattern ?? "NEVER-MATCH-xyz",
-    action: overrides.action ?? "deny",
-    message: overrides.message ?? "",
-    priority: overrides.priority ?? 1_000_000,
-    enabled: true,
-    timeoutEnabled: false,
-    timeoutSeconds: 60,
-    timeoutAction: "deny",
-    ...overrides,
-  });
-  cleanupSQL.push(`DELETE FROM intercept_rules WHERE id=${r.id}`);
-  interceptor.invalidate();
-  return r.id;
-}
-
-function testAudit(): InterceptAudit {
-  return {
-    run_id: "run-test-1",
-    tool_use_id: "tu-test-1",
-    correlation: "exact",
-    input_digest: "d41d8cd9",
-    user_message: "帮我删掉这条数据",
-    context: [],
-    captured_at: new Date().toISOString(),
-    initial_action: "ask",
-    initial_reason: "规则要求审批",
-    execution_status: "pending",
-  };
-}
-
 describe.skipIf(!haveDB)("seedBuiltins", () => {
   it("两遍运行幂等：行数不变，六角色 + 规则 v1/v2/v3 + 内置 MCP 就位", async () => {
     await seedBuiltins(db!);
@@ -104,7 +54,6 @@ describe.skipIf(!haveDB)("seedBuiltins", () => {
       agents: await count(`SELECT 1 FROM agents WHERE builtin`),
       goalsVars: await count(`SELECT 1 FROM agent_prompt_vars`),
       mcp: await count(`SELECT 1 FROM mcp_servers`),
-      rules: await count(`SELECT 1 FROM intercept_rules WHERE name LIKE '[内置]%'`),
       skills: await count(`SELECT 1 FROM agent_skill_visibility WHERE skill_name='api-recon'`),
     };
     await seedBuiltins(db!);
@@ -112,7 +61,6 @@ describe.skipIf(!haveDB)("seedBuiltins", () => {
       agents: await count(`SELECT 1 FROM agents WHERE builtin`),
       goalsVars: await count(`SELECT 1 FROM agent_prompt_vars`),
       mcp: await count(`SELECT 1 FROM mcp_servers`),
-      rules: await count(`SELECT 1 FROM intercept_rules WHERE name LIKE '[内置]%'`),
       skills: await count(`SELECT 1 FROM agent_skill_visibility WHERE skill_name='api-recon'`),
     };
     expect(snap2).toEqual(snap1); // 幂等：第二遍零新增
@@ -129,24 +77,6 @@ describe.skipIf(!haveDB)("seedBuiltins", () => {
     for (const n of ["playwright", "web_search", "chrome-devtools", "ScopeSentry"]) expect(mcpNames).toContain(n);
     const seeded = (await platform.listMCP()).filter((m) => ["playwright", "web_search", "chrome-devtools"].includes(m.name));
     expect(seeded.every((m) => !m.enabled)).toBe(true); // 预设默认 disabled
-
-    // 规则种子：v1 17 + v2 2 + v3 1 = 20；旗标全部落 done
-    expect(snap1.rules).toBeGreaterThanOrEqual(20);
-    expect(await platform.getSetting("intercept_default_rules_v1")).toBe("done");
-    expect(await platform.getSetting("intercept_default_rules_v2")).toBe("done");
-    expect(await platform.getSetting("intercept_default_rules_v3")).toBe("done");
-    expect(await platform.getSetting("interactive_shell_default_v1")).toBe("true");
-
-    // 抽查规则内容
-    const rules = await store.listInterceptRules();
-    const rmrf = rules.find((r) => r.name === "[内置] 递归强制删除 rm -rf")!;
-    expect(rmrf.priority).toBe(100);
-    expect(rmrf.action).toBe("deny");
-    const exfil = rules.find((r) => r.name === "[内置] 数据外泄管道")!;
-    expect(exfil.enabled).toBe(false); // v2 外泄规则默认禁用
-    const delPath = rules.find((r) => r.name === "[内置] 删除类接口路径")!;
-    expect(delPath.priority).toBe(80);
-    expect(delPath.pattern).toContain("(?i)");
 
     // agent 细节：pentest 默认开交互 shell 且不限时；goals 默认关
     const pentest = await platform.getAgentByKey("pentest");
@@ -176,150 +106,6 @@ describe.skipIf(!haveDB)("settings 类型化访问器", () => {
     expect(await platform.insertSettingIfAbsent("__once__", "v2")).toBe(false); // 已存在不覆盖
     expect(await platform.getSetting("__once__")).toBe("v1");
     await db!.query(`DELETE FROM settings WHERE key='__once__'`);
-  });
-});
-
-describe.skipIf(!haveDB)("拦截规则 Match", () => {
-  it("compileInterceptRegex：(?i) 提升为 flags，坏正则返回 null", () => {
-    const re = compileInterceptRegex(String.raw`(?i)\bDROP\s+`);
-    expect(re).not.toBeNull();
-    expect(re!.test("drop table")).toBe(true);
-    expect(re!.test("drop table")).toBe(true); // 无 g flag，test 无状态可重复
-    expect(compileInterceptRegex("(")).toBeNull();
-    expect(compileInterceptRegex(String.raw`(?U)a+`)).toBeNull(); // 不可映射旗标 → 跳过
-  });
-
-  it("优先级降序首命中即停；(?i) 正则命中；坏正则规则被跳过", async () => {
-    // 优先级最高但正则非法 → 装载时剔除，不能截断匹配链
-    await testRule({ name: "t-bad-regex", pattern: "(", priority: 3_000_000, action: "deny", message: "坏正则" });
-    // 高优先级 allow 先命中即停（低优先级 deny 同样命中也不生效）
-    await testRule({
-      name: "t-allow-first", pattern: String.raw`(?i)DELETEME-SECRET`, priority: 2_000_000,
-      action: "allow", message: "放行测试",
-    });
-    await testRule({ name: "t-deny-lower", pattern: String.raw`secret`, priority: 1_500_000, action: "deny" });
-    // tool_name 字符串规则
-    await testRule({
-      name: "t-name-string", matchTarget: "tool_name", matchType: "string", pattern: "Bash",
-      priority: 1_000_000, action: "ask", message: "",
-    });
-
-    // 高优先级 allow 胜出（首命中即停），大小写不敏感
-    const d1 = await interceptor.match("Bash", '{"command":"echo deleteme-secret"}');
-    expect(d1).not.toBeNull();
-    expect(d1!.ruleName).toBe("t-allow-first");
-    expect(d1!.action).toBe("allow");
-    expect(d1!.message).toBe("放行测试");
-    expect(d1!.configDigest).toHaveLength(64);
-
-    // 无 input 命中 → 落到 tool_name 规则；message 为空给默认文案
-    const d2 = await interceptor.match("Bash", '{"command":"echo hello"}');
-    expect(d2!.ruleName).toBe("t-name-string");
-    expect(d2!.action).toBe("ask");
-    expect(d2!.message).toContain("t-name-string");
-    expect(d2!.message).toContain("审批");
-
-    // 其他工具 + 干净输入 → 无命中（内置规则也不该误伤日常命令）
-    const d3 = await interceptor.match("WebFetch", '{"command":"echo hello"}');
-    expect(d3).toBeNull();
-
-    // 内置种子规则经 (?i) 桥接后真的可匹配（用非 Bash 的工具名，避开本组高优先级 tool_name 规则）
-    const d4 = await interceptor.match("shell_open", '{"command":"sudo rm -rf / --no-preserve-root"}');
-    expect(d4).not.toBeNull();
-    expect(d4!.action).toBe("deny");
-    expect(d4!.ruleName).toContain("内置");
-  });
-
-  it("IsToolEnabled 默认集 + SetEnabledTools 持久化并失效缓存", async () => {
-    await db!.query(`DELETE FROM settings WHERE key='${SETTING_INTERCEPT_ENABLED_TOOLS}'`);
-    interceptor.invalidate();
-    expect(await interceptor.isToolEnabled("Bash")).toBe(true);
-    expect(await interceptor.getEnabledTools()).toEqual(DEFAULT_INTERCEPT_ENABLED_TOOLS);
-    await interceptor.setEnabledTools(["Bash", "MyCustomTool"]);
-    expect(await interceptor.isToolEnabled("MyCustomTool")).toBe(true);
-    expect(await interceptor.isToolEnabled("WebFetch")).toBe(false);
-    expect(await interceptor.getEnabledTools()).toEqual(["Bash", "MyCustomTool"]);
-    await db!.query(`DELETE FROM settings WHERE key='${SETTING_INTERCEPT_ENABLED_TOOLS}'`);
-    interceptor.invalidate();
-    expect(await interceptor.getEnabledTools()).toEqual(DEFAULT_INTERCEPT_ENABLED_TOOLS);
-  });
-});
-
-describe.skipIf(!haveDB)("pending 审批原子结算", () => {
-  it("创建/列表 → decide 成功；第二次 decide 拒绝；超时无法覆盖人工", async () => {
-    const ruleID = await testRule({ name: "t-ask-rule", action: "ask", message: "请审批" });
-    const id = await store.createInterceptPending({
-      ruleID, convID: 0, taskID: "task-test-1", agentName: "worker-1", toolName: "Bash",
-      input: { command: "curl -X DELETE http://t/api/user/1" }, reason: "请审批", audit: testAudit(),
-    });
-    expect(id).toBeGreaterThan(0);
-
-    // 列表（按任务过滤）
-    const pending = await store.listPendingIntercepts("task-test-1");
-    expect(pending.some((p) => p.id === id && p.status === "pending")).toBe(true);
-    const mine = pending.find((p) => p.id === id)!;
-    expect(mine.ruleID).toBe(ruleID);
-    expect(mine.conversationID).toBeNull(); // convID=0 → NULL
-    expect(mine.decisionSource).toBe("rule");
-    expect((mine.toolInput as Record<string, unknown>)["command"]).toContain("DELETE");
-
-    // 第一次 decide 成功
-    await expect(interceptor.decide(id, true)).resolves.toBeUndefined();
-
-    // 第二次 decide（人工改主意）→ 拒绝改写历史
-    await expect(interceptor.decide(id, false)).rejects.toThrow(InterceptAlreadyDecidedError);
-
-    // 超时收割也撞不上 WHERE status='pending'
-    expect(await store.resolveIntercept(id, "timeout", "deny", "审批超时")).toBe(false);
-
-    // 结算后审计 merge 生效：effective_action=allow、awaiting_result（correlation=exact）
-    const detail = await store.getInterceptDetail(id)!;
-    expect(detail!.status).toBe("allowed");
-    expect(detail!.audit!.effective_action).toBe("allow");
-    expect(detail!.audit!.execution_status).toBe("awaiting_result");
-    expect(detail!.audit!.decision_reason).toBe("人工允许执行");
-    expect(detail!.ruleName).toBe("t-ask-rule");
-
-    // CompleteIntercept：三重 WHERE（run_id+tool_use_id+awaiting_result）命中 1 行
-    const n = await store.completeIntercept(id, "run-test-1", "tu-test-1", "executed", "已执行", false);
-    expect(n).toBe(1);
-    const done = await store.getInterceptDetail(id)!;
-    expect(done!.audit!.execution_status).toBe("executed");
-    expect(done!.audit!.output).toBe("已执行");
-
-    // run_id 不匹配 → 0 行（不被误回填）
-    const n2 = await store.completeIntercept(id, "run-other", "tu-test-1", "failed", "x", false);
-    expect(n2).toBe(0);
-
-    // 未决列表不再包含它
-    expect((await store.listPendingIntercepts("task-test-1")).some((p) => p.id === id)).toBe(false);
-  });
-
-  it("无审计行：结算后 audit 保持 NULL；非 allow 决定 → not_executed", async () => {
-    const id = await store.createInterceptPending({
-      ruleID: 0, convID: 0, taskID: "task-test-2", agentName: "worker-2", toolName: "Write",
-      input: {}, reason: "[模型] 疑似越权写入", audit: null,
-    });
-    expect((await store.getInterceptPending(id))!.decisionSource).toBe("model"); // ruleID=0 + [模型] 前缀
-    expect(await store.resolveIntercept(id, "denied", "deny", "人工拒绝执行")).toBe(true);
-    const d = await store.getInterceptDetail(id)!;
-    expect(d!.status).toBe("denied");
-    expect(d!.audit).toBeNull(); // 原本无审计 → merge 不产生审计
-    // 非 allow 无执行可回填
-    expect(await store.completeIntercept(id, "", "", "executed", "", false)).toBe(0);
-  });
-
-  it("CreateDecidedIntercept 直接落终态（观测日志）", async () => {
-    const id = await store.createDecidedIntercept({
-      ruleID: 0, convID: 0, taskID: "", agentName: "", toolName: "Bash",
-      input: '{"command":"ls"}', status: "denied", reason: "规则拒绝", audit: null,
-    });
-    const p = await store.getInterceptPending(id)!;
-    expect(p!.status).toBe("denied");
-    expect(p!.decidedAt).not.toBeNull();
-    expect(p!.taskID).toBeNull();
-    // 不出现在未决列表
-    expect((await store.listPendingIntercepts()).some((x) => x.id === id)).toBe(false);
   });
 });
 

@@ -1,0 +1,202 @@
+{
+  "method": "Shared real tool factories, fresh built-in bindings, no additional custom tools or MCP. Native role descriptions and tool_search hint included. Byte counts are serialized name/description/parameters, not provider tokens. Before is direct compatible loadout with duplicate read/asset schemas; after is lean resident schema.",
+  "roles": [
+    {
+      "role": "goals",
+      "resident": [
+        "context_search",
+        "context_get",
+        "set_goals",
+        "set_constraints",
+        "register_user_target",
+        "read"
+      ],
+      "deferred": [],
+      "schema_bytes": {
+        "before": 5250,
+        "resident": 4964,
+        "registered": 4964
+      },
+      "schema_reduction_percent": 5.45
+    },
+    {
+      "role": "planner",
+      "resident": [
+        "context_search",
+        "context_get",
+        "graph_overview",
+        "add_intent",
+        "prove_goal",
+        "kill_work",
+        "steer_work",
+        "todo_write",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "add_task_scope",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "schema_bytes": {
+        "before": 17268,
+        "resident": 12018,
+        "registered": 15188
+      },
+      "schema_reduction_percent": 30.4
+    },
+    {
+      "role": "mainagent",
+      "resident": [
+        "record_fact",
+        "report_finding",
+        "insert_assets",
+        "context_search",
+        "context_get",
+        "add_intent",
+        "dispatch_intents",
+        "steer_work",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "graph_overview",
+        "set_goals",
+        "set_constraints",
+        "kill_work",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "schema_bytes": {
+        "before": 24294,
+        "resident": 15370,
+        "registered": 20179
+      },
+      "schema_reduction_percent": 36.73
+    },
+    {
+      "role": "worker",
+      "resident": [
+        "http_request",
+        "context_search",
+        "context_get",
+        "record_fact",
+        "insert_assets",
+        "report_finding",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "graph_overview",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "schema_bytes": {
+        "before": 17587,
+        "resident": 11221,
+        "registered": 14380
+      },
+      "schema_reduction_percent": 36.2
+    },
+    {
+      "role": "auto",
+      "resident": [
+        "context_get",
+        "list_tasks",
+        "get_task",
+        "spawn_task",
+        "pause_task",
+        "resume_task",
+        "context_search",
+        "read",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_llm_profiles",
+        "add_task_hint",
+        "get_finding",
+        "update_finding_report",
+        "asset_search",
+        "asset_get",
+        "list_findings"
+      ],
+      "schema_bytes": {
+        "before": 8064,
+        "resident": 5014,
+        "registered": 6903
+      },
+      "schema_reduction_percent": 37.82
+    },
+    {
+      "role": "pentest",
+      "resident": [
+        "context_get",
+        "context_search",
+        "record_conversation_fact",
+        "report_conversation_finding",
+        "http_request",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "list_findings",
+        "graph_overview"
+      ],
+      "schema_bytes": {
+        "before": 12147,
+        "resident": 8885,
+        "registered": 10310
+      },
+      "schema_reduction_percent": 26.85
+    },
+    {
+      "role": "reporter",
+      "resident": [
+        "context_get",
+        "get_finding",
+        "update_finding_report",
+        "context_search",
+        "read",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_findings"
+      ],
+      "schema_bytes": {
+        "before": 5039,
+        "resident": 4466,
+        "registered": 4158
+      },
+      "schema_reduction_percent": 11.37
+    }
+  ]
+}

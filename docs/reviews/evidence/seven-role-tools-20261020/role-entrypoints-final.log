@@ -1,0 +1,14 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+(node:46546) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/agent/seven-role-loadout.test.ts (17 tests) 4068ms
+   ✓ planner actual entrypoint matches preview and required tools execute 1009ms
+ ✓ src/engine/tool-revocation.test.ts (1 test) 1696ms
+   ✓ revoking interactive shell removes it from discovery and blocks execution without blocking writeback 395ms
+
+ Test Files  2 passed (2)
+      Tests  18 passed (18)
+   Start at  22:16:38
+   Duration  8.00s (transform 502ms, setup 0ms, collect 1.88s, tests 5.76s, environment 0ms, prepare 92ms)

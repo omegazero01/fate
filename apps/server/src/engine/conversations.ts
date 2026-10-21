@@ -1,3 +1,8 @@
+import {assetGetTool} from '../tools/assets.js';
+import {mergedAssetSearchTool} from '../tools/asset-search-compat.js';
+import {legacyReadCandidates} from '../tools/legacy-reads.js';
+import {conversationDomainTools} from '../tools/conversations.js';
+import {assertActiveRole} from '../agent/retired-roles.js';
 import {randomUUID} from 'node:crypto';
 import {LiveStreamWriter,runnerActivityMetadata} from './live-stream.js';
 import {createTrackedRunner} from './runtime-config.js';
@@ -21,7 +26,6 @@ import {graphOverviewTool} from '../tools/overview.js';
 import {httpRequestTool,trafficBodyTool,readAttachmentTool} from '../tools/evidence.js';
 import {customWorkerTools} from '../tools/custom.js';
 import {loadConstraints} from '../tools/index.js';
-import {interceptGate} from '../intercept/gate.js';
 import {findingEvidence} from '../evidence/store.js';
 import {prepareAttachments} from '../evidence/attachments.js';
 import {toolOutputTool} from '../tools/output.js';
@@ -41,6 +45,7 @@ export class ConversationService {
   return rows.rows;
  }
  async create(key:string,title='',profile?:number|null,taskID?:number){
+  assertActiveRole(key);
   const agent=await this.db.platform().getAgentByKey(key);
   if(!agent||!agent.enabled||ORCHESTRATORS.has(key))throw Object.assign(new Error('该角色不能创建独立对话'),{statusCode:400});
   const cleanTitle=title.trim()||'新对话';
@@ -50,20 +55,22 @@ export class ConversationService {
   return (await this.db.query('INSERT INTO conversations(agent_key,title,llm_profile_id,task_id) VALUES($1,$2,$3,$4) RETURNING *',[key,cleanTitle,profile??null,taskID??null])).rows[0]!;
  }
  async update(id:number,patch:{title?:string;pinned?:boolean}){
+  await this.assertWritable(id);
   const title=patch.title?.trim();
   if(patch.title!==undefined&&(!title||Array.from(title).length>120))throw Object.assign(new Error('标题不能为空且最多 120 个字符'),{statusCode:400});
   const row=(await this.db.query(`UPDATE conversations SET title=COALESCE($2,title),pinned_at=CASE WHEN $3::boolean IS NULL THEN pinned_at WHEN $3 THEN COALESCE(pinned_at,now()) ELSE NULL END
    WHERE id=$1 RETURNING *`,[id,title??null,patch.pinned??null])).rows[0];
   if(!row)throw Object.assign(new Error('conversation not found'),{statusCode:404});return row;
  }
+ async assertWritable(id:number){const row=(await this.db.query('SELECT agent_key FROM conversations WHERE id=$1',[id])).rows[0];if(row)assertActiveRole(String(row.agent_key));}
  async setProfile(id:number,profile:number|null){
+  await this.assertWritable(id);
   if(profile!==null&&!(await this.db.query('SELECT id FROM llm_profiles WHERE id=$1',[profile])).rowCount)throw Object.assign(new Error('指定的 LLM 配置不存在'),{statusCode:400});
   const r=await this.db.query('UPDATE conversations SET llm_profile_id=$2 WHERE id=$1 RETURNING id',[id,profile]);
   if(!r.rowCount)throw Object.assign(new Error('conversation not found'),{statusCode:404});return {ok:true};
  }
  async remove(id:number){
-  const retest=await this.db.query("SELECT id FROM finding_retests WHERE conversation_id=$1 AND status IN ('pending','running')",[id]);
-  if(retest.rowCount&&(await this.engine.retests.stop(id)).status==='stopping')return {status:'stopping'};
+  await this.assertWritable(id);
   if((await this.stop(id)).status==='stopping')return {status:'stopping'};
   const r=await this.db.query('DELETE FROM conversations WHERE id=$1 RETURNING id',[id]);
   if(!r.rowCount)throw Object.assign(new Error('conversation not found'),{statusCode:404});return {deleted:Number(r.rows[0]!.id)};
@@ -73,6 +80,7 @@ export class ConversationService {
   const row=await this.db.transaction(async tx=>{
    const conv=(await tx.query('SELECT * FROM conversations WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!conv)throw Object.assign(new Error('conversation not found'),{statusCode:404});
+   assertActiveRole(String(conv.agent_key));
    const existing=await tx.query('SELECT id FROM conversation_runs WHERE conversation_id=$1 AND turn_id=$2',[id,requestID]);
    if(existing.rows[0])return existing.rows[0];
    if(ORCHESTRATORS.has(String(conv.agent_key)))throw Object.assign(new Error('请通过该角色的专用入口执行'),{statusCode:409});
@@ -98,7 +106,7 @@ export class ConversationService {
   // Interrupted runs are visible; the next user turn resumes native history without replaying tool effects.
   await this.db.query(`UPDATE conversation_runs r SET status='failed',error='执行器已离线；会话历史已保留，可发送新消息继续',finished_at=now()
    WHERE status='running' AND NOT EXISTS(SELECT 1 FROM runtime_session_leases l WHERE l.key='conversation:'||r.conversation_id AND l.token=r.token AND l.expires_at>now())`);
-  const rows=await this.db.query("SELECT DISTINCT conversation_id FROM conversation_runs WHERE status='queued' ORDER BY conversation_id LIMIT 32");
+  const rows=await this.db.query("SELECT DISTINCT r.conversation_id FROM conversation_runs r JOIN conversations c ON c.id=r.conversation_id WHERE r.status='queued' AND c.agent_key<>'retester' ORDER BY r.conversation_id LIMIT 32");
   for(const r of rows.rows){const id=Number(r.conversation_id);if(this.active.has(id))continue;
    const controller=new AbortController();const done=this.run(id,controller).catch(()=>{}).finally(()=>this.active.delete(id));this.active.set(id,{controller,done});}
  }
@@ -120,7 +128,7 @@ export class ConversationService {
    const claimed: (Record<string, unknown> & {run:Record<string, unknown>}) | undefined = await this.db.transaction(async tx=>{
     await tx.query('SELECT pg_advisory_xact_lock(4200000003)');
     const c=(await tx.query('SELECT c.*,a.enabled,a.trigger_run_mode,a.trigger_max_parallel FROM conversations c JOIN agents a ON a.key=c.agent_key WHERE c.id=$1',[id])).rows[0];
-    if(!c||!c.enabled)return;
+    if(!c||!c.enabled)return;assertActiveRole(String(c.agent_key));
     const count=await tx.query("SELECT count(*) n FROM conversation_runs r JOIN conversations c ON c.id=r.conversation_id WHERE c.agent_key=$1 AND r.trigger_id IS NOT NULL AND r.status='running'",[c.agent_key]);
     const configured=Number(c.trigger_max_parallel);
     const limit=c.trigger_run_mode==='parallel'?(Number.isFinite(configured)?Math.max(0,configured):5):1;
@@ -136,23 +144,8 @@ export class ConversationService {
    const model=await this.resolve(taskID,role,{conversationID:id,profileID:Number(claimed.llm_profile_id)||undefined});
    const cwd=path.join(this.dataDir,'conversations',String(id));await mkdir(cwd,{recursive:true});
    const ctx=runContext(this.db,taskID,task?.exploration_id??0,role as AgentRole,{conversationID:id,hooks:{assertOwnership:lease.assert}});
-   const gate=interceptGate(this.db,{taskID,agentName:role,worker:`conversation#${id}`});
-   const tools=[readAttachmentTool(ctx),toolOutputTool(ctx)];
-   if(task)tools.push(contextSearchTool(ctx),contextGetTool(ctx),listAssetsTool(ctx),listFindingsTool(ctx),nodeDetailTool(ctx),graphOverviewTool(ctx),trafficBodyTool(ctx));
-   if(role==='auto'){
-    const make=(name:string,description:string,properties:Record<string,unknown>,run:(a:Record<string,unknown>)=>Promise<Record<string,unknown>>,required:string[]=[])=>domainTool({name,description,transactional:false,parameters:{type:'object',properties,required},run},ctx);
-    tools.push(make('list_tasks','分页列出平台任务',{after_id:{type:'integer'}},async a=>({tasks:(await this.db.query('SELECT id,name,goal,status,paused,queued FROM tasks WHERE deleted_at IS NULL AND id>$1 ORDER BY id LIMIT 10',[Number(a.after_id)||0])).rows})),
-     make('get_task','查询任务状态',{task_id:{type:'integer'}},async a=>({task:await this.db.tasks().getTask(Number(a.task_id))}),['task_id']),
-     make('list_llm_profiles','列出可选模型，不返回密钥',{},async()=>({profiles:(await this.db.platform().listProfiles()).map(p=>({id:p.id,name:p.name,model:p.model}))})),
-     make('spawn_task','按用户目标创建并启动任务',{description:{type:'string'},goal:{type:'string'},asset_ids:{type:'array',items:{type:'integer'}},company_ids:{type:'array',items:{type:'integer'}},execution_mode:{type:'string',enum:['managed','manual']},asset_approval_template:{type:'string',enum:['all_assets','related_assets','explicit_targets']},source_task_ids:{type:'array',items:{type:'integer'}},llm_profile_id:{type:'integer'},seed_first_intent:{type:'boolean'}},async a=>{
-      const profile=Number(a.llm_profile_id)||Number(claimed.llm_profile_id)||0;
-      const t=await this.db.tasks().createTaskWithOptions(String(a.description),String(a.goal??a.description),{companyIDs:a.company_ids as number[]|undefined,executionMode:a.execution_mode==='manual'?'manual':'managed',assetApprovalTemplate:a.asset_approval_template as string|undefined,assetIDs:a.asset_ids as number[]|undefined,sourceTaskIDs:a.source_task_ids as number[]|undefined,llmProfileIDs:profile?[profile]:[],seedFirstIntent:a.seed_first_intent===true});
-      await this.db.query('UPDATE tasks SET parent_ref=$2 WHERE id=$1',[t.id,`conversation:${id}`]);await this.engine.admitTask(t.id,{decompose:{description:t.description}});return {task:t};
-     },['description']),
-     make('pause_task','暂停指定任务',{task_id:{type:'integer'}},async a=>{const n=Number(a.task_id);await this.db.tasks().applyTaskPause(n);const result=await this.engine.pause(n);return {task_id:n,status:result.status,command_id:result.command_id};},['task_id']),
-     make('resume_task','恢复指定任务并返回实际准入状态',{task_id:{type:'integer'}},async a=>{const n=Number(a.task_id);await this.engine.admitTask(n);return {task:await this.db.tasks().getTask(n)};},['task_id']),
-     make('add_task_hint','追加任务提示',{task_id:{type:'integer'},message:{type:'string'}},async a=>{const n=Number(a.task_id),t=await this.db.tasks().getTask(n);if(!t)throw new Error('任务不存在');const node=await this.db.exploration(t.exploration_id).addNode('hint',{text:String(a.message),source:'user_request',conversation_id:id},0,'open','auto',[]);this.engine.notify(n);await this.db.query("WITH saved AS (INSERT INTO blackboard_wakeups(exploration_id,event_key,kind,node_id) VALUES($1,$2,'control_changed',$3) ON CONFLICT DO NOTHING RETURNING id) UPDATE explorations SET published_revision=published_revision+1 WHERE id=$1 AND EXISTS(SELECT 1 FROM saved)",[t.exploration_id,`hint:${node}`,node]);return {saved:true,node_id:node};},['task_id','message']));
-   }
+   const tools:import('@earendil-works/pi-coding-agent').ToolDefinition[]=[contextGetTool(ctx),readAttachmentTool(ctx),toolOutputTool(ctx)];
+   if(task)tools.push(contextSearchTool(ctx),mergedAssetSearchTool(ctx),assetGetTool(ctx),listAssetsTool(ctx),listFindingsTool(ctx),nodeDetailTool(ctx),graphOverviewTool(ctx),trafficBodyTool(ctx));
    const pendingReports=new Set<number>();
    // Trigger metadata is authoritative; model prose cannot silently skip a queued report.
    if(role==='reporter'&&Array.isArray(claimed.run.event_keys)){
@@ -162,17 +155,9 @@ export class ConversationService {
     for(const row of expected.rows)pendingReports.add(Number(row.id));
    }
    let reportSaved=false;
-   if(['reporter','auto'].includes(role)){
-     tools.push(domainTool<{finding_id:number;offset?:number}>({name:'get_finding',description:'读取漏洞、证据版本及绑定；报告正文使用 offset 续读。',readOnly:true,parameters:{type:'object',properties:{finding_id:{type:'integer'},offset:{type:'integer',minimum:0}},required:['finding_id']},async run(a,c){
-     const f=(await c.db.query('SELECT * FROM findings WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND finding_readable(id)',[a.finding_id,taskID])).rows[0];if(!f)throw new Error('漏洞不存在或未获当前任务授权');if(role==='reporter'&&(!f.report||f.report_evidence_version==null||Number(f.report_evidence_version)!==Number(f.evidence_version)))pendingReports.add(Number(f.id));
-     const body=JSON.stringify(f),off=Math.max(0,a.offset??0);
-     return {finding_id:Number(f.id),evidence_version:Number(f.evidence_version),content:body.slice(off,off+1500),next_offset:off+1500<body.length?off+1500:null,evidence:await findingEvidence(c.db,a.finding_id)};
-    }},ctx) as never,domainTool<{finding_id:number;evidence_version:number;report:string}>({name:'update_finding_report',description:'仅在证据版本一致时更新漏洞报告；冲突后重新读取证据。',parameters:{type:'object',properties:{finding_id:{type:'integer'},evidence_version:{type:'integer'},report:{type:'string'}},required:['finding_id','evidence_version','report']},async run(a,c){
-     const r=await c.db.query('UPDATE findings SET report=$3,report_evidence_version=$4 WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND evidence_version=$4 AND finding_readable(id) RETURNING id',[a.finding_id,taskID,a.report,a.evidence_version]);if(!r.rowCount)throw new Error('证据版本已变化或漏洞不可用，请重新读取');pendingReports.delete(a.finding_id);reportSaved=true;return {saved:true};
-    }},ctx) as never);
-   }
+   tools.push(...conversationDomainTools(ctx,this.engine,{profileID:Number(claimed.llm_profile_id)||0,pendingReports,onSaved:()=>{reportSaved=true;}}));
    const bash=role==='pentest'?workerEgressBashTool(cwd,this.egress,taskID,0,`conversation:${id}:${lease.token}`):undefined;
-   if(role==='pentest'&&task){const pentestTools:unknown[]=[Object.assign(recordFactTool(ctx),{name:'record_conversation_fact'}),Object.assign(reportFindingTool(ctx),{name:'report_conversation_finding'}),httpRequestTool(ctx),...(bash?[bash]:[]),...await customWorkerTools(ctx,cwd,bash,gate)];tools.push(...pentestTools as never[]);}
+   if(role==='pentest'&&task){const pentestTools:unknown[]=[Object.assign(recordFactTool(ctx),{name:'record_conversation_fact'}),Object.assign(reportFindingTool(ctx),{name:'report_conversation_finding'}),httpRequestTool(ctx),...(bash?[bash]:[]),...await customWorkerTools(ctx,cwd,bash)];tools.push(...pentestTools as never[]);}
    const bound=await applyToolBindings(this.db,role,tools),disabled=await disabledBuiltinTools(this.db,role),resources=await roleResources(this.db,role,skillDir());
    if(role==='reporter'&&(!bound.some(t=>t.name==='get_finding')||!bound.some(t=>t.name==='update_finding_report')))throw new Error('Reporter 的必要读取或保存工具已禁用');
    const attachment=await prepareAttachments(this.db,this.dataDir,id,claimed.run.attachments,'conversation');
@@ -184,9 +169,9 @@ export class ConversationService {
     loadDomainState:async()=>({conversation_id:id,...(role==='reporter'?{pending_report_ids:[...pendingReports],read_tool:'get_finding',save_tool:'update_finding_report'}:{})}),
     ...agentBudgets(config,{maxTurns:30,maxDurationMs:1200_000}),maxWrapupTurns:config.wrapupMaxTurns||2,
     wrapup:()=>role==='reporter'&&pendingReports.size?{prompt:config.wrapupPrompt||hostProtocol('reporter')}:undefined,
-    systemPrompt:prompt+taskContext+(task?constraintBlock(await loadConstraints(this.db,task.exploration_id)):''),customTools:bound,
+    systemPrompt:prompt+taskContext+(task?constraintBlock(await loadConstraints(this.db,task.exploration_id)):''),customTools:bound,legacyTools:task?legacyReadCandidates(ctx):[],
     toolAllowlist:[...bound.map(t=>t.name),...(['auto','reporter','pentest'].includes(role)?['read',...(role==='pentest'&&task?['bash','write','edit']:[])].filter(n=>!disabled.has(n)):[]),...((role==='auto'||task)&&resources.mcpEntries?.length?['mcp__*']:[])],
-    guard:async g=>{await lease.assert();await agentRunConfig(this.db,role);const permitted=await applyToolBindings(this.db,role,[{name:g.toolName}]);if(!permitted.length)return {block:true,reason:'工具已禁用或解除绑定'};return gate(g);},onActivity:persist},id);
+    guard:async g=>{await lease.assert();await agentRunConfig(this.db,role);const permitted=await applyToolBindings(this.db,role,[{name:g.toolName}]);if(!permitted.length)return {block:true,reason:'工具已禁用或解除绑定'};return;},onActivity:persist},id);
    await this.db.query('UPDATE conversations SET session_file=$2 WHERE id=$1',[id,runner.sessionFile??path.join(cwd,'session.jsonl')]);
    const triggerEvents=claimed.run.trigger_id?(await this.db.query('SELECT event_key,kind,task_id,payload FROM agent_trigger_events WHERE event_key=ANY($1::text[]) ORDER BY id',[claimed.run.event_keys??[]])).rows:null;
    const message=triggerEvents?JSON.stringify(triggerEvents.map(event=>({source:'blackboard',kind:event.kind,task_id:event.task_id,event_key:event.event_key,

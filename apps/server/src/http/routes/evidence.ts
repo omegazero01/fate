@@ -27,11 +27,8 @@ export function registerEvidenceRoutes(app:FastifyInstance){
     if(!task)throw new Error('task not found');
     await resolveGraphNode(db,projectionTask,Number(task.exploration_id),Number(f.node_id));
    }else{
-    const ids=Array.isArray(f.asset_ids)?f.asset_ids.map(Number):[];
-    const states=await db.taskScope().taskAssetApprovalStates(ownerTask,ids);
-    if(!ids.every((assetID:number)=>states.get(assetID)==='approved'))throw new Error('finding assets are not authorized');
    }
-  }catch{throw Object.assign(new Error('漏洞关联资产未获授权或已封禁'),{statusCode:403});}
+  }catch{throw Object.assign(new Error('漏洞不属于有效任务'),{statusCode:403});}
   return f;
  };
  const snapshot=async(id:number,bid:string)=>{const r=await db.query('SELECT snapshot_id FROM finding_traffic_bindings WHERE finding_id=$1 AND id=$2',[id,bid]);if(!r.rowCount)throw Object.assign(new Error('binding not found'),{statusCode:404});return String(r.rows[0]!.snapshot_id);};
@@ -46,6 +43,8 @@ export function registerEvidenceRoutes(app:FastifyInstance){
   for(const [key,col] of [['task','e.task_id::text'],['host','e.host'],['method','s.method'],['status','s.status::text']] as const)if(q[key]){args.push(q[key]);where.push(`${col}=$${args.length}`);}
   for(const key of ['q','path'])if(q[key]){args.push('%'+q[key]+'%');where.push(`${key==='body'?"encode(b.bytes,'escape')":'s.url'} ILIKE $${args.length}`);}
   for(const [key,op] of [['resp_min','>='],['resp_max','<=']] as const)if(Number(q[key])>=0){args.push(Number(q[key]));where.push(`s.resp_len${op}$${args.length}`);}
+  if(q.status_class){if(!/^[1-5]$/.test(q.status_class))throw Object.assign(new Error('无效状态码分组'),{statusCode:400});args.push(Number(q.status_class)*100);where.push(`s.status >= $${args.length} AND s.status < $${args.length}+100`);}
+  if(q.path_exact){args.push(q.path_exact);where.push(`COALESCE(NULLIF(split_part(split_part(regexp_replace(s.url,'^https?://[^/?#]+','','i'),'?',1),'#',1),''),'/')=$${args.length}`);}
   const from=`FROM traffic_exchanges e JOIN traffic_evidence_snapshots s ON s.id=e.id `;
   const candidates=await db.query(`SELECT s.id,s.task_id,s.intent_id,s.url,s.resp_hash ${from}${where.length?' WHERE '+where.join(' AND '):''}`,args);
   let allowed=await authorizedEvidenceIDs(db,candidates.rows as never[]);
@@ -54,7 +53,7 @@ export function registerEvidenceRoutes(app:FastifyInstance){
   const filter=' WHERE '+where.join(' AND ');
   const count=await db.query(`SELECT count(*) n ${from}${filter}`,args);
   const order=q.order==='asc'?'ASC':'DESC',sort=q.sort==='resp_len'?'s.resp_len':q.sort==='status'?'s.status':'s.captured_at';
-  const rows=await db.query(`SELECT s.id,s.captured_at AS ts,e.host,s.method,s.url,s.status,s.content_type,s.resp_len,e.task_id,e.truncated ${from}${filter} ORDER BY ${sort} ${order},s.id LIMIT ${size} OFFSET ${page*size}`,args);
+  const rows=await db.query(`SELECT s.id,s.captured_at AS ts,e.host,s.method,s.url,s.status,s.content_type,s.resp_len,e.task_id,s.intent_id,e.truncated ${from}${filter} ORDER BY ${sort} ${order},s.id LIMIT ${size} OFFSET ${page*size}`,args);
   return {enabled:true,capture_mode:'HTTP/HTTPS traffic routed through the recording proxy',page,size,total:Number(count.rows[0]?.n),exchanges:rows.rows.map(r=>({...r,ts:new Date(Number(r.ts)).toISOString(),resp_len:Number(r.resp_len)}))};
  });
  app.get('/api/traffic/exchange',async req=>{
@@ -74,7 +73,23 @@ export function registerEvidenceRoutes(app:FastifyInstance){
   if(q.download==='1')return reply.type('application/octet-stream').header('X-Content-Type-Options','nosniff').header('content-disposition',`attachment; filename="${q.side}.bin"`).send(await readBlob(db,String(row[q.side==='request'?'req_hash':'resp_hash'])));
   return evidenceBody(db,id,q.side!,offset);
  });
- app.get('/api/traffic/hosts',async()=>{const rows=(await db.query('SELECT s.id,s.task_id,s.intent_id,s.url FROM traffic_exchanges e JOIN traffic_evidence_snapshots s ON s.id=e.id')).rows;const ids=await authorizedEvidenceIDs(db,rows as never[]);return {hosts:(await db.query('SELECT host,count(*)::int count FROM traffic_exchanges WHERE id=ANY($1::text[]) GROUP BY host ORDER BY count(*) DESC',[ids])).rows};});
+ // Navigation counts use the same authorization projection as the request list.
+ app.get('/api/traffic/hosts',async req=>{
+  const q=req.query as {task?:string};
+  if(q.task!==undefined&&(!/^[1-9]\d*$/.test(q.task)))throw Object.assign(new Error('无效任务'),{statusCode:400});
+  const rows=(await db.query('SELECT s.id,s.task_id,s.intent_id,s.url FROM traffic_exchanges e JOIN traffic_evidence_snapshots s ON s.id=e.id'+(q.task?' WHERE e.task_id=$1':''),q.task?[Number(q.task)]:[])).rows;
+  const ids=await authorizedEvidenceIDs(db,rows as never[]);
+  return {hosts:(await db.query('SELECT host,count(*)::int count FROM traffic_exchanges WHERE id=ANY($1::text[]) GROUP BY host ORDER BY count(*) DESC,host',[ids])).rows};
+ });
+ app.get('/api/traffic/paths',async req=>{
+  const q=req.query as Record<string,string>;
+  if(!/^[1-9]\d*$/.test(q.task??'')||!q.host)throw Object.assign(new Error('必须指定任务及主机'),{statusCode:400});
+  const page=Math.max(0,Math.floor(Number(q.page)||0)),size=100;
+  const rows=(await db.query('SELECT s.id,s.task_id,s.intent_id,s.url FROM traffic_exchanges e JOIN traffic_evidence_snapshots s ON s.id=e.id WHERE e.task_id=$1 AND e.host=$2',[Number(q.task),q.host])).rows;
+  const ids=new Set(await authorizedEvidenceIDs(db,rows as never[])),counts=new Map<string,number>();
+  for(const row of rows){if(!ids.has(String(row.id)))continue;try{const path=new URL(String(row.url)).pathname;counts.set(path,(counts.get(path)??0)+1);}catch{/* Invalid historical URLs remain available in the host list. */}}
+  const all=[...counts].sort(([a],[b])=>a.localeCompare(b));return {paths:all.slice(page*size,(page+1)*size).map(([path,count])=>({path,count})),total:all.length,page,size};
+ });
  app.delete('/api/traffic',async req=>({deleted:(await db.query('DELETE FROM traffic_exchanges WHERE host=$1',[(req.query as {host:string}).host])).rowCount}));
  app.delete('/api/traffic/hosts',async req=>({deleted:(await db.query('DELETE FROM traffic_exchanges WHERE host=ANY($1::text[])',[(req.body as {hosts:string[]}).hosts])).rowCount}));
  app.delete('/api/traffic/all',async()=>({deleted:(await db.query('DELETE FROM traffic_exchanges')).rowCount,reclaimed:0}));

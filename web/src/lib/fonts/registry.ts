@@ -50,7 +50,9 @@ const raleway = localFont({
   variable: "--font-raleway",
 });
 const publicSans = localFont({
-  src: "../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2",
+  src: "../../assets/fonts/public-sans/PublicSans[wght].ttf",
+  weight: "100 900",
+  display: "swap",
   variable: "--font-public-sans",
 });
 const notoSerif = localFont({

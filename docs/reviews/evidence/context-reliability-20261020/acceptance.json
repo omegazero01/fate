@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-20",
+  "baseline_head": "faf31751c5de42b800c5de93d71382dbac3776f2",
+  "commits": {
+    "operation_recovery": "78c157be",
+    "context_manifest": "537af15d",
+    "work_identity": "61e21ee9"
+  },
+  "test_scope": "current preserved working tree; isolated PostgreSQL and native pi deterministic providers",
+  "server": {
+    "files_passed": 52,
+    "tests_passed": 521,
+    "tests_skipped": 1,
+    "tests_failed": 0,
+    "seconds": 289.71
+  },
+  "new_tests": {
+    "operations": 12,
+    "context_needs": 8,
+    "work_identity": 8
+  },
+  "skipped": "POST /api/llm/models real DeepSeek profile test: isolated DB has no real model profile",
+  "checks": {
+    "server_typecheck": true,
+    "web_typecheck": true,
+    "server_staged_compile_with_sql": true,
+    "web_build": true,
+    "web_static_export": true
+  },
+  "web_build_isolation": {
+    "source_copy": true,
+    "dependency_symlink": true,
+    "fixture_only_turbopack_root": "/Users/pphua",
+    "production_config_unchanged": true
+  },
+  "external_target_requests": 0,
+  "real_model_requests": 0,
+  "preservation": {
+    "baseline_files": 934,
+    "own_changed_existing_files": 11,
+    "other_files_unchanged": 923,
+    "unrelated_changes_staged": false
+  },
+  "release": {
+    "main_backend_restarted": false,
+    "main_frontend_restarted": false,
+    "reason": "Task 4844 still holds an active lease; task 4846 remains paused",
+    "isolated_compiled_server_verified": true
+  },
+  "log_sha256": {
+    "fate-context-reliability-full.log": "2edf9da2a08ce8a50222cfc2bfead1f8165fdd47726b45480c292514629014ee",
+    "fate-reliability-server-typecheck.log": "38ac890c60e7f38d59ddfb410325cdfb5fca83c9411765c5481754e01c021630",
+    "fate-reliability-web-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fate-reliability-server-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fate-reliability-web-build.log": "24fda9eff384ce1b33821a478de651235e74c99b9d811652046140af5bf78532",
+    "fate-reliability-web-static-build.log": "8248ba8ea09ebdfa8dc042e71d5764b838a0a6d916adb60cb64550244c9ef0eb"
+  }
+}

@@ -34,12 +34,12 @@ export function RelatedSessions({ taskId, onSelect }: { taskId: string; onSelect
   if (!rows.length) return null;
   return (
     <div className="flex flex-col gap-1 border-t p-2">
-      <p className="px-2 py-1 text-xs text-muted-foreground">关联会话 · 报告与复测</p>
+      <p className="px-2 py-1 text-xs text-muted-foreground">关联会话 · 报告与历史复测</p>
       {rows.map((row) => (
         <Button key={row.id} variant="ghost" className="h-auto justify-start py-3" onClick={() => onSelect(row)}>
           <Bot />
           <span className="min-w-0 flex-1 truncate text-left">{row.title || row.agent_name || row.agent_key}</span>
-          <span className="text-xs text-muted-foreground">{row.running ? "运行中" : row.agent_key}</span>
+          <span className="text-xs text-muted-foreground">{row.read_only ? "历史只读" : row.running ? "运行中" : row.agent_key}</span>
         </Button>
       ))}
     </div>
@@ -50,7 +50,7 @@ export function RelatedSessionDetail({ row }: { row: Conversation }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <p className="border-b p-3 text-sm">
-        {row.title || row.agent_name} · {state.running ? "运行中" : "执行记录"}
+        {row.title || row.agent_name} · {row.read_only ? "历史只读" : state.running ? "运行中" : "执行记录"}
       </p>
       <MessageScrollerProvider autoScroll>
         <MessageScroller>

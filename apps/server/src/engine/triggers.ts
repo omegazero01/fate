@@ -39,7 +39,7 @@ export class TriggerScheduler {
           await this.saveState(tx,'pi_trigger_seen_v2','ready');
         }
         const triggers = (await tx.query(`SELECT t.*,a.enabled AS agent_enabled,a.builtin,a.trigger_run_mode,a.trigger_merge_mode,a.trigger_max_parallel
-          FROM agent_triggers t JOIN agents a ON a.key=t.agent_key WHERE t.enabled AND a.enabled AND NOT a.builtin ORDER BY t.id`)).rows as TriggerRow[];
+          FROM agent_triggers t JOIN agents a ON a.key=t.agent_key WHERE t.agent_key<>'retester' AND t.enabled AND a.enabled AND NOT a.builtin ORDER BY t.id`)).rows as TriggerRow[];
         await this.collectFindings(tx, triggers);
         await this.collectGoals(tx, triggers);
         await this.collectTimeouts(tx, triggers);

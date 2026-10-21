@@ -1,0 +1,24 @@
+{
+  "profile_id": 453,
+  "model": "deepseek-flash",
+  "endpoint": "https://api.deepseek.com/",
+  "started_at": "2026-10-21T01:29:39.432Z",
+  "status": "passed",
+  "calls": 1,
+  "usage": [
+    {
+      "kind": "usage",
+      "input": 111,
+      "output": 71,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  ],
+  "http_status": 200,
+  "result": {
+    "aborted": false,
+    "lastAssistantText": "11",
+    "stopReason": "completed"
+  },
+  "finished_at": "2026-10-21T01:29:40.383Z"
+}

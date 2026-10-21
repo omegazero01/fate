@@ -1,3 +1,6 @@
+import {catalogTools} from '../../agent/tool-catalog.js';
+import {toolIdentity} from '../../agent/tool-registry.js';
+import {assertActiveRole} from '../../agent/retired-roles.js';
 import {resolveRolePrompt,PROMPT_VERSION,hostProtocol} from '../../agent/prompts.js';
 import {runtimeConfiguration} from '../../engine/runtime-config.js';
 // 系统配置路由：settings KV / agents（列表+提示词）/ LLM profiles / MCP / skills 文件树。
@@ -46,13 +49,12 @@ export function registerConfigRoutes(app: FastifyInstance): void {
   app.get('/api/conversations/:id/runtime-config',async(req,reply)=>{const id=Number((req.params as {id:string}).id);if(!(await app.db.query('SELECT id FROM conversations WHERE id=$1',[id])).rowCount)return reply.code(404).send({error:'conversation not found'});return runtimeConfiguration(app.db,{conversationID:id});});
   // ─── LLM 测试连接：按 body 参数（或已存 profile id）构造 provider 做一次最小补全 ───
   // ─── 内置工具目录 ───
-  app.get("/api/tools", async () => {
-    const rows = await app.db.query(`SELECT key, system, description, schema, agents, enabled, kind, exec, deferred, directory, usage_help, when_to_use, executable FROM tools ORDER BY kind, key`);
-    return { tools: rows.rows.map((r) => ({ ...r, schema: r["schema"] ?? {}, agents: r["agents"] ?? [], deferred: r["deferred"] === true })) };
-  });
+  app.get("/api/tools", async () => catalogTools(app.db));
 
   app.put("/api/tools/:key", async (req) => {
     const p = req.params as { key: string };
+    const catalogRow=(await app.db.query('SELECT kind FROM tools WHERE key=$1',[p.key])).rows[0];
+    if(catalogRow&&['retired','unsupported'].includes(toolIdentity(p.key,String(catalogRow.kind)).implementation_status))throw Object.assign(new Error('当前版本不支持此历史工具，不能重新启用'),{statusCode:410});
     const b = (req.body ?? {}) as Record<string, unknown>;
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -67,6 +69,8 @@ export function registerConfigRoutes(app: FastifyInstance): void {
 
   app.post("/api/tools/:key/reset", async (req) => {
     const p = req.params as { key: string };
+    const catalogRow=(await app.db.query('SELECT kind FROM tools WHERE key=$1',[p.key])).rows[0];
+    if(catalogRow&&['retired','unsupported'].includes(toolIdentity(p.key,String(catalogRow.kind)).implementation_status))throw Object.assign(new Error('当前版本不支持此历史工具，不能重新启用'),{statusCode:410});
     const r = await app.db.query(`UPDATE tools SET enabled=true WHERE key=$1`, [p["key"]]);
     return { ok: (r.rowCount ?? 0) === 1 };
   });
@@ -185,12 +189,11 @@ export function registerConfigRoutes(app: FastifyInstance): void {
   // ─── settings KV（保留键的最小面）─────────────────────────────────────────
 
   app.get("/api/settings", async () => {
-    const [workers, activeTask, enabledTools] = await Promise.all([
+    const [workers, activeTask] = await Promise.all([
       platform().workers(),
       platform().getSetting("active_task"),
-      platform().getEnabledTools(),
     ]);
-    return { workers, pi_context_policy:(await platform().getSetting('pi_context_policy'))??'domain',pi_mcp_loading:(await platform().getSetting('pi_mcp_loading'))??'deferred', task_concurrency_enabled:(await platform().getSetting("task_concurrency_enabled"))==="true", task_concurrency_limit:Number(await platform().getSetting("task_concurrency_limit"))||5, effective:{workers:"global; next claim",role_settings:"next session",task_concurrency:"next admission"}, active_task: activeTask ?? "", intercept_enabled_tools: enabledTools };
+    return { workers, pi_context_policy:(await platform().getSetting('pi_context_policy'))??'domain',pi_mcp_loading:(await platform().getSetting('pi_mcp_loading'))??'deferred', task_concurrency_enabled:(await platform().getSetting("task_concurrency_enabled"))==="true", task_concurrency_limit:Number(await platform().getSetting("task_concurrency_limit"))||5, effective:{workers:"global; next claim",role_settings:"next session",task_concurrency:"next admission"}, active_task: activeTask ?? "" };
   });
 
   const setSettings = async (req: { body?: unknown }, reply: { code(c: number): { send(v: unknown): unknown } }): Promise<unknown> => {
@@ -212,12 +215,6 @@ export function registerConfigRoutes(app: FastifyInstance): void {
       await platform().setSetting("active_task", b["active_task"]);
       out["active_task"] = b["active_task"];
     }
-    if (Array.isArray(b["intercept_enabled_tools"])) {
-      const tools = b["intercept_enabled_tools"].map(String);
-      await platform().setEnabledTools(tools);
-      app.interceptor.invalidate();
-      out["intercept_enabled_tools"] = tools;
-    }
     return out;
   };
   app.post("/api/settings", async (req, reply) => setSettings(req, reply));
@@ -236,6 +233,7 @@ export function registerConfigRoutes(app: FastifyInstance): void {
     const key = typeof b["key"] === "string" ? b["key"].trim() : "";
     const name = typeof b["name"] === "string" ? b["name"].trim() : "";
     const description = typeof b["description"] === "string" ? b["description"] : "";
+    assertActiveRole(key);
     if (!/^[a-z0-9_-]{1,64}$/i.test(key) || name === "") {
       return reply.code(400).send({ error: "key 仅限字母数字/_/-（<=64），name 不能为空" });
     }

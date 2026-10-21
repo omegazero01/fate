@@ -24,12 +24,6 @@ export const MIN_PLAN_HEARTBEAT_SECONDS = 600;
 /** 一个任务可直接继承的上下文来源任务数上限（Go MaxTaskSourceCount）。 */
 export const MAX_TASK_SOURCE_COUNT = 8;
 
-export const TASK_ASSET_APPROVAL_TEMPLATES = ["all_assets", "related_assets", "explicit_targets"] as const;
-
-export function validAssetApprovalTemplate(v: string): boolean {
-  return v === "all_assets" || v === "related_assets" || v === "explicit_targets";
-}
-
 export function normalizeHeartbeat(sec: number): number {
   return sec < MIN_PLAN_HEARTBEAT_SECONDS ? MIN_PLAN_HEARTBEAT_SECONDS : sec;
 }
@@ -48,7 +42,6 @@ export class TaskLifecycleConflictError extends Error {
 
 export interface Task {
   execution_mode: string;
-  asset_approval_template: string;
   id: number;
   name: string;
   category_id?: number | null;
@@ -83,7 +76,6 @@ export interface TaskCreateOptions {
   companyIDs?: number[];
   seedFirstIntent?: boolean;
   executionMode?: "managed" | "manual";
-  assetApprovalTemplate?: string;
   name?: string;
   categoryID?: number | null;
   sourceTaskIDs?: number[];
@@ -108,7 +100,7 @@ export interface TaskAdmissionCommit {
 
 const TASK_COLS = `id, COALESCE(name,'') AS name, category_id,
 COALESCE((SELECT category.name FROM task_categories category WHERE category.id=tasks.category_id),'') AS category_name,
-description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,'') AS queue_mode, llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,'') AS parent_ref, pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0) AS timeout_seconds, COALESCE(plan_heartbeat_seconds,300) AS plan_heartbeat_seconds, COALESCE(coverage_enabled,true) AS coverage_enabled, first_run_at, deadline_at, asset_approval_template, execution_mode`;
+description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,'') AS queue_mode, llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,'') AS parent_ref, pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0) AS timeout_seconds, COALESCE(plan_heartbeat_seconds,300) AS plan_heartbeat_seconds, COALESCE(coverage_enabled,true) AS coverage_enabled, first_run_at, deadline_at, execution_mode`;
 
 function iso(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -145,7 +137,6 @@ function mapTask(row: Record<string, unknown>, sourceTaskIDs: number[] = []): Ta
     deadline_at: iso(row["deadline_at"]),
     plan_heartbeat_seconds: Number(row["plan_heartbeat_seconds"] ?? 300),
     coverage_enabled: row["coverage_enabled"] !== false,
-    asset_approval_template: String(row["asset_approval_template"] ?? ""),
     execution_mode: String(row["execution_mode"] ?? EXECUTION_MANAGED),
   };
 }
@@ -187,9 +178,6 @@ export class TaskStore {
   }
 
   async createTaskWithOptions(description: string, goal: string, opts: TaskCreateOptions): Promise<Task> {
-    let template = opts.assetApprovalTemplate ?? "";
-    if (template === "") template = "all_assets";
-    if (!validAssetApprovalTemplate(template)) throw new Error("invalid task asset association: invalid asset_approval_template");
     const sourceTaskIDs = opts.sourceTaskIDs ?? [];
     if (sourceTaskIDs.length > MAX_TASK_SOURCE_COUNT) {
       throw new Error(`too many source tasks: got ${sourceTaskIDs.length}, maximum is ${MAX_TASK_SOURCE_COUNT}`);
@@ -237,8 +225,8 @@ export class TaskStore {
       const active = llmProfileIDs.length > 0 ? llmProfileIDs[0]! : null;
       const ins = await tx.query<{ id: string; status: string; paused: boolean; created_at: Date }>(
         `INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id,
-                          timeout_seconds, plan_heartbeat_seconds, coverage_enabled, asset_approval_template)
-        VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10)
+                          timeout_seconds, plan_heartbeat_seconds, coverage_enabled)
+        VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)
         RETURNING id, status, paused, created_at`,
         [
           opts.name ?? "",
@@ -250,7 +238,6 @@ export class TaskStore {
           timeoutSeconds,
           planHeartbeatSeconds,
           coverageEnabled,
-          template,
         ],
       );
       const row = ins.rows[0]!;
@@ -276,18 +263,17 @@ export class TaskStore {
           else if(seed.kind==='keyword'&&/^https?:\/\//i.test(String(seed.value)))await scoped.assets().upsertHTTPService({url:String(seed.value),taskID});
         }
         await tx.query(`UPDATE assets SET task_ids=CASE WHEN $1=ANY(task_ids) THEN task_ids ELSE array_append(task_ids,$1) END WHERE company_id=ANY($2::bigint[])`,[taskID,companies]);
-        await tx.query(`UPDATE task_asset_links l SET source='company',source_summary='任务创建时关联企业',approval_state='approved',approved_by='user',approved_at=now()
+        await tx.query(`UPDATE task_asset_links l SET source='company',source_summary='任务创建时关联企业'
           FROM assets a WHERE l.task_id=$1 AND l.asset_id=a.id AND (a.company_id=ANY($2::bigint[]) OR l.source='system')`,[taskID,companies]);
       }
       if(assets.length){
         const found=await tx.query('SELECT id FROM assets WHERE id=ANY($1::bigint[]) FOR SHARE',[assets]);
         if(found.rows.length!==assets.length)throw Object.assign(new Error('资产不存在'),{statusCode:404});
         await tx.query(`UPDATE assets SET task_ids=CASE WHEN $1=ANY(task_ids) THEN task_ids ELSE array_append(task_ids,$1) END WHERE id=ANY($2::bigint[])`,[taskID,assets]);
-        await tx.query(`UPDATE task_asset_links SET source='direct',source_summary='任务创建时直接选择',approval_state='approved',approved_by='user',approved_at=now() WHERE task_id=$1 AND asset_id=ANY($2::bigint[])`,[taskID,assets]);
+        await tx.query(`UPDATE task_asset_links SET source='direct',source_summary='任务创建时直接选择' WHERE task_id=$1 AND asset_id=ANY($2::bigint[])`,[taskID,assets]);
       }
       const selected=await scoped.assets().getByIDs(assets);
       for(const asset of selected)await scoped.taskScope().addAutoScope(taskID,asset.type,asset.domain??'',asset.url??'',asset.ip??'');
-      await seedUserAssetGrants(tx, taskID);
       await tx.query(`INSERT INTO exploration_anchors(node_id,asset_id)
         SELECT n.id,l.asset_id FROM exploration_nodes n CROSS JOIN task_asset_links l
         WHERE n.exploration_id=$1 AND n.state='origin' AND l.task_id=$2 ON CONFLICT DO NOTHING`,[expID,taskID]);
@@ -301,7 +287,6 @@ export class TaskStore {
       await tx.commit();
       return {
         execution_mode: opts.executionMode ?? EXECUTION_MANAGED,
-        asset_approval_template: template,
         id: taskID,
         name: opts.name ?? "",
         category_id: opts.categoryID ?? null,
@@ -650,61 +635,4 @@ async function insertTaskLLMProfiles(tx: QueueTx, taskID: number, profileIDs: nu
       position,
     ]);
   }
-}
-
-/**
- * 种子化用户授权（Go seedUserAssetGrants）：把用户来源（manual/direct/company/api/task）
- * 的任务资产提炼成 host 级 task_asset_grants，再 reconcile 模板审批。新建任务尚无
- * 任何链接时是无害 no-op；保留是为与 Go 创建事务同构。
- */
-async function seedUserAssetGrants(tx: QueueTx, taskID: number): Promise<void> {
-  const rows = await tx.query<{ domain: string; ip: string; url: string }>(
-    `SELECT DISTINCT COALESCE(a.domain,'') AS domain,COALESCE(a.ip,'') AS ip,COALESCE(a.url,'') AS url
-     FROM task_asset_links l JOIN assets a ON a.id=l.asset_id
-     WHERE l.task_id=$1 AND l.source IN ('manual','direct','company','api','task')`,
-    [taskID],
-  );
-  const hosts: string[] = [];
-  const roots: string[] = [];
-  const seen = new Set<string>();
-  for (const x of rows.rows) {
-    let h = x.domain ?? "";
-    if (h === "" && x.url) {
-      try {
-        h = new URL(x.url).hostname;
-      } catch {
-        /* 保持空 */
-      }
-    }
-    if (h === "") h = x.ip ?? "";
-    try {
-      h = normalizeAgentHost(h, true);
-    } catch {
-      continue;
-    }
-    if (seen.has(h)) continue;
-    seen.add(h);
-    let root = "";
-    if (parseCanonicalIP(h) === null) root = rootDomain(h).root; // 非 IP 主机才推导 eTLD+1
-    hosts.push(h);
-    roots.push(root);
-  }
-  if (hosts.length > 0) {
-    await tx.query(
-      `INSERT INTO task_asset_grants(task_id,kind,value,root_domain,source)
-       SELECT $1,'host',host,root,'user' FROM unnest($2::text[],$3::text[]) AS seed(host,root)
-       ON CONFLICT DO NOTHING`,
-      [taskID, hosts, roots],
-    );
-  }
-  await reconcileAssetTemplate(tx, taskID);
-}
-
-async function reconcileAssetTemplate(tx: QueueTx, taskID: number): Promise<void> {
-  await tx.query(
-    `UPDATE task_asset_links l SET approval_state='pending' FROM assets a
-     WHERE l.task_id=$1 AND a.id=l.asset_id AND l.approval_state='pending'
-     AND NOT task_asset_blocked($1,a.id) AND task_asset_template_allows($1,a)`,
-    [taskID],
-  );
 }

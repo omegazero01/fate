@@ -25,20 +25,33 @@ afterAll(async()=>{
 });
 async function until(fn:()=>Promise<boolean>,ms=30000){const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,10));}throw new Error('lifecycle condition timed out');}
 async function source(suffix:string){const faux=fauxProvider({provider:`lifecycle-${suffix}`}),modelRuntime=await ModelRuntime.create({refreshOnCreate:false});await modelRuntime.registerNativeProvider(faux.provider);return {faux,model:{modelRuntime,model:faux.getModel() as never}};}
-async function fixture(maxTurns=30){
+async function fixture(maxTurns=30,relativeDataDir=false){
   await db.query("UPDATE agents SET max_turns=$1 WHERE key='worker'",[maxTurns]);
   const task=await db.tasks().createTaskWithOptions('LOCAL lifecycle fixture','',{executionMode:'manual'}),s=db.exploration(task.exploration_id);
   const id=await s.addIntent({summary:'仅验证 LOCAL 夹具并写回',dispatch_requested:true},5,[],'user');
   const m=await source(String(task.id));
-  const e=new Engine(db,{...defaultEngineConfig(),workers:1,debounceMs:5,workerMaxTurns:30},async()=>m.model,dir);engines.push(e);
+  const e=new Engine(db,{...defaultEngineConfig(),workers:1,debounceMs:5,workerMaxTurns:30},async()=>m.model,relativeDataDir?path.relative(process.cwd(),dir):dir);engines.push(e);
   return {task,s,id,e,...m};
 }
-const readExisting=()=>fauxAssistantMessage([fauxToolCall('list_assets',{})]);
-const fact=()=>fauxAssistantMessage([fauxToolCall('record_fact',{summary:'LOCAL observation',evidence:'Synthetic local observation; no external request',confidence:'high'})]);
+const readExisting=()=>fauxAssistantMessage([fauxToolCall('context_search',{query:'LOCAL'})]);
+const fact=()=>fauxAssistantMessage([fauxToolCall('record_fact',{observation_type:'observed',summary:'LOCAL observation',evidence:'Synthetic local observation; no external request',confidence:'high'})]);
 async function completion(f:Awaited<ReturnType<typeof fixture>>){
   const n=(await f.s.listByKind('fact')).find(n=>n.payload.from_intent===f.id)!;
   return fauxAssistantMessage(`LOCAL saved node:${n.id}; execution finished.`);
 }
+
+it('gives PI and Bash the same absolute working directory when dataDir is relative',async()=>{
+  const f=await fixture(0,true),cwd=path.join(dir,'tasks',String(f.task.id),`i${f.id}`);
+  f.faux.setResponses([
+    context=>{expect(JSON.stringify(context.messages)).toContain(cwd);return fauxAssistantMessage([fauxToolCall('bash',{command:`cd '${cwd}' && pwd`})]);},
+    context=>{expect(JSON.stringify(context.messages)).not.toContain('No such file or directory');return fauxAssistantMessage('LOCAL cwd checked, no new observation.');},
+  ]);
+  await f.e.run(f.task.id);await until(async()=>(await f.s.getNode(f.id))?.state==='done');
+  expect(f.faux.state.callCount).toBe(2);
+  const results=(await db.query("SELECT detail,is_error FROM activity WHERE node_id=$1 AND kind='tool_result' AND tool='bash'",[f.id])).rows;
+  expect(results).toHaveLength(1);expect(results[0]!.is_error).toBe(false);expect(results[0]!.detail).toContain(cwd);
+  expect((await f.s.listByKind('fact')).filter(n=>n.state==='confirmed')).toHaveLength(0);await f.e.stop(f.task.id);
+});
 
 it('delivers native PI steering while preserving incremental writes and final summary',async()=>{
   const f=await fixture();let received=false;
@@ -208,4 +221,30 @@ it('Planner reads changed facts, dispatches a dependent second intent, and natur
   expect(contextRead).toBe(true);const intents=await s.listByKind('intent');expect(intents).toHaveLength(2);expect(intents.every(n=>n.state==='done')).toBe(true);
   expect((await db.query("SELECT 1 FROM exploration_edges WHERE exploration_id=$1 AND rel='yields'",[task.exploration_id])).rowCount).toBe(2);
   expect(w.faux.state.callCount).toBe(4);await e.stop(task.id);
+});
+
+it('graceful shutdown resumes the original PI session and intent without repeating a committed fact',async()=>{
+ const f=await fixture(0);let waiting=false;
+ const parent=await f.s.addNode('fact',{summary:'LOCAL prerequisite version one'},0,'confirmed','test',[]);
+ await db.query("UPDATE exploration_nodes SET payload=payload||jsonb_build_object('contract',$2::jsonb) WHERE id=$1",[f.id,JSON.stringify({objective:'LOCAL continuation',acceptance:['LOCAL observed'],basis:[{node_id:parent,version:0}]})]);
+ f.faux.setResponses([fact(),async(_ctx,options)=>{
+  waiting=true;await new Promise<void>(resolve=>{if(options?.signal?.aborted)resolve();else options?.signal?.addEventListener('abort',()=>resolve(),{once:true});});
+  return fauxAssistantMessage('',{stopReason:'aborted'});
+ }]);
+ await f.e.run(f.task.id);await until(async()=>waiting);
+ await db.query("UPDATE exploration_nodes SET payload=payload||'{\"detail\":\"Updated observation while Worker was running\"}'::jsonb,content_version=content_version+1 WHERE id=$1",[parent]);
+ const file=path.join(dir,'sessions',`exp${f.task.exploration_id}-worker-i${f.id}.jsonl`);
+ const {readFileSync}=await import('node:fs');const first=readFileSync(file,'utf8').split('\n')[0];
+ await f.e.shutdown();
+ const interrupted=(await f.s.getNode(f.id))!;
+ expect(interrupted.state).toBe('open');expect((await db.query('SELECT completed_at FROM exploration_nodes WHERE id=$1',[f.id])).rows[0]!.completed_at).toBeNull();
+ expect(interrupted.payload).toMatchObject({resume_requested:true,execution_stop:{reason:'service_shutdown'}});
+ expect((await db.query('SELECT 1 FROM engine_worker_slots WHERE task_id=$1',[f.task.id])).rowCount).toBe(0);
+ let recalled=false;
+ f.faux.setResponses([ctx=>{recalled=JSON.stringify(ctx.messages).includes('LOCAL observation');return fauxAssistantMessage('LOCAL saved fact recalled; original intent complete.');}]);
+ const resumed=new Engine(db,{...defaultEngineConfig(),workers:1,debounceMs:5},async()=>f.model,dir);engines.push(resumed);
+ await resumed.run(f.task.id);await until(async()=>(await f.s.getNode(f.id))?.state==='done');
+ expect(recalled).toBe(true);expect(readFileSync(file,'utf8').split('\n')[0]).toBe(first);
+ expect((await f.s.listByKind('fact')).filter(n=>n.payload.from_intent===f.id)).toHaveLength(1);
+ expect(await f.s.listByKind('intent')).toHaveLength(1);await resumed.stop(f.task.id);
 });

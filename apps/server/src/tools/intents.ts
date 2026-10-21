@@ -7,7 +7,32 @@ import { KindIntent, RelDerivedFrom, nodeCancelledByUser } from "../db/explorati
 import { normalizeContract, type IntentContract } from '../agent/intent-contract.js';
 import {workerCapabilities, validateWorkerToolNames} from '../agent/worker-capabilities.js';
 
-interface AddIntentArgs { intents: { summary: string; parent_id?: number; parent_ids?: number[]; asset_ids?: number[]; priority?: number; contract?:IntentContract; retry_of?:number;retry_kind?:string;retry_reason?:string }[]; }
+interface IntentItem { summary: string; parent_id?: number|string; parent_ids?: (number|string)[]; asset_ids?: (number|string)[]; priority?: number; contract?:IntentContract; retry_of?:number;retry_kind?:string;retry_reason?:string }
+interface AddIntentArgs extends Partial<IntentItem> { intents?: IntentItem[]; }
+function intentIDs(values:unknown,field:string):number[]{
+  if(!Array.isArray(values))throw new Error(`${field} 必须为 ID 数组`);
+  return [...new Set(values.map(v=>{
+    const id=typeof v==='string'&&/^[0-9]+$/.test(v)?Number(v):v;
+    if(typeof id!=='number'||!Number.isSafeInteger(id)||id<=0)throw new Error(`${field} 需要有效正整数 ID`);
+    return id;
+  }))];
+}
+
+
+const intentFields = {
+                summary: { type: "string", description: "用一两句话给出有价值的探索方向；具体接口、步骤和方法由 Worker 在范围内自主决定，不列逐项测试清单" },
+                parent_ids: {type:"array",maxItems:20,items:{anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}]},description:"依据的事实或漏洞节点，宿主记录实际版本"},
+                parent_id: { anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}], description: "依据的 fact/finding 节点 id（顶层可省略，自动连任务根）" },
+                asset_ids: { type: "array", items: { anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}] }, description: "业务范围或入口资产 ID，不要求预先枚举所有待发现接口；写回时再精确关联实际资产" },
+                priority: { type: "integer", minimum: 0, maximum: 10, description: "省略或 0 按 5 处理" },
+                contract: {type:'object',description:'可选边界补充，不要求填写细化验收表。objective/acceptance 省略时沿用 summary；work 仅在已有稳定方向标识时使用。',properties:{
+                  objective:{type:'string'},acceptance:{type:'array',minItems:1,maxItems:10,items:{type:'string'}},out_of_scope:{type:'array',maxItems:20,items:{type:'string'}},
+                  basis:{type:'array',description:'仅引用已读取的 fact/finding 及其实际版本，可引用任务根 fact；goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer'},version:{type:'integer',minimum:0}},required:['node_id','version']}},
+                  work:{type:'object',properties:{resource:{type:'string'},question_key:{type:'string'},method_class:{type:'string'},identity:{type:'string'}},required:['resource','question_key','method_class','identity']},
+                  allowed_tools:{type:'array',items:{type:'string'},maxItems:50,description:'精确工具名，见 graph_overview.worker_capabilities；HTTP GET 使用 http_request，不能编造 http_get 等别名。内部事实/进度/结果写回不受此执行工具清单限制。'},
+                }},
+                retry_of:{type:'integer',minimum:1},retry_kind:{type:'string',enum:['new_evidence','transient_failure']},retry_reason:{type:'string',maxLength:2000},
+              };
 
 export function addIntentTool(ctx: ToolRunContext) {
   return domainTool<AddIntentArgs>(
@@ -15,50 +40,34 @@ export function addIntentTool(ctx: ToolRunContext) {
       name: "add_intent",
       description:
         "提交 1~4 条探索意图进 frontier，worker 将按优先级领取执行。提交前逐一与 open/running 意图及" +
-        "近期已完成意图比对：换措辞重复已有方向是严重错误。parent 必须是产出了证据的 fact/finding 节点" +
-        "（发现驱动规划）。串行依赖链用 todo_write 记录，只派前置已满足的那一步。",
+        "近期已完成意图比对。每条意图是一个可独立交付结论的方向，给出大致资产范围与探索价值即可，让 Worker 自主选择步骤，不按接口/参数拆单。contract.work 可选，legacy_text 仅做文本去重；dedup.related_intent_ids 表示局部交叉，需读取已有工作协调职责，不强制拆成更小单元。parent 必须是产出了证据的 fact/finding 节点" +
+        "（发现驱动规划）。串行依赖链用 todo_write 记录，只派前置已满足的那一步。单条直接提供 summary/asset_ids/parent_ids/priority；批量使用 intents，每项完整填写，禁止混合两种格式。",
       promptSnippet: "派发探索意图（先查重）",
       parameters: {
-        type: "object",
-        properties: {
-          intents: {
-            type: "array",
-            minItems: 1,
-            maxItems: 4,
-            description: "意图列表",
-            items: {
-              type: "object",
-              properties: {
-                summary: { type: "string", description: "自包含的方向描述（做什么/为什么/预期产出）" },
-                parent_ids: {type:"array",maxItems:20,items:{type:"integer"},description:"依据的事实或漏洞节点，宿主记录实际版本"},
-                parent_id: { type: "integer", description: "依据的 fact/finding 节点 id（顶层可省略，自动连任务根）" },
-                asset_ids: { type: "array", items: { type: "integer" }, description: "目标资产 id" },
-                priority: { type: "integer", minimum: 1, maximum: 10, description: "默认 5" },
-                contract: {type:'object',description:'执行约定。work 的 question_key/method_class 使用稳定类别键，重复表述应复用同一键；basis 使用 context_search/context_get 返回的版本。',properties:{
-                  objective:{type:'string'},acceptance:{type:'array',minItems:1,maxItems:10,items:{type:'string'}},out_of_scope:{type:'array',maxItems:20,items:{type:'string'}},
-                  basis:{type:'array',description:'仅引用已读取的 fact/finding 及其实际版本，可引用任务根 fact；goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer'},version:{type:'integer',minimum:0}},required:['node_id','version']}},
-                  work:{type:'object',properties:{resource:{type:'string'},question_key:{type:'string'},method_class:{type:'string'},identity:{type:'string'}},required:['resource','question_key','method_class','identity']},
-                  allowed_tools:{type:'array',items:{type:'string'},maxItems:50,description:'精确工具名，见 graph_overview.worker_capabilities；HTTP GET 使用 http_request，不能编造 http_get 等别名。内部事实/进度/结果写回不受此执行工具清单限制。'},
-                },required:['objective','acceptance']},
-                retry_of:{type:'integer',minimum:1},retry_kind:{type:'string',enum:['new_evidence','transient_failure']},retry_reason:{type:'string',maxLength:2000},
-              },
-              required: ["summary"],
-            },
-          },
-        },
-        required: ["intents"],
+        type: "object", additionalProperties:false,
+        properties: {...intentFields,intents:{type:"array",maxItems:4,description:"批量 1~4 项，每项独立填写 summary、asset_ids、parent_ids、priority；不要同时提供顶层单条字段。空数组时使用顶层单条。",items:{type:"object",properties:intentFields,required:["summary"],additionalProperties:false}}},
+        anyOf:[{required:["summary"]},{required:["intents"]}],
       },
       // Main's direct-intent grant must run after the intent transaction commits;
       // otherwise the host admission transaction cannot see the uncommitted node.
       transactional: false,
       async run(args, c) {
+        if(args.intents!==undefined&&!Array.isArray(args.intents))throw new Error('intents 必须为数组');
+        const batch=!!args.intents?.length;
+        if(batch&&Object.keys(args).some(k=>k!=='intents'&&args[k as keyof AddIntentArgs]!==undefined))
+          throw new Error('不能混合单条与批量参数；请把 summary/asset_ids/parent_ids/priority 等全部放入对应 intents 项，避免丢失事实依据');
+        const items=batch?args.intents!:[args as IntentItem];
+        if(items.length>4)throw new Error('一轮最多新增 4 条意图');
         const results = await c.db.transaction(async db => {
           await c.hooks.assertOwnership?.(db);
           const capabilities = await workerCapabilities({...c, db});
           const s = db.exploration(c.expID), originFact = await s.originFactID();
-          const submitted: { summary: string; intent_id: number; created: boolean; duplicate_of?: number }[] = [];
-          for (const item of args.intents) {
-            const parentIDs=[...new Set(item.parent_ids??(item.parent_id?[item.parent_id]:[originFact]))].filter(id=>id>0);
+          const submitted: { summary: string; intent_id: number; created: boolean; duplicate_of?: number;dedup?:{version:3;strength:string;match?:string;related_intent_ids?:number[]} }[] = [];
+          for (const item of items) {
+            const explicitParents=item.parent_ids??(item.parent_id!==undefined?[item.parent_id]:[]);
+            const parentIDs=intentIDs(explicitParents,'parent_ids');
+            if(!parentIDs.length&&originFact>0)parentIDs.push(originFact);
+            const assetIDs=intentIDs(item.asset_ids??[],'asset_ids');
             const contract=normalizeContract(item.contract,item.summary);
             validateWorkerToolNames(contract.allowed_tools, capabilities);
             for(const parentID of parentIDs){
@@ -72,10 +81,10 @@ export function addIntentTool(ctx: ToolRunContext) {
             payload.parent_ids=parentIDs;
             if(parentIDs.length)payload.parent_id=parentIDs[0];
             if(c.role==='planner')payload.dispatch_requested=true;
-            if(c.role==='mainagent'&&c.mainSegment!==undefined&&c.hooks.assertOwnership)payload.pending_asset_execution={issuer:'mainagent'};
+            if(c.role==='mainagent'&&c.mainSegment!==undefined&&c.hooks.assertOwnership)payload.dispatch_source='mainagent';
             const res = c.role === "planner"
-              ? await s.addPlannerIntentDeduplicated(payload, item.priority ?? 5, item.asset_ids ?? [], "planner")
-              : await s.addIntentDeduplicated(payload, item.priority ?? 5, item.asset_ids ?? [], c.role === "worker" ? "worker" : "user");
+              ? await s.addPlannerIntentDeduplicated(payload, item.priority || 5, assetIDs, "planner")
+              : await s.addIntentDeduplicated(payload, item.priority || 5, assetIDs, c.role === "worker" ? "worker" : "user");
             if(res.created)for(const ref of contract.basis)if(await s.getNode(ref.node_id))await s.link(ref.node_id,RelDerivedFrom,res.id);
             // Historical inactive proposals must pass the same fresh basis check before requeue.
             if(!res.created && c.role==='planner'){
@@ -84,7 +93,7 @@ export function addIntentTool(ctx: ToolRunContext) {
               if(oldWork&&!contract.work)contract.work=oldWork;
               await db.query("UPDATE exploration_nodes SET payload=payload||$2::jsonb WHERE id=$1 AND state='open' AND payload->>'needs_replanning'='true'",[res.id,JSON.stringify({...payload,needs_replanning:false})]);
             }
-            submitted.push({summary:item.summary,intent_id:res.id,created:res.created,...(!res.created?{duplicate_of:res.id}:{})});
+            submitted.push({summary:item.summary,intent_id:res.id,created:res.created,dedup:res.dedup,...(!res.created?{duplicate_of:res.id}:{})});
           }
           return submitted;
         });
@@ -93,7 +102,7 @@ export function addIntentTool(ctx: ToolRunContext) {
           // The host signs a one-intent grant after the node is committed.
           if (c.role === "mainagent") await c.hooks.dispatchIntent?.(c.expID,result.intent_id);
         }
-        return { submitted: results.filter((r) => r.created).length, intents: results };
+        return { submitted: results.filter((r) => r.created).length, intents: results, ids:results.map(r=>r.intent_id), errors:{}, duplicates:Object.fromEntries(results.flatMap((r,i)=>r.duplicate_of?[[i,r.duplicate_of]]:[])) };
       },
     },
     ctx,

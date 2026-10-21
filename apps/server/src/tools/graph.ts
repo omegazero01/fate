@@ -5,15 +5,16 @@ import { resolveGraphNode, authorizedNodes } from "../db/graph_view.js";
 
 import { domainTool } from "./define.js";
 import type { ToolRunContext } from "./context.js";
-import { KindFact, RelYields, nodeAllowsPendingAssets } from "../db/exploration.js";
+import { KindFact, RelYields } from "../db/exploration.js";
+import {normalizeWritebackScope,writebackReceipt,savedWritebackReceipt,writebackScopeSchema,type WritebackScope} from './writeback-scope.js';
 
 // ─── record_fact：worker 写回事实（intent --yields--> fact）─────────────────
 
-interface RecordFactArgs { facts?:RecordFactArgs[]; summary: string; evidence?: string; detail?:string; observation_type?:'observed'|'inferred'|'negative'|'unknown';confidence?: "low" | "medium" | "high"; asset_ids?: number[]; }
+interface RecordFactArgs { facts?:RecordFactArgs[]; summary: string; evidence?: string; detail?:string; scope?:WritebackScope; observation_type?:'observed'|'inferred'|'negative'|'unknown';confidence?: "low" | "medium" | "high"; asset_ids?: number[]; }
 
 export function recordFactTool(ctx: ToolRunContext) {
   const singleProperties = {
-    summary:{type:"string"},evidence:{type:"string"},detail:{type:"string"},observation_type:{type:"string",enum:["observed","inferred","negative","unknown"]},confidence:{type:"string",enum:["low","medium","high"]},asset_ids:{type:"array",items:{type:"integer"}}
+    summary:{type:"string"},evidence:{type:"string"},detail:{type:"string"},scope:writebackScopeSchema,observation_type:{type:"string",enum:["observed","inferred","negative","unknown"]},confidence:{type:"string",enum:["low","medium","high"]},asset_ids:{type:"array",items:{type:"integer"}}
   };
   return domainTool<RecordFactArgs>(
     {
@@ -29,12 +30,13 @@ export function recordFactTool(ctx: ToolRunContext) {
           summary: { type: "string", description: "一句话事实结论（自包含，不引用'上文'）" },
           evidence: { type: "string", description: "支撑该结论的关键证据原文（命令输出/响应片段）" },
           detail:{type:'string',description:'复现所需且 summary/evidence 未覆盖的方法或限制；无额外信息时省略，不重复摘要或证据'},
+          scope:writebackScopeSchema,
           observation_type:{type:'string',enum:['observed','inferred','negative','unknown'],description:'区分实测观察、推断、负面结果和未知；confirmed 表示记录已提交，不表示所有推断为真'},
           confidence: { type: "string", enum: ["low", "medium", "high"], description: "置信度，默认 medium" },
           asset_ids: {
             type: "array",
             items: { type: "integer" },
-            description: "该事实涉及的资产 id；缺省继承意图锚定的资产",
+            description: "仅填写本条结论实际涉及的资产 ID，可含多个相关资产；缺省或空数组不继承意图资产，记录保留但不计覆盖",
           },
         },
         anyOf:[{required:["summary"]},{required:["facts"]}],
@@ -58,7 +60,7 @@ export function recordFactTool(ctx: ToolRunContext) {
             if (!sameSource(c,origin,payload)) throw new Error('工具调用编号已用于其他来源');
             const savedAnchors=await s.anchorAssetIDs(Number(old.id));
             await writeAnchors(c,origin,savedAnchors);
-            return {fact_id:Number(old.id),anchored_assets:savedAnchors.length};
+            return {fact_id:Number(old.id),anchored_assets:savedAnchors.length,asset_ids:savedAnchors,writeback:savedWritebackReceipt(payload.writeback)};
           }
         }
         const payload: Record<string, unknown> = {
@@ -67,16 +69,16 @@ export function recordFactTool(ctx: ToolRunContext) {
         };
         if (args.evidence) payload["evidence"] = args.evidence;
         if(args.detail)payload.detail=args.detail;
-        payload.observation_type=args.observation_type??(args.confidence==='high'?'observed':args.confidence==='low'?'unknown':'inferred');
+        payload.observation_type=args.observation_type??'unknown';
         payload["confidence"] = args.confidence ?? "medium";
+        const scope=normalizeWritebackScope(args.scope);
+        if(scope)payload.scope=scope;
+        payload.writeback=writebackReceipt(anchors,scope,args.evidence,String(payload.observation_type));
 
         const factID = await s.addNode(KindFact, payload, 0, "confirmed", c.workerName ?? c.role, anchors);
         await db.query('UPDATE exploration_nodes SET tool_call_id=$2 WHERE id=$1',[factID,c.toolCallID??null]);
         await s.link(origin.id, RelYields, factID);
-        if (anchors.length > 0) {
-          await c.db.taskScope().markTaskAssetsTested(c.taskID, anchors, c.workerName ?? c.role);
-        }
-        return { fact_id: factID, anchored_assets: anchors.length };
+        return { fact_id: factID, anchored_assets: anchors.length,asset_ids:anchors,writeback:payload.writeback };
       });
         if(!args.facts)return save(args,ctx);
         if(args.summary||!args.facts.length||args.facts.length>20)throw new Error('使用 summary 单条或 facts 批量输入，不能混用');
@@ -110,7 +112,7 @@ export function nodeDetailTool(ctx: ToolRunContext) {
       },
       readOnly: true,
       async run(args, c) {
-        const resolved = await resolveGraphNode(c.db, c.taskID, c.expID, args.node_id, c.role === 'worker');
+        const resolved = await resolveGraphNode(c.db, c.taskID, c.expID, args.node_id);
         const { node } = resolved;
         const s = c.db.exploration(resolved.expID);
         const edges = await c.db.query(
@@ -131,7 +133,7 @@ export function nodeDetailTool(ctx: ToolRunContext) {
         for(const edge of edges.rows.slice(0,10)){
           const otherID=Number(edge.src_id)===node.id?Number(edge.dst_id):Number(edge.src_id);
           const other=await s.getNode(otherID);
-          if(other&&(await authorizedNodes(c.db,resolved.taskID,resolved.expID,[other],c.role==='worker')).length)visibleEdges.push(edge);
+          if(other&&(await authorizedNodes(c.db,resolved.taskID,resolved.expID,[other])).length)visibleEdges.push(edge);
         }
         const payload=JSON.stringify(node.payload),offset=Math.max(0,args.offset??0),full=Buffer.byteLength(payload)<8000;
         return {
@@ -188,7 +190,7 @@ export function searchWorkerTracesTool(ctx: ToolRunContext) {
         );
         const visible=[];
         for(const row of res.rows.slice(0,limit)){
-          try{await resolveGraphNode(c.db,c.taskID,c.expID,Number(row.node_id),c.role==='worker');visible.push(row);}catch{ /* filtered */ }
+          try{await resolveGraphNode(c.db,c.taskID,c.expID,Number(row.node_id));visible.push(row);}catch{ /* filtered */ }
         }
         return {
           next_cursor:res.rows.length>limit?Number(res.rows[limit-1]!.id):null,
@@ -241,7 +243,7 @@ export function getWorkerTraceTool(ctx: ToolRunContext) {
       readOnly: true,
       async run(args, c) {
         const s = c.db.exploration(c.expID);
-        const resolved=await resolveGraphNode(c.db,c.taskID,c.expID,args.intent_id,c.role==='worker');
+        const resolved=await resolveGraphNode(c.db,c.taskID,c.expID,args.intent_id);
         const intent=resolved.node;
         if(intent.kind!=='intent')throw new Error('节点不是意图');
 
@@ -301,5 +303,3 @@ export function getWorkerTraceTool(ctx: ToolRunContext) {
     ctx,
   );
 }
-
-export { nodeAllowsPendingAssets };

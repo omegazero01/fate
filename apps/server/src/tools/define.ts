@@ -1,4 +1,5 @@
 import { effectiveToolDescription } from '../agent/tool-descriptions.js';
+import {roleToolDescription,roleToolParameters} from '../agent/tool-description-policy.js';
 // 领域工具定义 helper：JSON Schema 字面量 → pi ToolDefinition。
 // 统一负责：输出 clamp（有界 JSON）、错误 → isError 工具结果（模型可消化）、
 // 只读/幂等标注。完整结果持久保存，超长 JSON 返回有界分片和续读引用。
@@ -78,13 +79,13 @@ export function domainTool<T>(spec: DomainToolSpec<T>, ctx: ToolRunContext) {
   return defineTool({
     name: spec.name,
     label: spec.name,
-    description: effectiveToolDescription(spec.name, spec.description).description,
+    description: roleToolDescription(spec.name,effectiveToolDescription(spec.name, spec.description),ctx.role),
     promptSnippet: spec.promptSnippet,
     // pi otherwise prepares a whole batch before starting its tools in parallel.
     // Domain writes must preserve model order: evidence -> finding -> summary.
     // A sequential tool serializes its entire native batch, including MCP/bash.
     executionMode: spec.readOnly === true ? 'parallel' : 'sequential',
-    parameters: spec.parameters as never,
+    parameters: roleToolParameters(spec.name,spec.parameters,ctx.role) as never,
     annotations: {
       readOnlyHint: spec.readOnly === true,
       idempotentHint: spec.idempotent === true,

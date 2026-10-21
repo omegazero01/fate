@@ -2,7 +2,6 @@
 // 忠实平移自 Go 版 db/assets.go + db/companies.go + db/company_scope.go + db/nkey.go 的核心路径。
 // eTLD+1 解析：Go 用 golang.org/x/net/publicsuffix，TS 侧用 tldts（allowPrivateDomains 对齐
 // Go 列表含私有段的行为）；IDNA 转写用 node:url 的 domainToASCII（对齐 idna.Lookup.ToASCII）。
-// Agent 发现通过 registerAgentAsset 原子登记来源、审批模板与父资产。
 
 import { domainToASCII } from "node:url";
 import { parse as tldtsParse } from "tldts";
@@ -54,7 +53,7 @@ function parseIPv4Groups(s: string): number[] | null {
   if (parts.length !== 4) return null;
   const octets: number[] = [];
   for (const p of parts) {
-    if (!IPV4_PART.test(p)) return null;
+    if (!IPV4_PART.test(p) || (p.length > 1 && p.startsWith("0"))) return null;
     const n = Number(p);
     if (n > 255) return null;
     octets.push(n);
@@ -229,19 +228,29 @@ function isIcannPublicSuffix(d: string): boolean {
 // u.String() 重建结果不一致（url 列是去重键，必须保持 Go 的重建语义）。
 const URL_SPLIT_RE = /^([A-Za-z][A-Za-z0-9+.\-]*):(?:\/\/([^/?#]*)([^?#]*))?(\?[^#]*)?(#.*)?$/;
 
+/** Go URL.EscapedPath/Fragment: retain a valid raw spelling; otherwise escape decoded UTF-8 bytes. */
+function escapedURLPart(raw:string,fragment=false):string {
+  const valid=fragment?/^[A-Za-z0-9_~.\-!$&'()*+,;=:@/?%\[\]]*$/:/^[A-Za-z0-9_~.\-!$&'()*+,;=:@/%\[\]]*$/;
+  if(valid.test(raw)&&!/%(?![0-9a-f]{2})/i.test(raw))return raw;
+  const bytes:number[]=[];
+  for(const part of raw.match(/%[0-9a-f]{2}|[^%]+|%/gi)??[]) {
+    if(/^%[0-9a-f]{2}$/i.test(part))bytes.push(parseInt(part.slice(1),16));else bytes.push(...Buffer.from(part));
+  }
+  return bytes.map(b=>{const c=String.fromCharCode(b);return /[A-Za-z0-9_~.\-$&+,/:;=@]/.test(c)||fragment&&/[?!()*]/.test(c)?c:'%'+b.toString(16).toUpperCase().padStart(2,'0');}).join('');
+}
 /** normalizeURL：scheme/host 小写；裸根去掉尾斜杠。解析失败原样返回。 */
 export function normalizeURL(raw: string): string {
   const m = URL_SPLIT_RE.exec(raw);
-  if (!m) return raw;
+  if (!m || /[\u0000-\u001f\u007f]/.test(raw) || /%(?![0-9a-f]{2})/i.test(raw)) return raw;
   const scheme = m[1]!;
   if (m[2] === undefined) {
     // 无 "//"（opaque/相对形式）：仅小写 scheme，其余原样（Go u.String() 行为）。
-    return scheme.toLowerCase() + raw.slice(scheme.length + 1);
+    return scheme.toLowerCase() + raw.slice(scheme.length);
   }
   const authority = m[2];
-  const path = m[3] ?? "";
+  const path = escapedURLPart(m[3] ?? "");
   const query = m[4] ?? "";
-  const fragment = m[5] ?? "";
+  const fragment = m[5] ? "#"+escapedURLPart(m[5].slice(1),true) : "";
   let userinfo = "";
   let hostPart = authority;
   const at = authority.lastIndexOf("@");
@@ -309,7 +318,7 @@ export function parseURL(raw: string): { domain: string; port: number; serviceNa
 
 export function marshalStringArray(items: string[]): string {
   if (items.length === 0) return "{}";
-  return "{" + items.map((s) => `"${s.replaceAll('"', '\\"')}"`).join(",") + "}";
+  return "{" + items.map((s) => `"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`).join(",") + "}";
 }
 
 export function marshalJSONBArray(items: Record<string, unknown>[]): string {
@@ -1174,16 +1183,6 @@ function mapCompany(row: Record<string, unknown>): Company {
 
 // ─── 资产 store（db/assets.go AssetStore）────────────────────────────────────
 
-/** 与 Go reconcileAssetTemplate 一致：模板授权重估（task_asset_links 为空时是 no-op）。 */
-async function reconcileAssetTemplate(q: SQLQuerier, taskID: number): Promise<void> {
-  await q.query(
-    `UPDATE task_asset_links l SET approval_state='pending' FROM assets a
-     WHERE l.task_id=$1 AND a.id=l.asset_id AND l.approval_state='pending'
-     AND NOT task_asset_blocked($1,a.id) AND task_asset_template_allows($1,a)`,
-    [taskID],
-  );
-}
-
 export class AssetStore {
   private readonly tx: PoolClient | null;
   readonly companies: CompanyStore;
@@ -1210,10 +1209,6 @@ export class AssetStore {
       let id: number;
       try {
         id = await fn(scoped);
-        const tids = await client.query<{ tid: string }>(`SELECT unnest(task_ids) AS tid FROM assets WHERE id=$1`, [id]);
-        for (const r of tids.rows) {
-          await reconcileAssetTemplate(client, Number(r.tid));
-        }
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK").catch(() => undefined);
@@ -1234,9 +1229,6 @@ export class AssetStore {
       await tx.query("SELECT set_config('series.agent_discovery','on',true),set_config('series.origin_task',$1,true),set_config('series.asset_origin',$2,true)",
         [String(taskID), JSON.stringify({ agent_key: agent, node_id: owner ?? null, tool_use_id: toolCallID ?? null })]);
       const id = await write(store);
-      await tx.query(`UPDATE assets a SET task_ids=array_remove(a.task_ids,$1)
-        WHERE $1=ANY(a.task_ids) AND EXISTS(SELECT 1 FROM task_asset_blocks b WHERE b.task_id=$1
-        AND b.block_kind='deleted' AND b.asset_type IN ('root_domain','subdomain','ip') AND task_asset_host(a)=b.host_key)`, [taskID]);
       await tx.query(`UPDATE task_asset_links SET source='agent',source_summary=$3,source_node_id=$4
         WHERE task_id=$1 AND asset_id=$2 AND source IN ('agent','system')`,
         [taskID,id,owner ? `Worker 意图 #${owner} 通过 insert_assets 登记` : 'Agent 通过 insert_assets 登记',owner ?? null]);
@@ -1383,6 +1375,15 @@ export class AssetStore {
     if (this.tx === null) {
       return this.withCompanyScopeMutation((scoped) => scoped.upsertSubdomain(req));
     }
+    if (domain.startsWith('_') && ['TXT','SRV'].includes(recordType)) {
+      const host=domain.replace(/^(?:_[^.]+\.)+/, '');
+      const root=rootDomain(host);
+      const id=root.isApex ? await this.upsertRootDomain({domain:host,icp,taskID}) : await this.upsertSubdomain({domain:host,icp,taskID});
+      await this.tx.query(`UPDATE assets SET extra=jsonb_set(extra,'{dns_records}',
+       (SELECT jsonb_agg(DISTINCT v) FROM jsonb_array_elements(COALESCE(extra->'dns_records','[]')||jsonb_build_array($2::jsonb))v)) WHERE id=$1`,
+       [id,JSON.stringify({owner:domain,type:recordType,values:req.recordValue??[]})]);
+      return id;
+    }
     const rd = rootDomain(domain);
     let root = rd.root;
     if (root === "") root = domain;
@@ -1391,7 +1392,7 @@ export class AssetStore {
     let companyID = await this.resolveCompanyWithICP(root, "", icp);
 
     // 副作用 1：确保根域存在（失败忽略，与 Go 一致）。
-    await this.upsertRootDomain({ domain: root, taskID }).catch(() => undefined);
+    await this.upsertRootDomain({ domain: root, taskID });
 
     // 副作用 2：A/AAAA 记录 → 逐 IP upsert 并绑定域名；RecordValue 元素可能是逗号分隔（legacy）。
     let ipStr = ""; // 第一个合法 IP，写进子域行本身
@@ -1412,7 +1413,7 @@ export class AssetStore {
             ip: normalized,
             boundDomains: [domain],
             taskID,
-          }).catch(() => undefined);
+          });
         }
       }
     }
@@ -1456,13 +1457,6 @@ export class AssetStore {
       ],
     );
     const id = Number(res.rows[0]!.id);
-    if (taskID <= 0 || dnsIPs.length === 0) return id;
-    await this.tx.query(
-      `INSERT INTO task_asset_dns_evidence(task_id,dns_asset_id,record_type,ip)
-      SELECT $1,$2,$3,value::inet FROM unnest($4::text[]) AS input(value)
-      ON CONFLICT(task_id,dns_asset_id,ip) DO NOTHING`,
-      [taskID, id, recordType, marshalStringArray(dnsIPs)],
-    );
     return id;
   }
 
@@ -1851,7 +1845,7 @@ export class AssetStore {
   async getByIDs(ids: number[]): Promise<Asset[]> {
     if (ids.length === 0) return [];
     const res = await this.db.query(
-      `${ASSET_SELECT_COLS} WHERE id = ANY($1::bigint[]) ORDER BY last_seen DESC, id DESC`,
+      `${ASSET_SELECT_COLS} WHERE id IN(SELECT COALESCE(x.asset_id,w.id) FROM unnest($1::bigint[])w(id) LEFT JOIN asset_id_aliases x ON x.old_id=w.id) ORDER BY last_seen DESC, id DESC`,
       [ids],
     );
     return res.rows.map((r) => mapAsset(r as Record<string, unknown>));

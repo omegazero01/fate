@@ -8,6 +8,7 @@ import {authorizeTaskRequest} from './gateway.js';
 import {parseAndVerify} from './credentials.js';
 import {recordExchange} from '../evidence/store.js';
 import type {EgressGateway} from './index.js';
+import {TARGET_TLS_OPTIONS} from '../evidence/target-transport.js';
 const CAP=8*1024*1024;
 function clean(headers:IncomingHttpHeaders){
  const result={...headers};
@@ -35,7 +36,10 @@ export async function startRecordingGateway(db:Database,host:string,port:number,
    const url=new URL(req.url??'/',`${ctx.isSSL?'https':'http'}://${req.headers.host}`);
    if(!['http:','https:'].includes(url.protocol))throw new Error('unsupported protocol');
    if(scope.tagged)await authorizeTaskRequest(db,scope.taskID,url.hostname,Number(url.port)||(url.protocol==='https:'?443:80),scope.scope);
-   if(ctx.proxyToServerRequestOptions)ctx.proxyToServerRequestOptions.headers=Object.fromEntries(Object.entries(clean(req.headers)).filter(([,v])=>v!==undefined).map(([k,v])=>[k,Array.isArray(v)?v.join(', '):String(v)]));
+   if(ctx.proxyToServerRequestOptions){
+    Object.assign(ctx.proxyToServerRequestOptions,TARGET_TLS_OPTIONS);
+    ctx.proxyToServerRequestOptions.headers=Object.fromEntries(Object.entries(clean(req.headers)).filter(([,v])=>v!==undefined).map(([k,v])=>[k,Array.isArray(v)?v.join(', '):String(v)]));
+   }
    // Only tagged traffic has a trustworthy task attribution. Read recording switch per request.
    if(scope.tagged&&await db.platform().getSetting('traffic_capture')!=='false'){
     const request:Buffer[]=[],response:Buffer[]=[];let reqLength=0,respLength=0,truncated=false;

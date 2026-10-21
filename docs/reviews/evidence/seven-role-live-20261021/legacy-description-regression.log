@@ -1,0 +1,15 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+stdout | src/agent/tool-catalog.test.ts > all seven previews use real schemas and never include Retester capabilities
+LOADOUT_BUDGET [{"role":"goals","resident":["context_search","context_get","set_goals","set_constraints","register_user_target","read"],"deferred":[],"schema_bytes":{"before":5150,"resident":4864,"registered":4864}},{"role":"planner","resident":["context_search","context_get","graph_overview","add_intent","prove_goal","kill_work","steer_work","todo_write","read","bash","write","edit","tool_search"],"deferred":["add_task_scope","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17268,"resident":12085,"registered":15255}},{"role":"mainagent","resident":["record_fact","report_finding","insert_assets","context_search","context_get","add_intent","dispatch_intents","steer_work","read","bash","write","edit","tool_search"],"deferred":["graph_overview","set_goals","set_constraints","kill_work","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":24194,"resident":15187,"registered":20146}},{"role":"worker","resident":["http_request","context_search","context_get","record_fact","insert_assets","report_finding","read","bash","write","edit","tool_search"],"deferred":["graph_overview","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17337,"resident":10971,"registered":14130}},{"role":"auto","resident":["context_get","list_tasks","get_task","spawn_task","pause_task","resume_task","context_search","read","tool_search"],"deferred":["list_llm_profiles","add_task_hint","get_finding","update_finding_report","asset_search","asset_get","list_findings"],"schema_bytes":{"before":7814,"resident":4764,"registered":6653}},{"role":"pentest","resident":["context_get","context_search","record_conversation_fact","report_conversation_finding","http_request","read","bash","write","edit","tool_search"],"deferred":["asset_search","asset_get","list_findings","graph_overview"],"schema_bytes":{"before":11897,"resident":8635,"registered":10060}},{"role":"reporter","resident":["context_get","get_finding","update_finding_report","context_search","read","tool_search"],"deferred":["list_findings"],"schema_bytes":{"before":4789,"resident":4216,"registered":3908}}]
+
+ ✓ src/agent/tool-catalog.test.ts (3 tests) 2741ms
+   ✓ disabled search uses direct fallback without re-enabling retired aliases 328ms
+ ✓ src/agent/tool-description-policy.test.ts (11 tests) 5ms
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  09:55:09
+   Duration  5.87s (transform 319ms, setup 0ms, collect 2.47s, tests 2.75s, environment 0ms, prepare 157ms)
+

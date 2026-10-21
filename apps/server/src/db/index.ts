@@ -12,13 +12,15 @@ import { AssetStore } from "./assets.js";
 import { TaskStore } from "./tasks.js";
 import { TaskScopeStore } from "./task_scope.js";
 import { PlatformStore, seedBuiltins } from "./platform.js";
-import { InterceptStore } from "./intercept.js";
+import { prepareToolOutputAccessMigration } from "../evidence/tool-outputs.js";
+import {migrateOperationJournal} from './operation-journal.js';
+import {retireRetester} from './retire-retester.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// schema.sql 与 asset_templates.sql 自 Go 树拷贝而来，此后以本目录为唯一数据源。
+// 以本目录为 schema 与兼容迁移的唯一数据源。
 const schemaSQL = readFileSync(path.join(__dirname, "sql", "schema.sql"), "utf8");
-const assetTemplateSQL = readFileSync(path.join(__dirname, "sql", "asset_templates.sql"), "utf8");
+const retirementSQL = readFileSync(path.join(__dirname, 'sql', 'retire-approvals.sql'), 'utf8');
 
 const SCHEMA_MIGRATION_LOCK_KEY = 7337741001;
 const DEADLOCK_RETRY_DELAYS_MS = [100, 250, 500, 1000];
@@ -71,7 +73,7 @@ export class Database {
     return new TaskStore(this);
   }
 
-  /** 任务侧范围/授权/覆盖度 store（Go: TaskScopeStore）。 */
+  /** 任务侧范围、资产关联与覆盖度 store。 */
   taskScope(): TaskScopeStore {
     return new TaskScopeStore(this, this.transactionClient);
   }
@@ -79,11 +81,6 @@ export class Database {
   /** 设置/提示词/工具目录/MCP/LLM profile store（Go: PlatformStore）。 */
   platform(): PlatformStore {
     return new PlatformStore(this);
-  }
-
-  /** 拦截审批持久化 store（Go: InterceptStore）。 */
-  interceptStore(): InterceptStore {
-    return new InterceptStore(this);
   }
 
   async close(): Promise<void> {
@@ -157,8 +154,9 @@ export async function openDatabase(): Promise<Database> {
   try {
     await client.query("SELECT pg_advisory_lock($1)", [SCHEMA_MIGRATION_LOCK_KEY]);
     try {
+      await prepareToolOutputAccessMigration(client);
       // 无参数的 query 走简单查询协议，支持单次执行整份多语句 schema。
-      const ddl = schemaSQL + "\n" + assetTemplateSQL;
+      const ddl = retirementSQL + "\n" + schemaSQL;
       for (let attempt = 0; ; attempt++) {
         try {
           await client.query(ddl);
@@ -169,8 +167,10 @@ export async function openDatabase(): Promise<Database> {
         }
       }
       const db = new Database(pool);
+      await migrateOperationJournal(db);
       // 内置种子（agents/规则/MCP/技能可见性）在迁移锁内执行，与 Go 同构。
       await seedBuiltins(db);
+      await retireRetester(db);
     } finally {
       await client.query("SELECT pg_advisory_unlock($1)", [SCHEMA_MIGRATION_LOCK_KEY]).catch(() => undefined);
     }

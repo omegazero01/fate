@@ -56,12 +56,6 @@ import type {
   FindingTrafficDetail,
   GlobalProxyProbeResult,
   IntentAsset,
-  InterceptApprovalFilter,
-  InterceptApprovalRow,
-  InterceptDetail,
-  InterceptPending,
-  InterceptRule,
-  JudgeConfig,
   LLMPoolStatus,
   LLMProfile,
   LLMRecordDetail,
@@ -91,8 +85,6 @@ import type {
   Task,
   TaskArchive,
   TaskArchivePage,
-  TaskAssetApproval,
-  TaskAssetApprovalMutation,
   TaskAssetMutation,
   TaskAssetScopeMutation,
   TaskCategory,
@@ -193,13 +185,6 @@ function findingFilterParams(q: Omit<FindingQuery, "page" | "pageSize">): URLSea
   return p;
 }
 
-function interceptPageQuery(page: number, size: number, filter: InterceptApprovalFilter) {
-  const query = new URLSearchParams({ page: String(page), size: String(size) });
-  if (filter.status) query.set("status", filter.status);
-  if (filter.decision_source) query.set("decision_source", filter.decision_source);
-  return query.toString();
-}
-
 async function downloadWorkspaceResource(url:string,name:string){
  const token=getToken(); const response=await entryAwareFetch(`/api${url}`,{headers:token?{'X-Series-Token':token}:{}});
  if(!response.ok)throw new Error(`下载失败：${response.status}`);
@@ -228,7 +213,6 @@ export const api = {
     get<{ tasks: Task[]; active: string }>("/tasks").then((r) => ({ tasks: arr(r.tasks), active: r.active ?? "" })),
   task: (id: string) => get<Task>(`/tasks/${encodeURIComponent(id)}`),
   createTask: (input: {
-    assetApprovalTemplate?: import("./types").AssetApprovalTemplate;
     name?: string;
     categoryId?: number;
     description: string;
@@ -251,7 +235,6 @@ export const api = {
       source_task_ids: input.sourceTaskIds ?? [],
       company_ids: input.companyIds ?? [],
       asset_ids: input.assetIds ?? [],
-      asset_approval_template: input.assetApprovalTemplate ?? "all_assets",
       timeout_seconds: input.timeoutSeconds ?? 0,
       seed_first_intent: input.seedFirstIntent ?? false,
       plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 = 后端归一到默认 600(10min)
@@ -362,6 +345,8 @@ export const api = {
     get<{
       enabled: boolean; // 资产覆盖度功能是否开启；false 时其余字段为零值
       scope_rows: number;
+      legacy_unverified?: number;
+      coverage_basis?: string;
       denominator: number;
       tested: number;
       pct: number | null;
@@ -447,6 +432,7 @@ export const api = {
   },
 
   // ---- assets ----
+  assetDetail: (id:number,taskId:string) => get<{assets:Asset[]}>(`/assets?task_id=${encodeURIComponent(taskId)}&id=${id}&limit=1`).then(r=>r.assets[0]),
   // Server-side paginated: pass limit/offset, get back the page + full match total.
   assets: (type = "", limit = 50, offset = 0) =>
     get<{ count: number; total: number; assets: Asset[] }>(`/assets?type=${type}&limit=${limit}&offset=${offset}`).then(
@@ -461,9 +447,9 @@ export const api = {
   deleteAssets: (ids: number[]) =>
     http<{ deleted: number }>("/assets", { method: "DELETE", body: JSON.stringify({ ids }) }),
   // task-scoped view of the same endpoint — server-side paginated like `assets`
-  taskAssets: (taskId: string, type = "", limit = 50, offset = 0, tested = "all", approval = "all") =>
+  taskAssets: (taskId: string, type = "", limit = 50, offset = 0, tested = "all") =>
     get<{ count: number; total: number; assets: Asset[] }>(
-      `/assets?task_id=${encodeURIComponent(taskId)}&type=${encodeURIComponent(type)}&tested=${encodeURIComponent(tested)}&approval_state=${encodeURIComponent(approval)}&limit=${limit}&offset=${offset}`,
+      `/assets?task_id=${encodeURIComponent(taskId)}&type=${encodeURIComponent(type)}&tested=${encodeURIComponent(tested)}&limit=${limit}&offset=${offset}`,
     ).then((r) => ({ assets: r?.assets ?? [], total: r?.total ?? r?.count ?? 0 })),
   // DSL search scoped to a task — the backend forces the task_id filter, so it
   // always stays within that task's assets (same DSL grammar as `searchAssets`).
@@ -474,10 +460,9 @@ export const api = {
     limit = 50,
     offset = 0,
     tested = "all",
-    approval = "all",
   ) =>
     get<{ count: number; total: number; assets: Asset[] }>(
-      `/assets?task_id=${encodeURIComponent(taskId)}&dsl=${encodeURIComponent(dsl)}&type=${encodeURIComponent(type)}&tested=${encodeURIComponent(tested)}&approval_state=${encodeURIComponent(approval)}&limit=${limit}&offset=${offset}`,
+      `/assets?task_id=${encodeURIComponent(taskId)}&dsl=${encodeURIComponent(dsl)}&type=${encodeURIComponent(type)}&tested=${encodeURIComponent(tested)}&limit=${limit}&offset=${offset}`,
     ).then((r) => ({ assets: r?.assets ?? [], total: r?.total ?? r?.count ?? 0 })),
   attachTaskAssets: (taskId: string, assetIds: number[], sourceSummary: string) =>
     post<TaskAssetMutation>(`/tasks/${taskId}/assets`, {
@@ -487,26 +472,6 @@ export const api = {
   registerTaskAssetScopes: (taskId: string, scope: CompanyScopeRule[]) =>
     post<TaskAssetScopeMutation>(`/tasks/${taskId}/assets`, { scope }),
   detachTaskAsset: (taskId: string, assetId: number) => del<{ detached: number }>(`/tasks/${taskId}/assets/${assetId}`),
-  taskAssetApprovals: (taskId: string) =>
-    get<{ items: TaskAssetApproval[] }>(`/tasks/${taskId}/asset-approvals?group_by=host`).then((r) => r?.items ?? []),
-  updateTaskAssetTemplate: (taskId: string, value: import("./types").AssetApprovalTemplate) =>
-    put(`/tasks/${taskId}/asset-approval-template`, { asset_approval_template: value }),
-  mutateTaskAssetGroups: (
-    taskId: string,
-    operation: "approve" | "revoke" | "block",
-    groupKeys: string[],
-    reason = "",
-  ) =>
-    post<TaskAssetApprovalMutation>(`/tasks/${taskId}/asset-approvals/${operation}`, {
-      group_keys: groupKeys,
-      reason,
-    }),
-  approveTaskAssets: (taskId: string, assetIds: number[], reason = "") =>
-    post<TaskAssetApprovalMutation>(`/tasks/${taskId}/asset-approvals/approve`, { asset_ids: assetIds, reason }),
-  revokeTaskAssets: (taskId: string, assetIds: number[], reason = "") =>
-    post<TaskAssetApprovalMutation>(`/tasks/${taskId}/asset-approvals/revoke`, { asset_ids: assetIds, reason }),
-  blockTaskAssets: (taskId: string, assetIds: number[], reason = "") =>
-    post<TaskAssetApprovalMutation>(`/tasks/${taskId}/asset-approvals/block`, { asset_ids: assetIds, reason }),
   taskIntentAssets: (taskId: string, before = 0, limit = 300, signal?: AbortSignal) => {
     const query = new URLSearchParams({ before: String(Math.max(0, before)), limit: String(limit) });
     return get<{ assets: IntentAsset[] }>(`/tasks/${taskId}/intent-assets?${query}`, { signal }).then((r) =>
@@ -751,9 +716,9 @@ export const api = {
       refs: r.refs ?? {},
     }));
   },
-  explorationNodeDetail: (task: string, id: string, bodyOffset = 0, edgeOffset = 0, signal?: AbortSignal) =>
+  explorationNodeDetail: (task: string, id: string, bodyOffset = 0, edgeOffset = 0, signal?: AbortSignal, assetOffset=0) =>
     get<import("@/lib/types").ExplorationNodeDetail>(
-      `/exploration/nodes/${encodeURIComponent(id)}?${new URLSearchParams({ task, body_offset: String(bodyOffset), edge_offset: String(edgeOffset) })}`,
+      `/exploration/nodes/${encodeURIComponent(id)}?${new URLSearchParams({ task, body_offset: String(bodyOffset), edge_offset: String(edgeOffset),asset_offset:String(assetOffset) })}`,
       { signal },
     ),
   activity: (task?: string, opts?: { intent?: string; since?: number; limit?: number }) => {
@@ -768,6 +733,8 @@ export const api = {
     }));
   },
   turnSummaries: (task:string|undefined,conversation:number|undefined,ids:string[]) => get<{items:import('./turn-summary').TurnSummary[]}>(`/${conversation?`conversations/${conversation}`:`tasks/${task}`}/turns?ids=${encodeURIComponent(ids.join(','))}`),
+  workerWritebacks: (task:string,turn:string,bucket:'current'|'previous'='current',cursor?:string) =>
+    get<import('./worker-writebacks').WorkerWritebackPage>(`/tasks/${encodeURIComponent(task)}/turns/${encodeURIComponent(turn)}/writebacks?${new URLSearchParams({bucket,...(cursor?{cursor}:{})})}`),
   activityDetail: (id: number, task?: string) => get<{ detail: string }>(`/exploration/activity/${id}${tq(task)}`),
   // Reverse-paginated session history. session = "main" | "plan" | "intent:<id>".
   // before=0 → latest page; before=<id> → the older page ending before that id.
@@ -863,7 +830,8 @@ export const api = {
   trafficForTask: (task:string) => get<TrafficResp>(`/traffic?task=${encodeURIComponent(task)}&size=200`),
   stopRetestConversation: (id:number) => post<{status:string}>(`/conversations/${id}/stop`,{}),
   trafficExchange: (id: string, task?:string) => get<TrafficDetail>(`/traffic/exchange?id=${encodeURIComponent(id)}${task?`&task=${encodeURIComponent(task)}`:""}`),
-  trafficHosts: () => get<{ hosts: TrafficHost[] }>(`/traffic/hosts`),
+  trafficHosts: (task?:string) => get<{ hosts: TrafficHost[] }>(`/traffic/hosts${task?`?task=${encodeURIComponent(task)}`:""}`),
+  trafficPaths: (task:string,host:string,page=0) => get<{paths:{path:string;count:number}[];total:number;page:number;size:number}>(`/traffic/paths?${new URLSearchParams({task,host,page:String(page)})}`),
   trafficDeleteHost: (host: string) => del<{ deleted: number }>(`/traffic?host=${encodeURIComponent(host)}`),
   trafficDeleteHosts: (hosts: string[]) => del<{ deleted: number }>(`/traffic/hosts`, { hosts }),
   // Purges every exchange and compacts the index; `reclaimed` is the bytes of
@@ -1096,8 +1064,9 @@ export const api = {
     put<{ ok: boolean }>(`/agents/${key}/visibility`, { mcp, skill }),
 
   // ---- tools (内置工具目录) ----
+  toolCatalog: () => get<{ tools: Tool[]; roles: import("./types").RoleToolPreview[] }>("/tools"),
   tools: () => get<{ tools: Tool[] }>("/tools").then((r) => arr(r.tools)),
-  saveTool: (key: string, patch: Pick<Tool, "description" | "schema" | "agents" | "enabled">) =>
+  saveTool: (key: string, patch: Partial<Pick<Tool, "description" | "schema" | "agents" | "enabled">>) =>
     put<{ ok: boolean }>(`/tools/${key}`, patch),
   resetTool: (key: string) => post<{ ok: boolean }>(`/tools/${key}/reset`, {}),
   // custom tools (自定义工具)
@@ -1243,81 +1212,6 @@ export const api = {
   skillVisibility: (name: string) => get<{ agents: string[] }>(`/visibility/skill/${name}`).then((r) => arr(r.agents)),
   toggleSkillVisibility: (agentId: string, skillName: string, visible: boolean) =>
     post<{ ok: boolean }>("/visibility/skill/toggle", { agent_id: agentId, skill_name: skillName, visible }),
-
-  // ---- intercept rules ----
-  interceptRules: () => get<{ rules: InterceptRule[] }>("/intercept/rules").then((r) => arr(r.rules)),
-  createInterceptRule: (rule: Omit<InterceptRule, "id" | "created_at" | "updated_at">) =>
-    post<InterceptRule>("/intercept/rules", rule),
-  updateInterceptRule: (id: number, rule: Omit<InterceptRule, "id" | "created_at" | "updated_at">) =>
-    put<InterceptRule>(`/intercept/rules/${id}`, rule),
-  deleteInterceptRule: (id: number) => del<{ deleted: number }>(`/intercept/rules/${id}`),
-  toggleInterceptRule: (id: number, enabled: boolean) =>
-    post<{ ok: boolean; enabled: boolean }>(`/intercept/rules/${id}/toggle`, { enabled }),
-
-  // ---- intercept pending (ask) ----
-  interceptPending: (signal?: AbortSignal, task?: string) =>
-    get<{ pending: InterceptPending[] }>(`/intercept/pending${tq(task)}`, { signal }).then((r) => arr(r.pending)),
-  interceptGetOne: (id: number) => get<InterceptPending>(`/intercept/pending/${id}`),
-  interceptDecide: (id: number, decision: "allowed" | "denied") =>
-    post<{ ok: boolean }>(`/intercept/pending/${id}/decide`, { decision }),
-  interceptExecution: (id: number, conversationId?: number) =>
-    get<import("@/lib/types").InterceptExecution>(
-      `/intercept/history/${id}/execution${conversationId ? `?conversation=${conversationId}` : ""}`,
-    ),
-  interceptDetail: (id: number) => get<InterceptDetail>(`/intercept/history/${id}`),
-  interceptHistory: () => get<{ items: InterceptApprovalRow[] }>("/intercept/history").then((r) => arr(r.items)),
-  interceptHistoryPage: (page = 1, size = 20, filter: InterceptApprovalFilter = {}, signal?: AbortSignal) =>
-    get<{ items: InterceptApprovalRow[]; total?: number }>(
-      `/intercept/history?${interceptPageQuery(page, size, filter)}`,
-      { signal },
-    ).then((r) => ({
-      items: arr(r.items),
-      total: r.total ?? r.items?.length ?? 0,
-    })),
-  interceptTask: (taskId: string) =>
-    get<{ items: InterceptApprovalRow[] }>(`/intercept/task/${taskId}`).then((r) => arr(r.items)),
-  interceptTaskPage: (
-    taskId: string,
-    page = 1,
-    size = 20,
-    filter: InterceptApprovalFilter = {},
-    signal?: AbortSignal,
-  ) =>
-    get<{ items: InterceptApprovalRow[]; total?: number }>(
-      `/intercept/task/${encodeURIComponent(taskId)}?${interceptPageQuery(page, size, filter)}`,
-      { signal },
-    ).then((r) => ({
-      items: arr(r.items),
-      total: r.total ?? r.items?.length ?? 0,
-    })),
-
-  // ---- intercept tool-config (全局工具拦截范围) ----
-  interceptGetToolConfig: async (): Promise<{ enabled_tools: string[] }> => {
-    if (MOCK) return { enabled_tools: ["bash"] };
-    const token = getToken();
-    const r = await entryAwareFetch("/api/intercept/tool-config", {
-      headers: token ? { "X-Series-Token": token } : {},
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
-  interceptSetToolConfig: async (enabledTools: string[]): Promise<void> => {
-    if (MOCK) return;
-    const token = getToken();
-    const r = await entryAwareFetch("/api/intercept/tool-config", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { "X-Series-Token": token } : {}),
-      },
-      body: JSON.stringify({ enabled_tools: enabledTools }),
-    });
-    if (!r.ok) throw new Error(await r.text());
-  },
-
-  // ---- intercept LLM judge (模型兜底审批,全局配置) ----
-  interceptGetJudgeConfig: () => get<JudgeConfig>("/intercept/judge"),
-  interceptSetJudgeConfig: (cfg: JudgeConfig) => put<{ ok: boolean }>("/intercept/judge", cfg),
 
   // ---- commands (tool execution history, any tool) ----
   commands: (params?: { task?: string; q?: string; page?: number; size?: number }) => {

@@ -108,6 +108,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
   const [coverage, setCoverage] = React.useState<{
     enabled: boolean;
     scope_rows: number;
+    legacy_unverified?: number;
     denominator: number;
     tested: number;
     pct: number | null;
@@ -696,8 +697,8 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <TargetIcon className="size-4 text-emerald-500" /> 资产测试覆盖度
-              <span className="text-muted-foreground text-xs font-normal">（粗估，仅供参考）</span>
+              <TargetIcon className="size-4 text-emerald-500" /> 资产测试记录覆盖度
+              <span className="text-muted-foreground text-xs font-normal">（有记录不等于测试完毕）</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
@@ -706,9 +707,10 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                 {coverage.pct != null ? Math.round(coverage.pct * 100) + "%" : "—"}
               </span>
               <span className="text-muted-foreground text-sm">
-                已测 {coverage.tested} / 范围内 {coverage.denominator}
+                有明确范围记录 {coverage.tested} / 范围内 {coverage.denominator}
               </span>
             </div>
+            {!!coverage.legacy_unverified && <p className="text-muted-foreground text-sm">另有 {coverage.legacy_unverified} 项资产的历史测试范围待核实，原始记录已保留。</p>}
             {coverage.pct != null && <Progress value={Math.round(coverage.pct * 100)} />}
             {coverage.by_type.length > 0 && (
               <div className="flex flex-wrap gap-1.5 text-xs">
@@ -803,13 +805,13 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           )}
         </CardContent>
       </Card>
-      {/* 测试范围：覆盖度分母 + 授权边界，可手动增删。 */}
+      {/* 测试范围：资产分类与覆盖度分母，可手动增删。 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ShieldCheckIcon className="size-4 text-emerald-500" /> 测试范围
             <span className="text-muted-foreground text-xs font-normal">
-              （覆盖度分母 + 授权边界，共 {scope.length} 条）
+              （资产分类与覆盖度分母，共 {scope.length} 条）
             </span>
           </CardTitle>
         </CardHeader>
@@ -975,7 +977,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             </div>
             <div>
               <div className="text-2xl font-semibold tabular-nums text-red-600">{blocked.length}</div>
-              <div className="text-xs text-muted-foreground">被拦意图</div>
+              <div className="text-xs text-muted-foreground">受阻意图</div>
             </div>
           </CardContent>
         </Card>
@@ -998,13 +1000,13 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         </Card>
       </div>
 
-      {/* Blocked intents — 出错/被拦(如 LLM 网络问题)的意图，可一键重跑：置回 open，
+      {/* Blocked intents — 执行出错(如 LLM 网络问题)的意图，可一键重跑：置回 open，
           worker 会重新认领、从头再跑（已写回图谱的数据保留）；任务若已终态/暂停会自动复活。 */}
       {blocked.length > 0 && (
         <Card className="border-red-500/30">
           <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <AlertTriangleIcon className="size-4 text-red-500" /> 被拦/出错意图
+              <AlertTriangleIcon className="size-4 text-red-500" /> 受阻/出错意图
               <span className="text-xs font-normal text-muted-foreground">（共 {blocked.length} 条，可重跑）</span>
             </CardTitle>
             <Button size="sm" variant="outline" disabled={rerunning.has("__all__")} onClick={() => void rerunAll()}>

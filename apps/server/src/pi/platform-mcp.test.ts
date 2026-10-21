@@ -43,7 +43,7 @@ async function fixture(transport:'stdio'|'http'|'sse',count=1,failList=false,res
 describe('native deferred MCP',()=>{
   it('does not misreport a resource-only server as unavailable',async()=>{
     const f=await fixture('http',1,false,true);
-    f.faux.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'list resources'})]),ctx=>{const text=JSON.stringify(ctx.messages);expect(text).not.toContain('MCP 服务尚不可用');expect(text).toContain('list_mcp_resources');return fauxAssistantMessage('done');}]);
+    f.faux.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'list resources'})]),ctx=>{const text=JSON.stringify(ctx.messages);expect(text).not.toContain('MCP 发现未完成');expect(text).toContain('list_mcp_resources');return fauxAssistantMessage('done');}]);
     const runner=await AgentRunner.create(f.options);try{await runner.prompt('LOCAL resources');}finally{await runner.dispose();}
   });
 
@@ -65,7 +65,7 @@ describe('native deferred MCP',()=>{
   });
   it('reports unavailable servers instead of successful empty search',async()=>{
     const f=await fixture('http',1,true);
-    f.faux.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'allowed_echo'})]),ctx=>{expect(JSON.stringify(ctx.messages)).toContain('MCP 服务尚不可用');return fauxAssistantMessage('blocked');}]);
+    f.faux.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'allowed_echo'})]),ctx=>{expect(JSON.stringify(ctx.messages)).toContain('MCP 发现未完成');return fauxAssistantMessage('blocked');}]);
     const runner=await AgentRunner.create(f.options);try{await runner.prompt('LOCAL');expect(f.calls).toEqual([]);}finally{await runner.dispose();}
   });
   it('reduces first-request schemas for large servers and records the discovery request cost separately',async()=>{

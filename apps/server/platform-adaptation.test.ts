@@ -104,7 +104,7 @@ describe('platform adaptation integration',()=>{
     const agent=(await db.platform().getAgentByKey('worker'))!;
     await db.query("INSERT INTO agent_visibility(agent_id,resource_kind,resource_id,mcp_tool_name,enabled) VALUES($1,'mcp',$2,'',true),($1,'mcp',$2,'denied',false)",[agent.id,server]);
     expect((await roleResources(db,'worker')).mcpEntries?.find(e=>e.name==='LOCAL resource policy')?.config).toMatchObject({exposure:'deferred',toolExposure:{denied:'hidden'}});
-    await db.query("INSERT INTO tools(key,enabled,agents) VALUES('tool_search',false,'[\"worker\"]')");
+    await db.query("INSERT INTO tools(key,enabled,agents) VALUES('tool_search',false,'[\"worker\"]') ON CONFLICT(key) DO UPDATE SET enabled=false");
     try{
       expect((await roleResources(db,'worker')).mcpEntries?.find(e=>e.name==='LOCAL resource policy')?.config).toMatchObject({exposure:'direct',toolExposure:{denied:'hidden'}});
       await db.query('UPDATE mcp_servers SET enabled=false WHERE id=$1',[server]);

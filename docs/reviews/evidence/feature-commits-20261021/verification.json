@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-21",
+  "base_commit": "ec8a5bc4",
+  "verified_code_commit": "6765ec4a8b7c0e8f90f2fe7a91295a6e77750fb3",
+  "server_full": {
+    "files_passed": 62,
+    "passed": 583,
+    "skipped": 1,
+    "failed": 0,
+    "duration_seconds": 294.9,
+    "skipped_reason": "Independent test database has no DeepSeek profile for remote model-list probe"
+  },
+  "asset_staged_snapshot": {
+    "passed": 22,
+    "failed": 0
+  },
+  "web_logic": {
+    "passed": 45,
+    "failed": 0
+  },
+  "web_mock": {
+    "passed": 12,
+    "failed": 0
+  },
+  "typechecks": {
+    "server": "passed",
+    "web_working_config": "passed",
+    "web_committed_config": "passed"
+  },
+  "initial_environment_failure": {
+    "tests": 2,
+    "cause": "node-pty macOS spawn-helper lacked executable permission",
+    "repair": "node apps/server/scripts/prepare-pty.mjs",
+    "full_suite_repeated": true
+  },
+  "source_working_tree_matches_head": true,
+  "changed_commit_secret_pattern_scan": "no matches",
+  "real_model_requests": 0,
+  "external_target_requests": 0,
+  "service_restarted": false,
+  "pushed": false,
+  "excluded": [
+    "dependency caches and generated build output",
+    "local Next dist-directory type includes",
+    "historical raw test evidence"
+  ],
+  "branches": {
+    "neo_ui": "already ancestor of main",
+    "artex_steering": "kept separate under earlier user instruction"
+  },
+  "logs_private_backup": "/Users/pphua/.local/share/fate/backups/feature-commits-20261021-143024",
+  "commits": [
+    {
+      "sha": "e8d63e8266bee2ff547b61c23f30e6b31b67db6f",
+      "subject": "fix(pi): preserve native session metadata and grounded compaction projections"
+    },
+    {
+      "sha": "3ad7eb739ffc36fd5b28d5818a29bb23459f89da",
+      "subject": "refactor(assets): unify task asset graph and retire approval-gated storage"
+    },
+    {
+      "sha": "403974f7e32468224aef24f067a7ca5bfbbc5248",
+      "subject": "feat(ui): expose shared asset graph navigation and remove retired approval screens"
+    },
+    {
+      "sha": "c084992d92a0a09cfce6062d0b3c0ab26323c6ad",
+      "subject": "feat(planner): persist native planning context and verify delivered history"
+    },
+    {
+      "sha": "68e3d64545a317d71605ec1ab8aa9d6605450d34",
+      "subject": "feat(worker): scope incremental writebacks and preserve direction-level intent identity"
+    },
+    {
+      "sha": "13ecf68830dc837a641cb9634da7f50f701e5793",
+      "subject": "fix(worker): resume interrupted intents and normalize native working directories"
+    },
+    {
+      "sha": "20de1975b87baa2013c5741bf457e6446537ac81",
+      "subject": "fix(traffic): isolate test-target TLS transport and preserve redirect scope checks"
+    },
+    {
+      "sha": "71d72f713da681508315b7e0cca6de7f70fe07ed",
+      "subject": "test(assets): retain asset repair and SERIES parity acceptance procedures"
+    },
+    {
+      "sha": "ea2432c1fa8bdae392fd1633a9357a56dede32de",
+      "subject": "test(planner): retain native history and grounded replay acceptance"
+    },
+    {
+      "sha": "4e22aed84d715de8c3b719404d8bea488757e38c",
+      "subject": "test(worker): retain direction-scoped writeback acceptance and review"
+    },
+    {
+      "sha": "f53a14a6f9d7ead04a5cb6e348d512ecf510fbfd",
+      "subject": "test(worker): retain local restart and incremental-writeback acceptance"
+    },
+    {
+      "sha": "91f05a3c1714995f6372cccdadf439fd2902b703",
+      "subject": "chore(release): retain guarded backup and safe-exit deployment scripts"
+    },
+    {
+      "sha": "6765ec4a8b7c0e8f90f2fe7a91295a6e77750fb3",
+      "subject": "chore(web): scope type checks to source and standard generated routes"
+    }
+  ]
+}

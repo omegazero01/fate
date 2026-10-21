@@ -1,3 +1,4 @@
+import {mergedAssetSearchTool as assetSearchTool} from './asset-search-compat.js';
 import {httpRequestTool,trafficBodyTool,readAttachmentTool} from "./evidence.js";
 import {toolOutputTool} from './output.js';
 import {contextSearchTool,contextGetTool} from './context-read.js';
@@ -8,7 +9,7 @@ import { graphIndexTool, expandDigestTool } from "./graph_read.js";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolRunContext } from "./context.js";
 import { recordFactTool, nodeDetailTool, searchWorkerTracesTool, getWorkerTraceTool } from "./graph.js";
-import { insertAssetsTool, listAssetsTool, listUntestedAssetsTool, addTaskScopeTool } from "./assets.js";
+import { assetGetTool, insertAssetsTool, listAssetsTool, listUntestedAssetsTool, addTaskScopeTool } from "./assets.js";
 import { reportFindingTool, listFindingsTool, proveGoalTool } from "./findings.js";
 import { addIntentTool, dispatchIntentsTool, killWorkTool, steerWorkTool, todoWriteTool } from "./intents.js";
 import { setGoalsTool, setConstraintsTool, registerUserTargetTool } from "./goals.js";
@@ -31,7 +32,7 @@ export function workerTools(ctx: ToolRunContext): ToolDefinition[] {
     recordFactTool(ctx),
     insertAssetsTool(ctx),
     reportFindingTool(ctx),
-    listAssetsTool(ctx),
+    assetSearchTool(ctx),assetGetTool(ctx),listAssetsTool(ctx),
   ];
 }
 
@@ -44,7 +45,7 @@ export function plannerTools(ctx: ToolRunContext): ToolDefinition[] {
     killWorkTool(ctx), steerWorkTool(ctx),
     addTaskScopeTool(ctx),
     listUntestedAssetsTool(ctx),
-    listAssetsTool(ctx),
+    assetSearchTool(ctx),assetGetTool(ctx),listAssetsTool(ctx),
     todoWriteTool(ctx),
   ];
 }
@@ -58,7 +59,7 @@ export function mainTools(ctx: ToolRunContext): ToolDefinition[] {
     addIntentTool(ctx),
     dispatchIntentsTool(ctx),
     killWorkTool(ctx), steerWorkTool(ctx),
-    listAssetsTool(ctx),
+    assetSearchTool(ctx),assetGetTool(ctx),listAssetsTool(ctx),
     listUntestedAssetsTool(ctx),
   ];
 }

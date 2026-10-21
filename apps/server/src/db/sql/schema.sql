@@ -660,10 +660,6 @@ CREATE TABLE IF NOT EXISTS task_asset_links (
     tested         BOOLEAN NOT NULL DEFAULT false,
     tested_at      TIMESTAMPTZ,
     tested_by      TEXT,
-    approval_state TEXT NOT NULL DEFAULT 'approved',
-    approved_at    TIMESTAMPTZ,
-    approved_by    TEXT,
-    approval_reason TEXT NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (task_id, asset_id)
@@ -675,222 +671,10 @@ ALTER TABLE task_asset_links ALTER COLUMN tested SET DEFAULT false;
 ALTER TABLE task_asset_links ALTER COLUMN tested SET NOT NULL;
 ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS tested_at TIMESTAMPTZ;
 ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS tested_by TEXT;
-ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS approval_state TEXT;
-UPDATE task_asset_links SET approval_state='approved' WHERE approval_state IS NULL OR approval_state='';
-ALTER TABLE task_asset_links ALTER COLUMN approval_state SET DEFAULT 'approved';
-ALTER TABLE task_asset_links ALTER COLUMN approval_state SET NOT NULL;
-ALTER TABLE task_asset_links DROP CONSTRAINT IF EXISTS task_asset_links_approval_state_check;
-ALTER TABLE task_asset_links ADD CONSTRAINT task_asset_links_approval_state_check CHECK (approval_state IN ('approved','pending','revoked','blocked'));
-ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
-ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS approved_by TEXT;
-ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS approval_reason TEXT;
-UPDATE task_asset_links SET approval_reason='' WHERE approval_reason IS NULL;
-ALTER TABLE task_asset_links ALTER COLUMN approval_reason SET DEFAULT '';
-ALTER TABLE task_asset_links ALTER COLUMN approval_reason SET NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_task_asset_links_asset ON task_asset_links(asset_id, task_id);
 CREATE INDEX IF NOT EXISTS idx_task_asset_links_tested ON task_asset_links(task_id, tested, asset_id);
 CREATE INDEX IF NOT EXISTS idx_task_asset_links_node ON task_asset_links(source_node_id)
     WHERE source_node_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_task_asset_links_approval ON task_asset_links(task_id, approval_state, asset_id);
-
--- Task-local deletion tombstones. These intentionally have no asset foreign key:
--- a globally shared asset may be deleted/recreated while the current task must
--- continue to reject the same normalized identity until an operator reattaches it.
-CREATE TABLE IF NOT EXISTS task_asset_blocks (
-    task_id    BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    asset_key  TEXT NOT NULL,
-    asset_type TEXT NOT NULL,
-    host_key   TEXT NOT NULL DEFAULT '',
-    asset_id   BIGINT,
-    reason     TEXT NOT NULL DEFAULT '',
-    blocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    blocked_by TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (task_id, asset_key)
-);
-ALTER TABLE task_asset_blocks ADD COLUMN IF NOT EXISTS block_kind TEXT NOT NULL DEFAULT 'deleted'
-    CHECK (block_kind IN ('manual','deleted'));
-CREATE INDEX IF NOT EXISTS idx_task_asset_blocks_host ON task_asset_blocks(task_id, host_key);
-CREATE INDEX IF NOT EXISTS idx_task_asset_blocks_asset ON task_asset_blocks(asset_id);
-
--- Match Go's task-local host identity, including URL-only imported records and
--- canonical IPv6. CIDR and other free-form scope text are not coerced to hosts.
-CREATE OR REPLACE FUNCTION task_asset_normalized_host(value TEXT)
-RETURNS TEXT AS $$
-DECLARE
-    normalized TEXT := lower(btrim(COALESCE(value,'')));
-    parsed INET;
-BEGIN
-    IF normalized ~ '^[a-z][a-z0-9+.-]*://' THEN
-        normalized := regexp_replace(normalized, '^[a-z][a-z0-9+.-]*://', '');
-        normalized := split_part(split_part(split_part(normalized, '/', 1), '?', 1), '#', 1);
-        normalized := regexp_replace(normalized, '^.*@', '');
-        IF left(normalized,1)='[' THEN
-            normalized := split_part(substr(normalized,2), ']', 1);
-        ELSE
-            normalized := regexp_replace(normalized, ':[0-9]+$', '');
-        END IF;
-    END IF;
-    normalized := btrim(normalized, '[]');
-    parsed := try_inet(normalized);
-    IF parsed IS NOT NULL AND position('/' IN normalized)=0 THEN
-        RETURN host(parsed);
-    END IF;
-    RETURN regexp_replace(normalized, '\.$', '');
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
--- Identity normalization depends only on asset fields, not task authorization.
--- Compute it on writes so task-wide reads don't normalize every parent for
--- every endpoint. Generated storage also stays correct for imports and SQL writes.
-ALTER TABLE assets ADD COLUMN IF NOT EXISTS authorization_host TEXT GENERATED ALWAYS AS (
-    task_asset_normalized_host(COALESCE(NULLIF(btrim(domain),''),
-    NULLIF(btrim(ip),''), CASE WHEN url ~ '^[a-zA-Z][a-zA-Z0-9+.-]*://' THEN url END,''))
-) STORED;
-
-CREATE OR REPLACE FUNCTION task_asset_host(asset assets)
-RETURNS TEXT AS $$
-SELECT asset.authorization_host;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION task_asset_host_within(child_host TEXT, parent_host TEXT)
-RETURNS BOOLEAN AS $$
-WITH normalized AS (
-    SELECT task_asset_normalized_host(child_host) AS child,
-           task_asset_normalized_host(parent_host) AS parent
-)
-SELECT child<>'' AND parent<>'' AND
-    (child=parent OR (try_inet(parent) IS NULL AND right(child,length(parent)+1)='.'||parent))
-FROM normalized;
-$$ LANGUAGE SQL IMMUTABLE;
-
--- URLs are normalized on insertion; paths, parameters and their case stay part
--- of the identity. Host-based tombstones additionally constrain derived rows.
-CREATE OR REPLACE FUNCTION task_asset_identity_key(asset assets)
-RETURNS TEXT AS $$
-SELECT CASE asset.type
-    WHEN 'root_domain' THEN 'root_domain:'||task_asset_normalized_host(asset.domain)
-    WHEN 'subdomain' THEN 'subdomain:'||task_asset_normalized_host(asset.domain)
-    WHEN 'ip' THEN 'ip:'||task_asset_normalized_host(asset.ip)
-    WHEN 'service' THEN CASE WHEN COALESCE(asset.url,'')<>'' THEN 'service:'||asset.url
-        ELSE 'service:'||task_asset_host(asset)||':'||COALESCE(asset.port,0)::text||':'||lower(btrim(COALESCE(asset.service_name,''))) END
-    WHEN 'endpoint' THEN 'endpoint:'||COALESCE(asset.url,'')||':'||upper(btrim(COALESCE(asset.method,'')))
-    WHEN 'app' THEN 'app:'||lower(btrim(COALESCE(NULLIF(asset.bundle_id,''),asset.app_name,'')))
-    ELSE asset.type||':'||asset.id::text END;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION task_asset_blocked(p_task_id BIGINT, p_asset_id BIGINT)
-RETURNS BOOLEAN AS $$
-BEGIN
-IF NOT EXISTS (SELECT 1 FROM task_asset_blocks WHERE task_id=p_task_id) THEN
-    RETURN false;
-END IF;
-RETURN EXISTS (
-    SELECT 1 FROM task_asset_blocks block JOIN assets t ON t.id=p_asset_id
-    WHERE block.task_id=p_task_id
-      AND (block.asset_type IN ('root_domain','subdomain','ip') OR block.block_kind='invalid')
-      AND (block.asset_id=p_asset_id
-           OR block.asset_key=task_asset_identity_key(t)
-           OR (block.asset_type IN ('root_domain','subdomain','ip') AND block.host_key<>''
-               AND task_asset_host_within(task_asset_host(t),block.host_key)))
-);
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- Services/endpoints inherit their exact host. Synthetic pending ancestors do
--- not override it, but explicit ancestor revocations and blocks always win.
-CREATE OR REPLACE FUNCTION task_asset_owner_approval_state(p_task_id BIGINT,p_asset_id BIGINT)
-RETURNS TEXT LANGUAGE plpgsql STABLE AS $$
-DECLARE
- target_host TEXT; target_type TEXT; target_state TEXT;
- parent_count BIGINT; denied BOOLEAN; revoked BOOLEAN;
- exact_pending BOOLEAN; exact_approved BOOLEAN; pending BOOLEAN;
-BEGIN
- IF task_asset_blocked(p_task_id,p_asset_id) THEN RETURN 'blocked'; END IF;
- SELECT task_asset_host(a),a.type,l.approval_state INTO target_host,target_type,target_state
- FROM assets a JOIN task_asset_links l ON l.asset_id=a.id
- WHERE a.id=p_asset_id AND l.task_id=p_task_id;
- IF NOT FOUND THEN RETURN 'revoked'; END IF;
- IF target_type NOT IN ('root_domain','subdomain','ip','service','endpoint') THEN RETURN 'approved'; END IF;
- -- Hosts are normalized on asset writes; only matching parents need their
- -- authorization/tombstone checked. Keep normalized parent reads together.
- WITH parents AS MATERIALIZED (
-  SELECT p.id,task_asset_host(p) AS host,l.approval_state
-  FROM task_asset_links l JOIN assets p ON p.id=l.asset_id
-  WHERE l.task_id=p_task_id AND p.type IN ('root_domain','subdomain','ip')
- ), matching AS MATERIALIZED (
-  SELECT * FROM parents WHERE host<>'' AND target_host<>'' AND
-   (host=target_host OR (try_inet(host) IS NULL AND right(target_host,length(host)+1)='.'||host))
- )
- SELECT count(*),bool_or(approval_state='blocked' OR task_asset_blocked(p_task_id,id)),
-  bool_or(approval_state='revoked'),bool_or(host=target_host AND approval_state='pending'),
-  bool_or(host=target_host AND approval_state='approved'),bool_or(approval_state='pending')
- INTO parent_count,denied,revoked,exact_pending,exact_approved,pending FROM matching;
- IF denied THEN RETURN 'blocked'; END IF;
- IF revoked THEN RETURN 'revoked'; END IF;
- IF target_state IN ('revoked','blocked') AND target_type IN ('root_domain','subdomain','ip') THEN RETURN target_state; END IF;
- IF task_host_template_allows(p_task_id,target_host) THEN RETURN 'approved'; END IF;
- IF exact_pending THEN RETURN 'pending'; END IF;
- IF target_type NOT IN ('service','endpoint') THEN RETURN target_state; END IF;
- IF exact_approved THEN RETURN 'approved'; END IF;
- IF parent_count=0 OR pending THEN RETURN 'pending'; END IF;
- RETURN 'approved';
-END
-$$;
-
--- A local association overrides all inherited sources; otherwise any directly
--- related source may supply authorization. Current-task tombstones always win.
-CREATE OR REPLACE FUNCTION task_asset_effective_approval_state(p_task_id BIGINT, p_asset_id BIGINT)
-RETURNS TEXT AS $$
-DECLARE result TEXT;
-BEGIN
-    IF EXISTS (SELECT 1 FROM task_asset_links WHERE task_id=p_task_id AND asset_id=p_asset_id) THEN
-        -- The owner check already enforces this task's tombstones.
-        RETURN task_asset_owner_approval_state(p_task_id,p_asset_id);
-    END IF;
-    IF task_asset_blocked(p_task_id,p_asset_id) THEN RETURN 'blocked'; END IF;
-    WITH candidate_states AS MATERIALIZED (
-        SELECT task_asset_owner_approval_state(relation.source_task_id,p_asset_id) AS state
-        FROM task_relations relation
-        JOIN task_asset_links own ON own.task_id=relation.source_task_id AND own.asset_id=p_asset_id
-        WHERE relation.task_id=p_task_id
-    )
-    SELECT state INTO result FROM candidate_states
-    ORDER BY CASE state WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 WHEN 'revoked' THEN 2 ELSE 3 END
-    LIMIT 1;
-    RETURN COALESCE(result,'revoked');
-END;
-$$ LANGUAGE plpgsql STABLE;
-
-CREATE OR REPLACE FUNCTION task_asset_effectively_approved(p_task_id BIGINT, p_asset_id BIGINT)
-RETURNS BOOLEAN AS $$
-SELECT task_asset_effective_approval_state(p_task_id,p_asset_id)='approved';
-$$ LANGUAGE SQL STABLE;
-
--- Shared by startup and archive restore. Save historic operator revocations
--- before neutralizing child decisions. Unknown revocations are conservatively
--- retained, while repeated runs cannot recreate a tombstone after reattachment.
-CREATE OR REPLACE FUNCTION normalize_derived_task_asset_approvals(p_task_id BIGINT DEFAULT NULL)
-RETURNS VOID AS $$
-BEGIN
-    INSERT INTO task_asset_blocks(task_id,asset_key,asset_type,host_key,asset_id,reason,blocked_at,blocked_by)
-    SELECT l.task_id,task_asset_identity_key(a),a.type,task_asset_host(a),a.id,
-           COALESCE(NULLIF(l.approval_reason,''),'历史服务/接口撤回授权'),
-           l.updated_at,COALESCE(l.approved_by,'')
-    FROM task_asset_links l JOIN assets a ON a.id=l.asset_id
-    WHERE a.type IN ('service','endpoint') AND l.approval_state='revoked'
-      AND COALESCE(l.approval_reason,'')<>'继承父资产撤回' AND COALESCE(l.approved_by,'')<>'inherited'
-      AND (p_task_id IS NULL OR l.task_id=p_task_id)
-    ON CONFLICT (task_id,asset_key) DO NOTHING;
-
-    UPDATE task_asset_links l SET approval_state='approved',approved_at=NULL,approved_by=NULL,
-        approval_reason='继承父资产授权'
-    FROM assets a WHERE a.id=l.asset_id AND a.type IN ('service','endpoint')
-      AND (p_task_id IS NULL OR l.task_id=p_task_id)
-      AND (l.approval_state<>'approved' OR l.approved_at IS NOT NULL OR l.approved_by IS NOT NULL
-           OR COALESCE(l.approval_reason,'')<>'继承父资产授权');
-END;
-$$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS trg_task_asset_links_upd ON task_asset_links;
 CREATE TRIGGER trg_task_asset_links_upd BEFORE UPDATE ON task_asset_links
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -900,18 +684,14 @@ CREATE TRIGGER trg_task_asset_links_upd BEFORE UPDATE ON task_asset_links
 CREATE OR REPLACE FUNCTION sync_task_asset_links() RETURNS trigger AS $$
 DECLARE
     agent_discovery boolean := COALESCE(current_setting('series.agent_discovery', true), '') = 'on';
-    user_registration boolean := COALESCE(current_setting('series.user_asset_registration', true), '') = 'on';
 BEGIN
     INSERT INTO task_asset_links(
-        task_id, asset_id, source, source_summary, approval_state, approval_reason, source_origin
+        task_id, asset_id, source, source_summary, source_origin
     )
     SELECT task.id,
            NEW.id,
            CASE WHEN agent_discovery THEN 'agent' ELSE 'system' END,
            CASE WHEN agent_discovery THEN 'Agent 通过 insert_assets 登记' ELSE '任务执行期间自动关联' END,
-           CASE WHEN (agent_discovery OR user_registration) AND NEW.type NOT IN ('service','endpoint') THEN 'pending' ELSE 'approved' END,
-           CASE WHEN NEW.type IN ('service','endpoint') THEN '继承父资产授权'
-                WHEN agent_discovery THEN 'Agent 发现，等待用户审批' ELSE '' END,
            CASE WHEN agent_discovery AND task.id::text = current_setting('series.origin_task',true)
                 THEN NULLIF(current_setting('series.asset_origin',true),'')::jsonb ELSE NULL END
     FROM unnest(NEW.task_ids) AS requested(task_id)
@@ -936,13 +716,6 @@ FROM assets asset
 CROSS JOIN LATERAL unnest(asset.task_ids) AS requested(task_id)
 JOIN tasks task ON task.id=requested.task_id AND task.deleted_at IS NULL
 ON CONFLICT (task_id, asset_id) DO NOTHING;
-
--- New approval fields are conservative for legacy associations: existing links
--- were explicitly usable before approval was introduced.
-UPDATE task_asset_links SET approval_state='approved'
-WHERE approval_state IS NULL OR approval_state='';
-
-SELECT normalize_derived_task_asset_approvals();
 
 -- Backfill the task-local tested flag for existing installations. Facts and
 -- findings already anchored to an asset are durable evidence that an agent
@@ -1006,7 +779,7 @@ WHERE t.active_llm_profile_id IS NULL
   AND t.llm_profile_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM task_llm_profiles x WHERE x.task_id=t.id AND x.profile_id=t.llm_profile_id);
 
--- 任务测试范围（资产覆盖度的分母 + 授权边界）。
+-- 任务测试范围（资产分类与覆盖度的分母）。
 --   自动填(source='auto')：insertAssets 顶层按 worker 显式插入的资产类型加保守范围
 --     （root_domain→root_domain，subdomain/service/endpoint→subdomain(host)，ip→ip）；
 --     side-effect 派生的资产不入范围（钩子在 handler 顶层，派生在 db 层内部）。
@@ -1338,52 +1111,7 @@ CREATE TABLE IF NOT EXISTS scheduler_state (
 );
 
 -- =====================================================================
--- K. 拦截规则
 -- =====================================================================
-CREATE TABLE IF NOT EXISTS intercept_rules (
-    id              BIGSERIAL PRIMARY KEY,
-    name            TEXT NOT NULL,
-    enabled         BOOLEAN NOT NULL DEFAULT true,
-    priority        INTEGER NOT NULL DEFAULT 0,
-    match_target    TEXT NOT NULL CHECK (match_target IN ('tool_name', 'tool_input')),
-    match_type      TEXT NOT NULL CHECK (match_type IN ('string', 'regex')),
-    pattern         TEXT NOT NULL,
-    action          TEXT NOT NULL CHECK (action IN ('allow', 'deny', 'ask')),
-    message         TEXT NOT NULL DEFAULT '',
-    timeout_enabled BOOLEAN NOT NULL DEFAULT true,
-    timeout_seconds INTEGER NOT NULL DEFAULT 60,
-    timeout_action  TEXT    NOT NULL DEFAULT 'deny',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-DROP TRIGGER IF EXISTS trg_intercept_rules_upd ON intercept_rules;
-CREATE TRIGGER trg_intercept_rules_upd BEFORE UPDATE ON intercept_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TABLE IF NOT EXISTS intercept_pending (
-    id              BIGSERIAL PRIMARY KEY,
-    rule_id         BIGINT REFERENCES intercept_rules(id) ON DELETE SET NULL,
-    conversation_id BIGINT REFERENCES conversations(id) ON DELETE CASCADE,
-    task_id         TEXT,
-    agent_name      TEXT NOT NULL DEFAULT '',
-    tool_name       TEXT NOT NULL,
-    tool_input      JSONB NOT NULL DEFAULT '{}',
-    status          TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending', 'allowed', 'denied', 'timeout')),
-    -- 判定理由:规则命中时为规则 message;LLM 兜底判定时为模型给的简短理由(前缀 [模型])。
-    reason          TEXT NOT NULL DEFAULT '',
-    decided_at      TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_intercept_pending_status ON intercept_pending(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_intercept_pending_task   ON intercept_pending(task_id, created_at DESC);
--- 补旧库:reason 列(已发版,加列要带 IF NOT EXISTS)。
-ALTER TABLE intercept_pending ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
--- Detail payloads are lazy-loaded; NULL preserves the meaning of legacy history.
-ALTER TABLE intercept_pending ADD COLUMN IF NOT EXISTS audit JSONB;
-ALTER TABLE intercept_pending ADD COLUMN IF NOT EXISTS decision_source TEXT NOT NULL DEFAULT '';
-UPDATE intercept_pending SET decision_source=CASE WHEN rule_id IS NOT NULL THEN 'rule'
- WHEN reason LIKE '[模型]%' THEN 'model' ELSE 'unknown' END WHERE decision_source='';
 
 -- =====================================================================
 -- L. 漏洞发现持久化
@@ -1556,9 +1284,6 @@ ALTER TABLE findings ADD COLUMN IF NOT EXISTS notification_xid xid8;
 ALTER TABLE findings ALTER COLUMN notification_xid SET DEFAULT pg_current_xact_id();
 ALTER TABLE task_asset_links ADD COLUMN IF NOT EXISTS notification_xid xid8;
 ALTER TABLE task_asset_links ALTER COLUMN notification_xid SET DEFAULT pg_current_xact_id();
-ALTER TABLE intercept_pending ADD COLUMN IF NOT EXISTS notification_xid xid8;
-ALTER TABLE intercept_pending ALTER COLUMN notification_xid SET DEFAULT pg_current_xact_id();
-CREATE INDEX IF NOT EXISTS idx_intercept_notification_pending ON intercept_pending(task_id) WHERE status='pending';
 
 -- User-managed worker queue and deletion receipts belong to the task exploration.
 ALTER TABLE explorations ADD COLUMN IF NOT EXISTS worker_queue_manual BOOLEAN NOT NULL DEFAULT false;
@@ -1690,7 +1415,7 @@ BEGIN
         body := format('### Worker %s · 意图 #%s', CASE WHEN is_terminal THEN '结果' ELSE '状态' END,OLD.id)
             || E'\n\n状态：' || CASE target_state WHEN 'done' THEN '已完成' WHEN 'blocked' THEN '执行失败'
             WHEN 'exhausted' THEN '预算或时间耗尽' WHEN 'stopped' THEN '已终止' WHEN 'deleted' THEN '已删除'
-            WHEN 'paused' THEN '已暂停，恢复后继续跟踪' ELSE '等待执行或审批，恢复后继续跟踪' END
+            WHEN 'paused' THEN '已暂停，恢复后继续跟踪' ELSE '等待执行，恢复后继续跟踪' END
             || CASE WHEN is_terminal THEN E'\n\n' || COALESCE(NULLIF(result_text,''),'本次未产生最终总结，请查看 Worker 会话中的已有记录。') ELSE '' END;
         IF result_id IS NULL THEN
             SELECT id INTO result_id FROM activity WHERE exploration_id=OLD.exploration_id AND node_id=OLD.id ORDER BY id DESC LIMIT 1;
@@ -1853,19 +1578,17 @@ FROM (SELECT b.snapshot_id,min(f.task_id) AS task_id FROM finding_traffic_bindin
 WHERE s.id=owners.snapshot_id AND s.task_id IS NULL;
 
 -- Read projections use the same ancestor-anchor policy as the domain tools.
-CREATE OR REPLACE FUNCTION exploration_node_readable(eid BIGINT,nid BIGINT,allow_pending BOOLEAN DEFAULT false)
+CREATE OR REPLACE FUNCTION task_asset_linked(tid BIGINT,aid BIGINT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE AS $$
- WITH RECURSIVE owner AS (
-  SELECT id FROM tasks WHERE exploration_id=eid AND deleted_at IS NULL
- ), lineage(id) AS (
-  SELECT id FROM exploration_nodes WHERE exploration_id=eid AND id=nid
-  UNION
-  SELECT e.src_id FROM exploration_edges e JOIN lineage l ON e.dst_id=l.id WHERE e.exploration_id=eid
- )
- SELECT EXISTS(SELECT 1 FROM owner) AND EXISTS(SELECT 1 FROM lineage)
- AND NOT EXISTS(SELECT 1 FROM lineage l JOIN exploration_anchors a ON a.node_id=l.id CROSS JOIN owner o
-  WHERE COALESCE(task_asset_effective_approval_state(o.id,a.asset_id),'') <> ALL(
-   CASE WHEN allow_pending THEN ARRAY['approved','pending'] ELSE ARRAY['approved'] END))
+ SELECT EXISTS(SELECT 1 FROM tasks t JOIN task_asset_links l ON l.task_id=t.id
+ WHERE l.asset_id=aid AND t.deleted_at IS NULL AND
+ (t.id=tid OR t.id IN(SELECT source_task_id FROM task_relations WHERE task_id=tid)))
+ AND EXISTS(SELECT 1 FROM tasks WHERE id=tid AND deleted_at IS NULL)
+$$;
+CREATE OR REPLACE FUNCTION exploration_node_readable(eid BIGINT,nid BIGINT)
+RETURNS BOOLEAN LANGUAGE SQL STABLE AS $$
+ SELECT EXISTS(SELECT 1 FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id
+ WHERE n.exploration_id=eid AND n.id=nid AND t.deleted_at IS NULL)
 $$;
 CREATE OR REPLACE FUNCTION exploration_activity_readable(eid BIGINT,nid BIGINT,meta JSONB)
 RETURNS BOOLEAN LANGUAGE SQL STABLE AS $$
@@ -1877,8 +1600,7 @@ $$;
 CREATE OR REPLACE FUNCTION finding_readable(fid BIGINT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE AS $$
  SELECT COALESCE((SELECT CASE WHEN f.node_id IS NOT NULL THEN exploration_node_readable(t.exploration_id,f.node_id)
- ELSE NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(f.asset_ids) a
-  WHERE COALESCE(task_asset_effective_approval_state(t.id,a.value::bigint),'')<>'approved') END
+ ELSE true END
  FROM findings f JOIN tasks t ON t.id=f.task_id AND t.deleted_at IS NULL WHERE f.id=fid),false)
 $$;
 
@@ -1963,18 +1685,17 @@ END $$;
 DROP TRIGGER IF EXISTS exploration_content_version ON exploration_nodes;
 CREATE TRIGGER exploration_content_version BEFORE UPDATE ON exploration_nodes FOR EACH ROW EXECUTE FUNCTION version_exploration_content();
 
-CREATE OR REPLACE FUNCTION capture_context_authorization() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION capture_context_assets() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE tid BIGINT;
 BEGIN
- IF TG_OP='UPDATE' AND NEW.approval_state IS NOT DISTINCT FROM OLD.approval_state THEN RETURN NEW; END IF;
  IF TG_OP='DELETE' THEN tid:=OLD.task_id; ELSE tid:=NEW.task_id; END IF;
  INSERT INTO exploration_context_events(exploration_id,kind)
-  SELECT exploration_id,'authorization' FROM tasks WHERE deleted_at IS NULL AND (id=tid OR id IN (SELECT task_id FROM task_relations WHERE source_task_id=tid));
+  SELECT exploration_id,'assets' FROM tasks WHERE deleted_at IS NULL AND (id=tid OR id IN (SELECT task_id FROM task_relations WHERE source_task_id=tid));
  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
  RETURN NEW;
 END $$;
-DROP TRIGGER IF EXISTS context_authorization_event ON task_asset_links;
-CREATE TRIGGER context_authorization_event AFTER INSERT OR UPDATE OR DELETE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION capture_context_authorization();
+DROP TRIGGER IF EXISTS context_assets_event ON task_asset_links;
+CREATE TRIGGER context_assets_event AFTER INSERT OR DELETE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION capture_context_assets();
 
 CREATE OR REPLACE FUNCTION version_finding_context() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -2053,16 +1774,12 @@ CREATE TABLE IF NOT EXISTS worker_checkpoints (
 CREATE OR REPLACE FUNCTION wake_blackboard_control() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE eid BIGINT;
 BEGIN
- -- Agent discovery can create parents and apply an approval template while a
- -- Worker is still exploring. Persist authorization immediately, but do not
+ -- Worker is still exploring. Persist asset links immediately, but do not
  -- treat that discovery as a user control event or start another planning round.
  IF TG_TABLE_NAME='task_asset_links' AND TG_OP<>'DELETE'
     AND current_setting('series.agent_discovery',true)='on'
     AND NULLIF(current_setting('series.asset_origin',true),'')::jsonb->>'node_id' IS NOT NULL THEN
   RETURN NEW;
- END IF;
- IF TG_TABLE_NAME='task_asset_links' AND TG_OP='UPDATE' THEN
-  IF NEW.approval_state IS NOT DISTINCT FROM OLD.approval_state THEN RETURN NEW; END IF;
  END IF;
  IF TG_TABLE_NAME='task_constraints' THEN
   IF TG_OP='DELETE' THEN eid:=OLD.exploration_id; ELSE eid:=NEW.exploration_id; END IF;
@@ -2078,8 +1795,8 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS blackboard_constraints ON task_constraints;
 CREATE TRIGGER blackboard_constraints AFTER INSERT OR UPDATE OR DELETE ON task_constraints FOR EACH ROW EXECUTE FUNCTION wake_blackboard_control();
-DROP TRIGGER IF EXISTS blackboard_authorization ON task_asset_links;
-CREATE TRIGGER blackboard_authorization AFTER INSERT OR UPDATE OR DELETE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION wake_blackboard_control();
+DROP TRIGGER IF EXISTS blackboard_assets ON task_asset_links;
+CREATE TRIGGER blackboard_assets AFTER INSERT OR DELETE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION wake_blackboard_control();
 
 -- Durable publication hand-off: survives death after complete_intent commits.
 CREATE TABLE IF NOT EXISTS worker_settlements (
@@ -2113,3 +1830,66 @@ ALTER TABLE engine_worker_slots ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL
 -- Neo turn display projection; source activities remain the durable authority.
 CREATE INDEX IF NOT EXISTS idx_activity_turn ON activity(exploration_id,(metadata->>'turn_id'),id);
 CREATE INDEX IF NOT EXISTS idx_conversation_activity_turn ON conversation_activities(conversation_id,(metadata->>'turn_id'),id);
+
+-- SERIES asset graph parity. Rows are written only after the item transaction succeeds.
+CREATE TABLE IF NOT EXISTS asset_tool_writes (
+ execution TEXT NOT NULL,call_id TEXT NOT NULL,item_index INTEGER NOT NULL,
+ asset_id BIGINT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,result JSONB NOT NULL,
+ PRIMARY KEY(execution,call_id,item_index)
+);
+CREATE TABLE IF NOT EXISTS asset_id_aliases (
+ old_id BIGINT PRIMARY KEY,asset_id BIGINT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+ original JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),CHECK(old_id<>asset_id)
+);
+CREATE TABLE IF NOT EXISTS asset_graph_repairs (
+ repair_key TEXT PRIMARY KEY,before_data JSONB NOT NULL,after_data JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE FUNCTION capture_asset_graph_change() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE tids BIGINT[];tid BIGINT;eid BIGINT;
+BEGIN
+ IF current_setting('series.asset_repair',true)='on' THEN RETURN NULL; END IF;
+ IF TG_TABLE_NAME='assets' THEN
+  IF TG_OP='UPDATE' AND (to_jsonb(OLD)-ARRAY['last_seen','updated_at','task_ids']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['last_seen','updated_at','task_ids']) THEN RETURN NULL;END IF;
+  SELECT array_agg(task_id) INTO tids FROM task_asset_links WHERE asset_id=CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END;
+ ELSIF TG_TABLE_NAME='tasks' THEN
+  IF (OLD.coverage_enabled,OLD.deleted_at) IS NOT DISTINCT FROM (NEW.coverage_enabled,NEW.deleted_at) THEN RETURN NULL;END IF;
+  tids:=ARRAY[NEW.id];
+ ELSE
+  -- A fact updates coverage while it is still running. This is not asset
+  -- discovery and must not turn each writeback into an immediate Planner wake.
+  IF TG_TABLE_NAME='task_asset_links' AND TG_OP='UPDATE' AND
+    (to_jsonb(OLD)-ARRAY['updated_at','notification_xid','tested','tested_at','tested_by']) IS NOT DISTINCT FROM
+    (to_jsonb(NEW)-ARRAY['updated_at','notification_xid','tested','tested_at','tested_by']) THEN RETURN NULL;END IF;
+  IF TG_OP='UPDATE' AND (to_jsonb(OLD)-ARRAY['updated_at','notification_xid']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['updated_at','notification_xid']) THEN RETURN NULL;END IF;
+  tids:=ARRAY[CASE WHEN TG_OP='DELETE' THEN OLD.task_id ELSE NEW.task_id END];
+ END IF;
+ FOR tid IN SELECT DISTINCT id FROM tasks WHERE deleted_at IS NULL AND
+ (id=ANY(tids) OR id IN(SELECT task_id FROM task_relations WHERE source_task_id=ANY(tids))) LOOP
+  SELECT exploration_id INTO eid FROM tasks WHERE id=tid;
+  UPDATE explorations SET published_revision=published_revision+1 WHERE id=eid;
+  INSERT INTO blackboard_wakeups(exploration_id,event_key,kind)
+    VALUES(eid,'assets:'||pg_current_xact_id()::text,'assets_changed') ON CONFLICT DO NOTHING;
+  IF NOT EXISTS(SELECT 1 FROM exploration_context_events WHERE exploration_id=eid AND kind='assets' AND acknowledged_at IS NULL) THEN
+   INSERT INTO exploration_context_events(exploration_id,kind) VALUES(eid,'assets');
+  END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS context_assets_event ON task_asset_links;
+DROP TRIGGER IF EXISTS blackboard_assets ON task_asset_links;
+DROP TRIGGER IF EXISTS asset_graph_content ON assets;
+CREATE TRIGGER asset_graph_content AFTER INSERT OR UPDATE ON assets FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();
+DROP TRIGGER IF EXISTS asset_graph_links ON task_asset_links;
+CREATE TRIGGER asset_graph_links AFTER INSERT OR UPDATE OR DELETE ON task_asset_links FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();
+DROP TRIGGER IF EXISTS asset_graph_scope ON task_scope;
+CREATE TRIGGER asset_graph_scope AFTER INSERT OR UPDATE OR DELETE ON task_scope FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();
+DROP TRIGGER IF EXISTS asset_graph_sources ON task_relations;
+CREATE TRIGGER asset_graph_sources AFTER INSERT OR UPDATE OR DELETE ON task_relations FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();
+
+ALTER TABLE asset_tool_writes DROP CONSTRAINT IF EXISTS asset_tool_writes_asset_id_fkey;
+ALTER TABLE asset_tool_writes ADD CONSTRAINT asset_tool_writes_asset_id_fkey FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE;
+ALTER TABLE asset_id_aliases DROP CONSTRAINT IF EXISTS asset_id_aliases_asset_id_fkey;
+ALTER TABLE asset_id_aliases ADD CONSTRAINT asset_id_aliases_asset_id_fkey FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE;
+
+DROP TRIGGER IF EXISTS asset_graph_task_visibility ON tasks;
+CREATE TRIGGER asset_graph_task_visibility AFTER UPDATE OF coverage_enabled,deleted_at ON tasks FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();

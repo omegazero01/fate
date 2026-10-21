@@ -1,0 +1,56 @@
+{
+  "server_full": {
+    "passed": 581,
+    "skipped": 1,
+    "files": 62,
+    "skipped_case": "未配置真实 DeepSeek 测试 profile 的模型列表探针"
+  },
+  "backend_related": {
+    "passed": 55
+  },
+  "backend_postrelease": {
+    "passed": 14
+  },
+  "frontend_related": {
+    "passed": 10
+  },
+  "typecheck": {
+    "server": "passed",
+    "web": "passed"
+  },
+  "build": {
+    "server": "passed",
+    "web": "passed",
+    "web_static": "passed"
+  },
+  "browser": {
+    "widths": [
+      390,
+      846,
+      1280,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "page_horizontal_overflow": false,
+    "synthetic_full_table": {
+      "asset": 2,
+      "fact": 1,
+      "finding": 0
+    },
+    "previous_results_separated": true,
+    "partial_results_label": true,
+    "details_and_original_text": true,
+    "read_failure_not_zero": true,
+    "retry_restores_table": true
+  },
+  "test_model_requests": 0,
+  "test_target_requests": 0,
+  "review_fixes": [
+    "PostgreSQL 微秒边界保真",
+    "恢复后新资产不污染此前回合完整性判断",
+    "历史展开等待当前分页请求结束"
+  ]
+}

@@ -1,4 +1,5 @@
 "use client";
+
 import { PageHeading } from "@/components/workspace";
 
 import * as React from "react";
@@ -264,9 +265,7 @@ export default function AssetsPage() {
       } catch (e) {
         if (assetsRequestRef.current !== request) return;
         setDslError(String((e as Error)?.message ?? e));
-        setRows([]);
-        setRowsTab(tab);
-        setTotal(0);
+        // Keep the last successful snapshot; an error is not an empty result.
       } finally {
         if (assetsRequestRef.current === request) {
           setLoading(false);
@@ -422,7 +421,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "域名", "ICP 备案", "归属企业", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}
@@ -463,7 +462,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "IP", "C段", "绑定域名", "开放端口", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}
@@ -510,7 +509,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "域名", "根域名", "解析类型", "解析值", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}
@@ -552,7 +551,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "应用名", "Bundle ID", "分类", "ICP 备案", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}
@@ -592,7 +591,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "服务", "域名", "IP", "端口", "状态码", "标题", "指纹", "认证", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}
@@ -688,7 +687,7 @@ export default function AssetsPage() {
           {searchBox}
           <AssetCard
             cols={["", "方法", "完整地址", "参数", ""]}
-            loaded={loaded}
+            loaded={loaded && !dslError}
             total={total}
             page={page}
             size={size}

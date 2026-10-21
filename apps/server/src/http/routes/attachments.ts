@@ -7,7 +7,7 @@ export function registerAttachmentRoutes(app:FastifyInstance){
  app.post('/api/chat/upload',async req=>{
   const q=req.query as {scope:string;id:string};let task:number|null=null,conversation:number|null=null;
   if(q.scope==='task'){task=Number(q.id);if(!await app.db.tasks().getTask(task))throw Object.assign(new Error('task not found'),{statusCode:404});}
-  else if(q.scope==='session'){conversation=Number(q.id);if(!(await app.db.query('SELECT id FROM conversations WHERE id=$1',[conversation])).rowCount)throw Object.assign(new Error('conversation not found'),{statusCode:404});}
+  else if(q.scope==='session'){conversation=Number(q.id);await app.engine.conversations.assertWritable(conversation);if(!(await app.db.query('SELECT id FROM conversations WHERE id=$1',[conversation])).rowCount)throw Object.assign(new Error('conversation not found'),{statusCode:404});}
   else if(q.scope!=='staging')throw Object.assign(new Error('无效上传 scope'),{statusCode:400});
   const attachments:unknown[]=[],created:string[]=[],hashes=new Set<string>();
   try{

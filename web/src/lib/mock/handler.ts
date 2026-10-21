@@ -6,7 +6,7 @@ import type { NotificationQuery } from "../types";
 // 已删除模块的就地桩（路由保留、返回空），避免大面积改动调用点。
 class StubLedger {
   summarize(_queries: unknown, _mode: string, _records: unknown) {
-    return { items: [], total: 0, unread: 0, counts: { findings: 0, assets: 0, intercepts: 0 } };
+    return { items: [], total: 0, unread: 0, counts: { findings: 0, assets: 0 } };
   }
 }
 const notificationLedger = new StubLedger();
@@ -35,8 +35,6 @@ import type {
   ScopeRow,
   Task,
   TaskArchive,
-  TaskAssetApproval,
-  TaskAssetApprovalMutation,
   TaskAssetMutation,
   TaskAssetScopeMutation,
   TaskCategory,
@@ -53,12 +51,6 @@ const mockTraffic: Record<string, (...a: unknown[]) => unknown> = new Proxy({}, 
 const findingTraffic: Record<string, (...a: unknown[]) => unknown> = new Proxy({}, { get: () => () => ({ refs: [] }) });
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
-
-// Requests mutate a runtime copy, never the exported fixtures. This keeps module
-// initialization deterministic for tests/HMR while preserving state across mock calls.
-const mockInterceptHistory = structuredClone(D.interceptHistory);
-const mockInterceptPending = structuredClone(D.interceptPending);
-const mockInterceptDetails = structuredClone(D.interceptDetails);
 const mockTasks = structuredClone(D.tasks);
 const mockFindings = structuredClone(D.findings);
 const mockLegacyFindings: Finding[] = [
@@ -122,33 +114,6 @@ const mockIntents = structuredClone(D.intents);
 const mockCompanies = structuredClone(D.companies);
 const mockAssets = structuredClone(D.assets);
 const mockActivity = structuredClone(D.activity);
-// Exact approval fixture also lives in the original contiguous worker history.
-const approvalSeq = Math.max(...mockActivity.map((a) => a.seq)) + 1;
-mockActivity.push(
-  {
-    seq: approvalSeq,
-    worker: "work#1",
-    intent_id: "i-1",
-    kind: "tool_use",
-    tool: "Write",
-    tool_use_id: "call-write-report",
-    ts: "2026-07-26T08:00:00Z",
-    summary: "Write reports/summary.md",
-    detail: JSON.stringify(D.interceptHistory.find((r) => r.id === 94)?.tool_input),
-  },
-  {
-    seq: approvalSeq + 1,
-    worker: "work#1",
-    intent_id: "i-1",
-    kind: "tool_result",
-    tool: "Write",
-    tool_use_id: "call-write-report",
-    ts: "2026-07-26T08:00:02Z",
-    summary: "报告写入完成",
-    detail: "报告写入完成",
-  },
-);
-mockActivity.sort((a, b) => a.seq - b.seq);
 const mockTools: Tool[] = structuredClone(D.tools);
 const mockMcpServers: MCPServer[] = structuredClone(D.mcpServers);
 const mockMcpToolsById: Record<number, import("../types").MCPTool[]> = structuredClone(D.mcpToolsById);
@@ -172,13 +137,6 @@ type MockTaskAssetSource = Pick<
   | "tested"
   | "tested_at"
   | "tested_by"
-  | "approval_state"
-  | "approved_at"
-  | "approved_by"
-  | "approval_reason"
-  | "blocked"
-  | "blocked_at"
-  | "block_reason"
 >;
 const mockTaskAssetSources = new Map<string, MockTaskAssetSource>();
 // Two explicit discovery fixtures exercise sorting and source navigation.
@@ -191,7 +149,6 @@ for (const [index, domain] of ["new-api.acme.com", "new-admin.acme.com"].entries
   mockTaskAssetSources.set(JSON.stringify([D.tasks[0].id, id]), {
     task_source: "agent",
     task_source_summary: "主 Agent 通过 insert_assets 登记",
-    approval_state: "pending",
   });
   const call = `mock-insert-${id}`;
   mockActivity.push(
@@ -215,7 +172,7 @@ for (const [index, domain] of ["new-api.acme.com", "new-admin.acme.com"].entries
       tool_use_id: call,
       ts,
       summary: `已登记资产 #${id}`,
-      detail: JSON.stringify({ results: [{ id, type: "subdomain", approval_state: "pending" }] }),
+      detail: JSON.stringify({ results: [{ id, type: "subdomain" }] }),
     },
   );
   mockOrigins.set(id, {
@@ -228,17 +185,6 @@ for (const [index, domain] of ["new-api.acme.com", "new-admin.acme.com"].entries
     available: true,
   });
 }
-type MockTaskAssetBlock = {
-  block_kind?: "manual" | "deleted";
-  blocked_at: string;
-  reason: string;
-  blocked_by: string;
-  asset_type: string;
-  asset_key: string;
-  host_key: string;
-  name: string;
-};
-const mockTaskAssetBlocks = new Map<string, MockTaskAssetBlock>();
 let nextMockTaskAssetID = D.tasks.length + 1;
 let mockActiveTask = D.ACTIVE_TASK;
 
@@ -449,7 +395,7 @@ function setMockTaskAssetSource(taskID: string, assetID: number, source: MockTas
   mockTaskAssetSources.set(key, { ...previous, ...source, tested: previous?.tested ?? source.tested ?? false });
   const asset = mockAssets.find((candidate) => candidate.id === assetID);
   if (asset && ["manual", "direct", "company"].includes(source.task_source ?? "")) {
-    ensureMockManualDerivedParent(taskID, asset);
+
   }
 }
 
@@ -466,16 +412,7 @@ function mockTaskAssetOwner(
     const sourceID = String(sourceTaskID);
     const numericSourceID = mockTaskAssetID(sourceID);
     if (numericSourceID === undefined || !asset.task_ids.includes(numericSourceID)) return [];
-    const state = mockTaskAssetAuthorization(sourceID, asset).approval_state ?? "pending";
-    return [{ taskID: sourceID, numericTaskID: numericSourceID, inherited: true, state }];
-  });
-  candidates.sort((left, right) => {
-    const rank = (state: string) => {
-      if (state === "approved") return 0;
-      if (state === "pending") return 1;
-      return 2;
-    };
-    return rank(left.state) - rank(right.state) || left.numericTaskID - right.numericTaskID;
+    return [{taskID:sourceID,numericTaskID:numericSourceID,inherited:true}];
   });
   return candidates[0];
 }
@@ -502,13 +439,6 @@ function mockDerivedAsset(assetType: string): boolean {
   return assetType === "service" || assetType === "endpoint";
 }
 
-function mockTaskAssetExcluded(taskID: string, asset: Asset): boolean {
-  return (
-    !["root_domain", "subdomain", "ip"].includes(asset.type) &&
-    Boolean(mockTaskAssetBlocks.get(mockTaskAssetSourceKey(taskID, asset.id)))
-  );
-}
-
 function mockTaskAssetKey(asset: Asset): string {
   const host = mockTaskAssetHostName(asset);
   let url = asset.url ?? "";
@@ -532,209 +462,9 @@ function mockTaskAssetHostWithin(host: string, parentHost: string, parentType: s
   return host === parentHost || (parentType !== "ip" && host.endsWith(`.${parentHost}`));
 }
 
-function mockTaskAssetBlockView(
-  taskID: string,
-  asset: Asset,
-): { block: MockTaskAssetBlock; direct: boolean } | undefined {
-  const exact = mockTaskAssetBlocks.get(mockTaskAssetSourceKey(taskID, asset.id));
-  if (exact && ["root_domain", "subdomain", "ip"].includes(exact.asset_type)) return { block: exact, direct: true };
-  const host = mockTaskAssetHostName(asset);
-  const assetKey = mockTaskAssetKey(asset);
-  for (const [key, block] of mockTaskAssetBlocks) {
-    const [blockedTask] = JSON.parse(key) as [string, number];
-    if (blockedTask !== taskID || !["root_domain", "subdomain", "ip"].includes(block.asset_type)) continue;
-    if (assetKey === block.asset_key) return { block, direct: true };
-    if (
-      ["root_domain", "subdomain", "ip"].includes(block.asset_type) &&
-      mockTaskAssetHostWithin(host, block.host_key, block.asset_type)
-    ) {
-      return { block, direct: false };
-    }
-  }
-  return undefined;
-}
-
-function clearMockTaskAssetBlock(taskID: string, asset: Asset): void {
-  const assetKey = mockTaskAssetKey(asset);
-  for (const [key, block] of mockTaskAssetBlocks) {
-    const [blockedTask, assetID] = JSON.parse(key) as [string, number];
-    if (blockedTask === taskID && (assetID === asset.id || block.asset_key === assetKey))
-      mockTaskAssetBlocks.delete(key);
-  }
-}
-
-function mockTaskAssetAuthorization(taskID: string, asset: Asset): Partial<Asset> {
-  if (!["root_domain", "subdomain", "ip", "service", "endpoint"].includes(asset.type))
-    return { approval_state: "approved" };
-  const source = mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, asset.id));
-  if (
-    source?.task_source === "agent" &&
-    ["root_domain", "subdomain", "service", "endpoint"].includes(asset.type) &&
-    /[_${}\s]/.test(mockTaskAssetHostName(asset))
-  ) {
-    return {
-      approval_state: "blocked",
-      blocked: true,
-      block_kind: "invalid",
-      block_direct: true,
-      block_reason: "非法 Agent 主机名：请纠正资产，不可直接批准",
-    };
-  }
-  const blockView = mockTaskAssetBlockView(taskID, asset);
-  if (blockView) {
-    return {
-      approval_state: "blocked",
-      blocked: true,
-      block_direct: blockView.direct,
-      block_kind: blockView.block.block_kind ?? "deleted",
-      blocked_at: blockView.block.blocked_at,
-      block_reason: blockView.block.reason,
-    };
-  }
-  if (!mockDerivedAsset(asset.type)) {
-    const host = mockTaskAssetHostName(asset);
-    const numericTaskID = mockTaskAssetID(taskID);
-    if (
-      mockAssets.some(
-        (parent) =>
-          parent.id !== asset.id &&
-          numericTaskID !== undefined &&
-          parent.task_ids.includes(numericTaskID) &&
-          ["root_domain", "subdomain", "ip"].includes(parent.type) &&
-          mockTaskAssetHostWithin(host, mockTaskAssetHostName(parent), parent.type) &&
-          mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, parent.id))?.approval_state === "revoked",
-      )
-    )
-      return { approval_state: "revoked" };
-    const stored = mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, asset.id));
-    const policy = mockTasks.find((t) => t.id === taskID)?.asset_approval_template ?? "explicit_targets";
-    if (stored?.approval_state === "pending" && (policy === "all_assets" || mockTemplateMatches(taskID, asset, policy)))
-      return { approval_state: "approved", approval_reason: "任务审批模板自动批准" };
-    return {
-      approval_state: mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, asset.id))?.approval_state ?? "approved",
-    };
-  }
-  const host = mockTaskAssetHostName(asset);
-  const numericTaskID = mockTaskAssetID(taskID);
-  const parents = mockAssets.filter(
-    (parent) =>
-      numericTaskID !== undefined &&
-      parent.task_ids.includes(numericTaskID) &&
-      ["root_domain", "subdomain", "ip"].includes(parent.type) &&
-      mockTaskAssetHostWithin(host, mockTaskAssetHostName(parent), parent.type),
-  );
-  const parentStates = parents.map((parent) => mockTaskAssetAuthorization(taskID, parent));
-  const blocked = parentStates.find((state) => state.blocked);
-  if (blocked) return { ...blocked, block_direct: false };
-  if (parentStates.some((state) => state.approval_state === "revoked")) return { approval_state: "revoked" };
-  const policy = mockTasks.find((t) => t.id === taskID)?.asset_approval_template ?? "explicit_targets";
-  if (policy === "all_assets" || mockTemplateMatches(taskID, asset, policy)) return { approval_state: "approved" };
-  if (parents.length === 0) return { approval_state: "pending", approval_reason: "缺少可确认的父域名/IP，暂不可测试" };
-  const exact = parents
-    .map((parent, index) => ({ parent, state: parentStates[index] }))
-    .filter(({ parent }) => mockTaskAssetHostName(parent) === host);
-  if (exact.length)
-    return { approval_state: exact.some(({ state }) => state.approval_state !== "approved") ? "pending" : "approved" };
-  if (parentStates.some((state) => state.approval_state !== "approved")) return { approval_state: "pending" };
-  return { approval_state: "approved" };
-}
-
-function mockTemplateMatches(taskID: string, asset: Asset, policy: string): boolean {
-  const numeric = mockTaskAssetID(taskID);
-  const seeds = mockAssets.filter(
-    (candidate) =>
-      candidate.task_ids.includes(numeric ?? -1) &&
-      ["manual", "direct", "company", "api", "task"].includes(
-        mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, candidate.id))?.task_source ?? "",
-      ),
-  );
-  const host = mockTaskAssetHostName(asset);
-  if (seeds.some((seed) => mockTaskAssetHostName(seed) === host)) return true;
-  if (policy !== "related_assets") return false;
-  // Use recorded root identity, never reverse-expand an IP or guess a suffix.
-  const roots = seeds
-    .map((seed) => (seed.type === "root_domain" ? seed.domain : seed.root_domain))
-    .filter((root): root is string => Boolean(root));
-  if (roots.some((root) => mockTaskAssetHostWithin(host, root, "root_domain"))) return true;
-  return (
-    asset.type === "ip" &&
-    mockAssets.some(
-      (dns) =>
-        dns.task_ids.includes(numeric ?? -1) &&
-        ["A", "AAAA"].includes(dns.record_type ?? "") &&
-        (dns.record_value ?? []).includes(asset.ip ?? "") &&
-        roots.some((root) => mockTaskAssetHostWithin(dns.domain ?? "", root, "root_domain")),
-    )
-  );
-}
-
-function ensureMockManualDerivedParent(taskID: string, asset: Asset): void {
-  if (!mockDerivedAsset(asset.type)) return;
-  const host = mockTaskAssetHostName(asset);
-  const numericTaskID = mockTaskAssetID(taskID);
-  if (!host || numericTaskID === undefined) return;
-  const matchingParents = mockAssets.filter(
-    (parent) =>
-      ["root_domain", "subdomain", "ip"].includes(parent.type) &&
-      mockTaskAssetHostWithin(host, mockTaskAssetHostName(parent), parent.type),
-  );
-  if (
-    matchingParents.some(
-      (parent) =>
-        parent.task_ids.includes(numericTaskID) &&
-        ["revoked", "blocked"].includes(
-          mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, parent.id))?.approval_state ?? "",
-        ),
-    )
-  )
-    return;
-  if (
-    matchingParents.some(
-      (parent) =>
-        parent.task_ids.includes(numericTaskID) &&
-        mockTaskAssetHostName(parent) === host &&
-        mockTaskAssetSources.get(mockTaskAssetSourceKey(taskID, parent.id))?.approval_state === "approved",
-    )
-  )
-    return;
-  for (const [key, block] of mockTaskAssetBlocks) {
-    const [blockedTask] = JSON.parse(key) as [string, number];
-    if (
-      blockedTask === taskID &&
-      ["root_domain", "subdomain", "ip"].includes(block.asset_type) &&
-      mockTaskAssetHostWithin(host, block.host_key, block.asset_type)
-    ) {
-      return;
-    }
-  }
-  let parent = matchingParents.find((candidate) => mockTaskAssetHostName(candidate) === host);
-  if (!parent) {
-    const isIP = host.includes(":") || /^\d+\.\d+\.\d+\.\d+$/.test(host);
-    parent = {
-      id: mockAssets.reduce((max, candidate) => Math.max(max, candidate.id), 0) + 1,
-      type: isIP ? "ip" : "subdomain",
-      task_ids: [],
-      ...(isIP ? { ip: host } : { domain: host }),
-      last_seen: new Date().toISOString(),
-    };
-    mockAssets.push(parent);
-  }
-  parent.task_ids.push(numericTaskID);
-  setMockTaskAssetSource(taskID, parent.id, {
-    task_source: "manual",
-    task_source_summary: "用户手动关联服务或接口时登记父主机",
-    approval_state: "approved",
-    approved_at: new Date().toISOString(),
-    approved_by: "user",
-    approval_reason: "手动关联",
-  });
-}
-
 function mockAssetForTask(taskID: string, asset: Asset): Asset {
   const owner = mockTaskAssetOwner(taskID, asset);
   const source = owner ? mockTaskAssetSources.get(mockTaskAssetSourceKey(owner.taskID, asset.id)) : undefined;
-  const currentBlock = mockTaskAssetBlockView(taskID, asset);
-  const authorization = mockTaskAssetAuthorization(owner && !currentBlock ? owner.taskID : taskID, asset);
   const result: Asset = source
     ? {
         ...asset,
@@ -746,107 +476,12 @@ function mockAssetForTask(taskID: string, asset: Asset): Asset {
     : {
         ...asset,
         tested: false,
-        approval_state: "approved",
         task_source: "legacy",
         task_source_task_id: owner?.numericTaskID,
         task_inherited: owner?.inherited,
         task_read_only: owner?.inherited,
       };
-  return {
-    ...result,
-    ...authorization,
-    block_direct: Boolean(authorization.block_direct && currentBlock),
-    ...(!owner && authorization.blocked
-      ? { task_source: "deleted", task_source_summary: authorization.block_reason, task_read_only: true }
-      : {}),
-  };
-}
-
-function mockTaskAssetApprovals(taskID: string): TaskAssetApproval[] {
-  const numericTaskID = mockTaskAssetID(taskID);
-  if (numericTaskID === undefined) return [];
-  const linked: TaskAssetApproval[] = mockAssets
-    .filter(
-      (asset) => ["root_domain", "subdomain", "ip"].includes(asset.type) && Boolean(mockTaskAssetOwner(taskID, asset)),
-    )
-    .map((asset) => {
-      const view = mockAssetForTask(taskID, asset);
-      const owner = mockTaskAssetOwner(taskID, asset);
-      if (!owner) throw new Error("Mock task asset owner disappeared during projection");
-      const source = owner ? mockTaskAssetSources.get(mockTaskAssetSourceKey(owner.taskID, asset.id)) : undefined;
-      return {
-        asset_id: asset.id,
-        asset_type: asset.type,
-        name: mockAssetLabel(asset),
-        source: source?.task_source ?? "legacy",
-        source_summary: source?.task_source_summary ?? "由任务资产关联迁移",
-        source_node_id: source?.task_source_node_id,
-        origins: mockOrigins.has(asset.id) ? [mockOrigins.get(asset.id)!] : undefined,
-        source_task_id: owner.numericTaskID,
-        inherited: owner.inherited,
-        read_only: owner.inherited,
-        created_at: asset.last_seen,
-        approval_state: view.approval_state ?? "approved",
-        approved_at: source?.approved_at,
-        approved_by: source?.approved_by,
-        approval_reason: source?.approval_reason,
-        blocked: Boolean(view.blocked),
-        blocked_at: view.blocked_at,
-        block_reason: view.block_reason,
-        block_kind: view.block_kind,
-        block_direct: view.block_direct,
-      } satisfies TaskAssetApproval;
-    });
-  for (const [key, block] of mockTaskAssetBlocks) {
-    const [blockedTask, rawAssetID] = JSON.parse(key) as [string, number];
-    if (blockedTask !== taskID || linked.some((item) => item.asset_id === rawAssetID)) continue;
-    if (!["root_domain", "subdomain", "ip"].includes(block.asset_type)) continue;
-    linked.push({
-      asset_id: rawAssetID,
-      asset_type: block.asset_type,
-      name: block.name,
-      source: "deleted",
-      source_summary: "用户从当前任务删除",
-      source_task_id: numericTaskID,
-      inherited: false,
-      read_only: true,
-      created_at: block.blocked_at,
-      approval_state: "blocked",
-      blocked: true,
-      block_kind: block.block_kind ?? "deleted",
-      blocked_at: block.blocked_at,
-      block_reason: block.reason,
-      blocked_by: block.blocked_by,
-    });
-  }
-  return linked;
-}
-
-function mockApprovalGroups(taskID: string): TaskAssetApproval[] {
-  const groups = new Map<string, TaskAssetApproval>();
-  const rank = (v: TaskAssetApproval) => {
-    if (v.blocked) return 3;
-    if (v.approval_state === "revoked") return 2;
-    if (v.approval_state === "pending") return 1;
-    return 0;
-  };
-  for (const row of mockTaskAssetApprovals(taskID)) {
-    const groupKey = `${row.source_task_id}|${["root_domain", "subdomain", "ip"].includes(row.asset_type) ? `host:${row.name.toLowerCase().replace(/\.$/, "")}` : `id:${row.asset_id}`}`;
-    const old = groups.get(groupKey);
-    const asset = mockAssets.find((a) => a.id === row.asset_id);
-    const ids = [...new Set([...(old?.asset_ids ?? []), row.asset_id])];
-    groups.set(groupKey, {
-      ...(old && rank(old) >= rank(row) ? old : row),
-      created_at: old && Date.parse(old.created_at) < Date.parse(row.created_at) ? old.created_at : row.created_at,
-      origins: [...new Map([...(old?.origins ?? []), ...(row.origins ?? [])].map((o) => [o.activity_id, o])).values()],
-      group_key: groupKey,
-      asset_ids: ids,
-      record_types: [...new Set([...(old?.record_types ?? []), ...(asset?.record_type ? [asset.record_type] : [])])],
-      sources: [...new Set([...(old?.sources ?? []), row.source])],
-      mixed_state: Boolean(old && (old.mixed_state || rank(old) !== rank(row))),
-    });
-  }
-  return [...groups.values()];
+  return result;
 }
 
 function deleteMockTaskAssetSources(taskID: string, assetID?: number) {
@@ -868,11 +503,9 @@ function mockTaskAssetID(taskID: string): number | undefined {
 
 function mockAssetCounts(taskID?: string | null): Record<string, number> {
   return mockAssets.reduce<Record<string, number>>((counts, asset) => {
-    if (taskID && mockTaskAssetExcluded(taskID, asset)) return counts;
     if (
       taskID &&
-      !mockTaskAssetOwner(taskID, asset) &&
-      !mockTaskAssetBlocks.has(mockTaskAssetSourceKey(taskID, asset.id))
+      !mockTaskAssetOwner(taskID, asset)
     ) {
       return counts;
     }
@@ -1453,24 +1086,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
       id: String(row.id),
       pending: true,
     }));
-    for (const task of mockTasks) {
-      for (const row of mockApprovalGroups(task.id)) {
-        if (row.read_only || row.inherited) continue;
-        records.push({
-          task: task.id,
-          category: "assets",
-          id: row.group_key ?? String(row.asset_id),
-          pending: row.approval_state === "pending" && !row.blocked,
-        });
-      }
-    }
-    for (const row of mockInterceptHistory)
-      records.push({
-        task: String(row.task_id),
-        category: "intercepts",
-        id: String(row.id),
-        pending: row.status === "pending",
-      });
     return notificationLedger.summarize(queries, q.get("mode") ?? "all", records);
   }
   // No model runs in Mock. Return the real history envelope rather than the
@@ -1661,9 +1276,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
     return { tasks: mockTasks.map(publicMockTask), active: mockActiveTask };
   }
   if (path === "/tasks" && m === "POST") {
-    const approvalTemplate = String(b.asset_approval_template ?? "all_assets");
-    if (!["all_assets", "related_assets", "explicit_targets"].includes(approvalTemplate))
-      throw new Error("无效审批模板");
     let suffix = 1;
     while (mockTasks.some((item) => item.id === `t-new-${suffix}`)) suffix++;
     const id = `t-new-${suffix}`;
@@ -1685,7 +1297,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
     const category = categoryID === undefined ? undefined : mockTaskCategories.find((item) => item.id === categoryID);
     if (categoryID !== undefined && !category) throw new Error("任务分类不存在");
     const created: Task = {
-      asset_approval_template: approvalTemplate as NonNullable<Task["asset_approval_template"]>,
       id,
       name: String(b.name ?? ""),
       category_id: category?.id,
@@ -1752,9 +1363,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
         setMockTaskAssetSource(id, asset.id, {
           task_source: "company",
           task_source_summary: `任务创建时关联企业：${company.name}`,
-          approval_state: "approved",
-          approved_at: new Date().toISOString(),
-          approved_by: "user",
         });
       }
     }
@@ -1766,10 +1374,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
         task_source: "company",
         task_source_summary: `任务创建时关联企业：${company?.name ?? `#${asset.company_id}`}`,
         task_source_node_id: undefined,
-        approval_state: "approved",
-        approved_at: new Date().toISOString(),
-        approved_by: "user",
-        approval_reason: "用户提供：任务创建时关联企业",
         tested: false,
       });
     }
@@ -1781,10 +1385,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
         task_source: "direct",
         task_source_summary: "任务创建时直接选择",
         task_source_node_id: undefined,
-        approval_state: "approved",
-        approved_at: new Date().toISOString(),
-        approved_by: "user",
-        approval_reason: "用户提供：任务创建时直接选择",
         tested: false,
       });
       const host =
@@ -2312,114 +1912,23 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
     const taskID = q.get("task_id");
     const tested = q.get("tested") ?? "all";
     if (!["all", "true", "false"].includes(tested)) throw new Error("tested 必须是 all、true 或 false");
-    const approval = q.get("approval_state") ?? "all";
-    if (!["all", "approved", "pending", "revoked", "blocked"].includes(approval)) {
-      throw new Error("approval_state 必须是 all、approved、pending、revoked 或 blocked");
-    }
     const dsl = q.get("dsl") ?? "";
     const list = mockAssets.filter((asset) => {
       if (type && asset.type !== type) return false;
-      if (taskID && mockTaskAssetExcluded(taskID, asset)) return false;
       if (
         taskID &&
-        !mockTaskAssetOwner(taskID, asset) &&
-        !mockTaskAssetBlocks.has(mockTaskAssetSourceKey(taskID, asset.id))
+        !mockTaskAssetOwner(taskID, asset)
       ) {
         return false;
       }
       if (taskID && tested !== "all" && Boolean(mockAssetForTask(taskID, asset).tested) !== (tested === "true"))
         return false;
-      if (taskID && approval !== "all") {
-        const view = mockAssetForTask(taskID, asset);
-        if (approval === "blocked" ? !view.blocked : view.approval_state !== approval) return false;
-      }
       return !dsl || mockAssetMatchesDSL(asset, dsl);
     });
     const limit = Number(q.get("limit") ?? 50);
     const offset = Number(q.get("offset") ?? 0);
     const page = list.slice(offset, offset + limit).map((asset) => (taskID ? mockAssetForTask(taskID, asset) : asset));
     return { count: page.length, total: list.length, assets: page };
-  }
-  if (seg[0] === "tasks" && seg[2] === "asset-approvals" && seg.length === 3 && m === "GET") {
-    return { items: q.get("group_by") === "host" ? mockApprovalGroups(seg[1]) : mockTaskAssetApprovals(seg[1]) };
-  }
-  if (seg[0] === "tasks" && seg[2] === "asset-approval-template" && seg.length === 3 && m === "PUT") {
-    const task = mockTasks.find((t) => t.id === seg[1]);
-    if (!task) throw new Error("任务不存在");
-    const value = String(b.asset_approval_template);
-    if (!["all_assets", "related_assets", "explicit_targets"].includes(value)) throw new Error("无效审批模板");
-    if (!["created", "queued"].includes(task.status)) throw new Error("任务已启动，不能修改审批模板");
-    task.asset_approval_template = value as NonNullable<Task["asset_approval_template"]>;
-    return { asset_approval_template: value };
-  }
-  if (seg[0] === "tasks" && seg[2] === "asset-approvals" && seg.length === 4 && m === "POST") {
-    const taskID = seg[1];
-    const numericTaskID = mockTaskAssetID(taskID);
-    if (numericTaskID === undefined) throw new Error("任务不存在");
-    if (Array.isArray(b.group_keys)) {
-      if (b.asset_ids !== undefined || b.group_keys.length === 0) throw new Error("group_keys 与 asset_ids 二选一");
-      const groups = mockApprovalGroups(taskID);
-      const selected = b.group_keys.map((key) => groups.find((g) => g.group_key === key));
-      if (selected.some((g) => !g || g.read_only)) throw new Error("分组不存在或来源只读");
-      b.asset_ids = selected.flatMap((g) => g?.asset_ids ?? []);
-    }
-    const ids = [
-      ...new Set(
-        Array.isArray(b.asset_ids) ? b.asset_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0) : [],
-      ),
-    ];
-    if (ids.length === 0 || ids.length > 100) throw new Error("asset_ids 必须包含 1-100 个正整数");
-    const approve = seg[3] === "approve";
-    const block = seg[3] === "block";
-    if (!["approve", "revoke", "block"].includes(seg[3])) throw new Error("未知审批操作");
-    const requestedAssets = ids.map((id) => mockAssets.find((item) => item.id === id));
-    if (requestedAssets.some((asset) => asset && !["root_domain", "subdomain", "ip"].includes(asset.type))) {
-      throw new Error("服务和接口无需单独审批，请操作父域名/IP");
-    }
-    for (const [index, asset] of requestedAssets.entries()) {
-      if (!asset?.task_ids.includes(numericTaskID)) throw new Error(`资产 ${ids[index]} 未关联当前任务`);
-      if (mockTaskAssetAuthorization(taskID, asset).block_kind === "invalid")
-        throw new Error("非法资产必须先纠正，不能直接批准");
-      const existing = mockTaskAssetBlockView(taskID, asset);
-      if (existing?.direct && existing.block.block_kind !== "manual") throw new Error("删除封禁资产请先重新关联");
-      if (!approve && !block && existing) throw new Error("封禁资产需先批准或重新关联，不能直接撤回");
-    }
-    const now = new Date().toISOString();
-    for (const asset of requestedAssets) {
-      if (!asset) continue;
-      if (block) {
-        const key = mockTaskAssetSourceKey(taskID, asset.id);
-        if (!mockTaskAssetBlocks.has(key))
-          mockTaskAssetBlocks.set(key, {
-            block_kind: "manual",
-            blocked_at: now,
-            blocked_by: "user",
-            reason: String(b.reason || "用户封禁测试授权"),
-            asset_type: asset.type,
-            asset_key: mockTaskAssetKey(asset),
-            host_key: mockTaskAssetHostName(asset),
-            name: mockAssetLabel(asset),
-          });
-        setMockTaskAssetSource(taskID, asset.id, { approval_state: "blocked" });
-        continue;
-      }
-      setMockTaskAssetSource(taskID, asset.id, {
-        approval_state: approve ? "approved" : "revoked",
-        approved_at: now,
-        approved_by: "user",
-        approval_reason: String(b.reason ?? ""),
-      });
-      if (approve) clearMockTaskAssetBlock(taskID, asset);
-    }
-    const result: TaskAssetApprovalMutation = {
-      ok: true,
-      asset_ids: ids,
-      approval_state: ({ approve: "approved", block: "blocked", revoke: "revoked" } as const)[
-        seg[3] as "approve" | "block" | "revoke"
-      ],
-      items: mockTaskAssetApprovals(taskID).filter((item) => ids.includes(item.asset_id)),
-    };
-    return result;
   }
   if (path === "/assets" && m === "DELETE") {
     const ids = new Set(Array.isArray(b.ids) ? b.ids.map(Number) : []);
@@ -2514,12 +2023,7 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
           task_source: "manual",
           task_source_summary: "用户在测试资产页手工新增",
           task_source_node_id: undefined,
-          approval_state: "approved",
-          approved_at: new Date().toISOString(),
-          approved_by: "user",
-          approval_reason: "手动范围登记",
         });
-        clearMockTaskAssetBlock(seg[1], asset);
       }
       mockTaskScopes.set(seg[1], currentScopes);
       return mutation;
@@ -2541,12 +2045,7 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
         task_source: "manual",
         task_source_summary: sourceSummary,
         task_source_node_id: undefined,
-        approval_state: "approved",
-        approved_at: new Date().toISOString(),
-        approved_by: "user",
-        approval_reason: "手动关联",
       });
-      clearMockTaskAssetBlock(seg[1], asset);
     }
     return mutation;
   }
@@ -2556,19 +2055,9 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
     if (numericTaskID === undefined || !asset) throw new Error("任务或资产不存在");
     const owner = mockTaskAssetOwner(seg[1], asset);
     if (!owner) throw new Error("资产未关联当前任务或来源任务");
-    if (["root_domain", "subdomain", "ip"].includes(asset.type)) {
-      if (!owner.inherited) asset.task_ids = asset.task_ids.filter((id) => id !== numericTaskID);
-      deleteMockTaskAssetSources(seg[1], asset.id);
-    }
-    mockTaskAssetBlocks.set(mockTaskAssetSourceKey(seg[1], asset.id), {
-      blocked_at: new Date().toISOString(),
-      reason: "用户从当前任务删除，禁止再次测试",
-      blocked_by: "user",
-      asset_type: asset.type,
-      asset_key: mockTaskAssetKey(asset),
-      host_key: mockTaskAssetHostName(asset),
-      name: mockAssetLabel(asset),
-    });
+    if(owner.inherited)throw new Error('来源任务资产只读');
+    asset.task_ids=asset.task_ids.filter(id=>id!==numericTaskID);
+    deleteMockTaskAssetSources(seg[1],asset.id);
     return { detached: asset.id };
   }
   if (seg[0] === "tasks" && seg[2] === "intent-assets" && seg.length === 3 && m === "GET") {
@@ -3514,91 +3003,6 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
 
   // ── visibility ──
   if (seg[0] === "visibility" && m === "GET") return { agents: [] };
-
-  // ── intercept ──
-  if (path === "/intercept/rules" && m === "GET") return { rules: D.interceptRules };
-  if (seg[0] === "intercept" && seg[1] === "rules" && seg[3] === "toggle")
-    return { ok: true, enabled: b.enabled ?? true };
-  if (path === "/intercept/pending" && m === "GET")
-    return { pending: mockInterceptHistory.filter((r) => r.status === "pending") };
-  if (seg[0] === "intercept" && seg[1] === "pending" && seg[3] === "decide") {
-    const id = Number(seg[2]);
-    const row = mockInterceptHistory.find((r) => r.id === id) ?? mockInterceptPending.find((r) => r.id === id);
-    if (row?.status !== "pending") throw new Error("审批已处理或不存在，请刷新记录");
-    if (b.decision !== "allowed" && b.decision !== "denied") throw new Error("无效审批动作");
-    row.status = b.decision;
-    row.decided_at = new Date().toISOString();
-    const detail = mockInterceptDetails[id];
-    if (detail) {
-      detail.effective_action = b.decision === "allowed" ? "allow" : "deny";
-      detail.decision_reason = b.decision === "allowed" ? "人工允许执行" : "人工拒绝执行";
-      detail.execution_status = b.decision === "allowed" ? "unknown" : "not_executed";
-      detail.output = b.decision === "allowed" ? "演示模式未执行工具。" : "";
-    }
-    return { ok: true };
-  }
-  if (seg[0] === "intercept" && seg[1] === "history" && seg[3] === "execution" && m === "GET") {
-    const row = mockInterceptHistory.find((r) => r.id === Number(seg[2]));
-    const audit = row && mockInterceptDetails[row.id];
-    const command = audit && mockActivity.find((a) => a.kind === "tool_use" && a.tool_use_id === audit.tool_use_id);
-    if (!row || !command || q.has("conversation")) throw new Error("原始执行不存在或不可访问");
-    return {
-      conversation_id: null,
-      task_id: row.task_id,
-      session: command.intent_id
-        ? `intent:${command.intent_id}`
-        : command.worker === "planner"
-          ? "plan"
-          : `main:${command.main_seg ?? 0}`,
-      seq: command.seq,
-      items: mockActivity.filter((a) => a.tool_use_id === command.tool_use_id),
-    };
-  }
-  if (seg[0] === "intercept" && seg[1] === "history" && seg.length === 3) {
-    const row = mockInterceptHistory.find((r) => r.id === Number(seg[2]));
-    if (!row) throw new Error("审批记录不存在");
-    return { ...row, audit: mockInterceptDetails[row.id] ?? null };
-  }
-  if (seg[0] === "intercept" && seg[1] === "pending" && seg.length === 3 && m === "GET")
-    return mockInterceptPending.find((p) => p.id === Number(seg[2])) ?? null;
-  if (path === "/intercept/history" || (seg[0] === "intercept" && seg[1] === "task")) {
-    const status = q.get("status") || "";
-    const decisionSource = q.get("decision_source") || "";
-    if (status && !["pending", "allowed", "denied", "timeout"].includes(status)) throw new Error("无效审批状态");
-    if (decisionSource && !["model", "rule", "unknown"].includes(decisionSource)) throw new Error("无效判定来源");
-    const filtered = mockInterceptHistory.filter((row) => {
-      const source =
-        row.decision_source || (row.rule_id ? "rule" : row.reason?.startsWith("[模型]") ? "model" : "unknown");
-      return (
-        (seg[1] !== "task" || row.task_id === decodeURIComponent(seg[2])) &&
-        (!status || row.status === status) &&
-        (!decisionSource || source === decisionSource)
-      );
-    });
-    if (!q.has("page") && !q.has("size") && !status && !decisionSource)
-      return { items: filtered, total: filtered.length };
-    const page = Math.max(1, Number(q.get("page")) || 1);
-    const size = Math.min(100, Math.max(1, Number(q.get("size")) || 20));
-    const offset = (page - 1) * size;
-    return {
-      items: filtered.slice(offset, offset + size),
-      total: filtered.length,
-      page,
-      page_size: size,
-    };
-  }
-  if (path === "/intercept/tool-config") return { enabled_tools: ["bash"] };
-  if (path === "/intercept/judge" && m === "GET")
-    return {
-      enabled: false,
-      profile_id: 0,
-      prompt: "",
-      timeout_seconds: 15,
-      fail_action: "allow",
-      ask_timeout_seconds: 300,
-      ask_timeout_action: "deny",
-    };
-  if (path === "/intercept/judge" && m === "PUT") return { ok: true };
 
   // ── 写操作兜底：成功但不落库 ──
   if (["POST", "PUT", "PATCH", "DELETE"].includes(m)) return { ok: true };

@@ -14,7 +14,7 @@ export function graphIndexTool(ctx: ToolRunContext, name = 'expand_index', kind 
         AND (kind<>'digest' OR state='active') ORDER BY id LIMIT 21`,[source.expID,selectedKind,args.after_id ?? 0]);
       const page = raw.rows.slice(0,20);
       const nodes = await c.db.exploration(source.expID).nodesByIDs(page.map(r=>Number(r.id)));
-      const allowed = await authorizedNodes(c.db,source.taskID,source.expID,nodes,c.role==='worker');
+      const allowed = await authorizedNodes(c.db,source.taskID,source.expID,nodes);
       return { source_task_id:source.taskID,inherited:source.taskID!==c.taskID,
         nodes:allowed.map(n=>({id:n.id,kind:n.kind,state:n.state,summary:String(n.payload.summary ?? n.payload.text ?? '').slice(0,300)})),
         next_cursor:raw.rows.length>20 ? Number(page.at(-1)!.id) : null };
@@ -25,12 +25,12 @@ export function expandDigestTool(ctx:ToolRunContext) {
   return domainTool<{digest_id:number;offset?:number}>({name:'expand_digest',description:'分页展开冷图摘要的原始成员与证据，不修改原图。',readOnly:true,
     parameters:{type:'object',properties:{digest_id:{type:'integer'},offset:{type:'integer',minimum:0}},required:['digest_id']},
     async run(args,c) {
-      const source=await resolveGraphNode(c.db,c.taskID,c.expID,args.digest_id,c.role==='worker');
+      const source=await resolveGraphNode(c.db,c.taskID,c.expID,args.digest_id);
       if(source.node.kind!=='digest')throw new Error('不是 digest');
       const ids=(source.node.payload.member_ids as number[] ?? []);
       const offset=Math.max(0,args.offset??0), take=10;
       const nodes=await c.db.exploration(source.expID).nodesByIDs(ids.slice(offset,offset+take));
-      const allowed=await authorizedNodes(c.db,source.taskID,source.expID,nodes,c.role==='worker');
+      const allowed=await authorizedNodes(c.db,source.taskID,source.expID,nodes);
       return { source_task_id:source.taskID,inherited:source.inherited,state:source.node.state,
         members:allowed.map(n=>({id:n.id,kind:n.kind,state:n.state,summary:String(n.payload.summary??n.payload.text??'').slice(0,600),detail_tool:'node_detail'})),
         total:ids.length,next_offset:offset+take<ids.length?offset+take:null };

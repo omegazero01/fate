@@ -15,13 +15,13 @@ export function renderToolTemplate(template: string, args: Record<string, unknow
 
 /** Share eligibility with planning; loading this catalog does not execute tools. */
 export async function boundCustomTools(db: import('../db/index.js').Database, role: string) {
-  if (!["worker", "planner", "mainagent", "pentest", "retester"].includes(role)) return [];
+  if (!["worker", "planner", "mainagent", "pentest"].includes(role)) return [];
   const catalog = await db.platform().listTools();
   const reserved = new Set(catalog.filter(t => t.system || t.kind === 'builtin').map(t => t.key));
   return catalog.filter(t => t.enabled && t.agents.includes(role) && !t.system && t.kind !== 'builtin' && t.kind !== 'shell' && !reserved.has(t.key));
 }
 
-/** Custom tools enter the same pi tool pipeline and approval gate as native tools. */
+/** Custom tools enter the same pi tool pipeline and execution lifecycle as native tools. */
 export async function customWorkerTools(ctx: ToolRunContext, cwd: string, bash?: ToolDefinition, guard?: ToolGuard): Promise<ToolDefinition[]> {
   const catalog = await boundCustomTools(ctx.db, ctx.role);
   const shell = bash ?? createBashToolDefinition(cwd) as unknown as ToolDefinition;
@@ -35,7 +35,7 @@ export async function customWorkerTools(ctx: ToolRunContext, cwd: string, bash?:
         const check = async (toolName: string, input: Record<string, unknown>) => {
           signal?.throwIfAborted();
           const decision = await guard?.({ toolName, toolCallId: callID, args: input, signal });
-          if (decision?.block) throw new Error(decision.reason ?? "工具执行被审批拦截");
+          if (decision?.block) throw new Error(decision.reason ?? "当前执行已停止");
         };
         if (tool.kind === "http") {
           let url = renderToolTemplate(String(spec["url"] ?? ""), args);
@@ -69,4 +69,10 @@ export async function customWorkerTools(ctx: ToolRunContext, cwd: string, bash?:
 export async function shellEnvironmentNotes(ctx:ToolRunContext){
  const entries=(await ctx.db.platform().listTools()).filter(t=>t.kind==='shell'&&t.enabled&&t.agents.includes(ctx.role));
  return entries.map(t=>`${t.key}: ${t.description}\n${t.usageHelp??''} ${t.whenToUse??''}`).join('\n').slice(0,8000);
+}
+
+export async function platformBashDescription(ctx:ToolRunContext,base:string,interactive:boolean){
+ const notes=await shellEnvironmentNotes(ctx);
+ return base+(notes?`\n可用命令环境：\n${notes}`:'')+
+  (interactive?'\n需要持续交互时用 shell_open，后续 shell_send/read/close/list；句柄仅属于当前执行会话。':'');
 }

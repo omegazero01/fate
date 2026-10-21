@@ -62,7 +62,7 @@ export function MainConversation({
                 ) : !items.length ? (
                   <WorkspaceEmpty
                     title={loading ? "正在同步对话…" : "开始任务对话"}
-                    description="向主 Agent 提问、审批或调整任务；执行过程可在右侧查看。"
+                    description="向主 Agent 提问或调整任务；执行过程可在右侧查看。"
                   />
                 ) : (
                   <Transcript

@@ -1,3 +1,5 @@
+import {previewRoleTools} from '../../agent/tool-catalog.js';
+import {assertActiveRole} from '../../agent/retired-roles.js';
 import {platformPolicy} from '../../pi/platform-policy.js';
 import {builtinPrompt,renderPrompt,hostProtocol,PROMPT_VERSION,resolveRolePrompt} from '../../agent/prompts.js';
 import {textSize} from '../../agent/prompt-diagnostics.js';
@@ -257,7 +259,7 @@ export function registerAgentConfigRoutes(app: FastifyInstance): void {
       diagnostics: { role_body: {...textSize(rendered),source:'preview_template'},
         host_protocol: {...textSize(hostProtocol(key)),source:'host'},
         task_context:{status:'not_assembled_in_template_preview'},
-        tool_schemas:{status:'available_in_runtime_diagnostics'},skill_index:{status:'available_in_runtime_diagnostics'},
+        tool_schemas:await previewRoleTools(db(),key),skill_index:{status:'available_in_runtime_diagnostics'},
         mcp_schemas:{status:'not_loaded',reason:'预览不会启动 MCP；未知 Schema 不计入估算'} } };
 
   });
@@ -291,6 +293,8 @@ export function registerAgentConfigRoutes(app: FastifyInstance): void {
 
   app.patch("/api/triggers/:id", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
+    const trigger=(await db().query('SELECT agent_key FROM agent_triggers WHERE id=$1',[id])).rows[0];
+    if(trigger)assertActiveRole(String(trigger.agent_key));
     const b = (req.body ?? {}) as Record<string, unknown>;
     const r = triggerSets(b);
     if ("error" in r) return reply.code(400).send({ error: r.error });

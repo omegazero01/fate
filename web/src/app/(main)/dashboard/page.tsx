@@ -28,7 +28,6 @@ import type {
   Agent,
   ConvTokenSummary,
   Finding,
-  InterceptPending,
   LLMProfile,
   MCPServer,
   Settings,
@@ -136,7 +135,6 @@ export default function DashboardPage() {
   const [findings, setFindings] = React.useState<Finding[]>([]);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
-  const [pending, setPending] = React.useState<InterceptPending[]>([]);
   const [activity, setActivity] = React.useState<Activity[]>([]);
   const [tokens, setTokens] = React.useState<TokenTotal | null>(null);
   const [convTokens, setConvTokens] = React.useState<ConvTokenSummary[]>([]);
@@ -188,11 +186,10 @@ export default function DashboardPage() {
       if (loading) return;
       loading = true;
       try {
-        const [findings, stats, settings, pending, activity, tokens, conversationTokens] = await Promise.all([
+        const [findings, stats, settings, activity, tokens, conversationTokens] = await Promise.all([
           api.findings(),
           api.stats(),
           api.settings(),
-          api.interceptPending(),
           api.activity(undefined, { limit: 30 }),
           api.tokenStats(),
           api.conversationTokens(),
@@ -201,7 +198,6 @@ export default function DashboardPage() {
         setFindings(findings);
         setStats(stats);
         setSettings(settings);
-        setPending(pending);
         setActivity(activity.items);
         setTokens(tokens.total ?? null);
         setConvTokens(conversationTokens);
@@ -323,7 +319,6 @@ export default function DashboardPage() {
   // system
   const activeProfile = llmProfiles.find((p) => p.is_default);
   const enabledTools = tools.filter((t) => t.enabled);
-  const pendingCount = pending.length;
 
   // ── token stats per LLM profile ──────────────────────────────────────────
   // tasks whose llm_profile_id is null/undefined used the active default profile
@@ -1042,7 +1037,7 @@ export default function DashboardPage() {
         </table>
       </Card>
 
-      {/* ── Row 5: 资产分布 | 流量状态码 | 拦截 & 待审批 ── */}
+      {/* ── Row 5: 资产分布 | 流量状态码 | 系统状态 ── */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {/* 资产分布 */}
         <Card className="p-4">
@@ -1126,7 +1121,7 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        {/* 系统状态 & 待审批 */}
+        {/* 系统状态 */}
         <Card className="p-4">
           <SectionTitle icon={ShieldCheckIcon}>系统状态</SectionTitle>
 
@@ -1169,42 +1164,6 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* pending approvals */}
-          {pendingCount > 0 && (
-            <div className="mt-3">
-              <div className="mb-1.5 text-[10px] font-medium text-amber-400">待审批 ({pendingCount})</div>
-              <div className="flex flex-col gap-1.5">
-                {pending.slice(0, 3).map((p) => (
-                  <Link
-                    key={p.id}
-                    href="/system/intercept/approvals"
-                    className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-2 hover:bg-amber-500/10"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-medium">{p.tool_name}</div>
-                      <div className="text-[9px] text-muted-foreground">{p.agent_name}</div>
-                    </div>
-                    <ArrowUpRightIcon className="size-3 shrink-0 text-amber-400" />
-                  </Link>
-                ))}
-                {pendingCount > 3 && (
-                  <Link
-                    href="/system/intercept/approvals"
-                    className="text-center text-[10px] text-muted-foreground hover:text-foreground"
-                  >
-                    还有 {pendingCount - 3} 条…
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-
-          {pendingCount === 0 && (
-            <div className="mt-3 rounded-lg border bg-muted/10 px-3 py-3 text-center text-[10px] text-muted-foreground">
-              <ShieldCheckIcon className="mx-auto mb-1 size-4 text-emerald-500/50" />
-              无待审批拦截
-            </div>
-          )}
         </Card>
       </div>
     </div>

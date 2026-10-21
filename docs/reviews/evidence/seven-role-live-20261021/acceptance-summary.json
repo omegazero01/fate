@@ -1,0 +1,322 @@
+{
+  "generated_at": "2026-10-21T02:02:11.425Z",
+  "release_version": "seven-role-tools-da80d5b2-20261021",
+  "database": "fate_seven_live_62729",
+  "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-seven-live-hRvhd7",
+  "all_cases_passed": true,
+  "physical_requests": 215,
+  "aggregate_usage": {
+    "requests": 215,
+    "input": 471890,
+    "output": 95470,
+    "cacheRead": 1465984,
+    "cacheWrite": 0,
+    "totalTokens": 2033344
+  },
+  "release_usage": {
+    "input": 159806,
+    "output": 30488,
+    "cacheRead": 469760,
+    "cacheWrite": 0,
+    "totalTokens": 660054
+  },
+  "release_cache_hit_ratio": 0.7461648183034026,
+  "external_target_requests": 0,
+  "fixture_requests": 6,
+  "cases": [
+    {
+      "case": "serial",
+      "task_id": 1,
+      "exploration_id": 1,
+      "status": "passed",
+      "duration_seconds": 54.707,
+      "dedup": {
+        "submitted": 0,
+        "intents": [
+          {
+            "summary": "A 阶段（样本侧）：对资产 1 的 http://127.0.0.1:65164/serial/sample 只发一次 GET，完整读取响应体；对返回的 values 数组逐项求和得到合计，并保留响应中的 token 原文和本次请求的 traffic_id/trace 标识；同时先用 tool_search 英文查询加载资产工具，再调用 asset_get 读取资产 1 的 fingerprint 取得资产实际 page_title（须为完整值，不能只依赖摘要），把完整 values、合计、token、traffic_id、page_title 一并 record_fact 为 observed 事实并锚定资产 1，然后简短最终答复结束。为什么：证明目标 node:2 需要样本侧真实 HTTP 证据，且 B 阶段的独立 confirm 必须使用这里保存的 token，故本阶段不请求 confirm、不接续 B。",
+            "intent_id": 3,
+            "created": false,
+            "dedup": {
+              "version": 2,
+              "strength": "structured",
+              "match": "equivalent_work"
+            },
+            "duplicate_of": 3
+          }
+        ],
+        "ids": [
+          3
+        ],
+        "errors": {},
+        "duplicates": {
+          "0": 3
+        }
+      },
+      "remaining_slots": 0,
+      "timeline": [
+        {
+          "intent_id": 3,
+          "created_at": "2026-10-21T01:57:37.725Z",
+          "claimed_at": "2026-10-21T01:57:37.949Z",
+          "claim_latency_ms": 224,
+          "fact_id": 4,
+          "fact_published_at": "2026-10-21T01:57:45.186Z",
+          "completed_at": "2026-10-21T01:57:47.353Z",
+          "writeback_lead_ms": 2167,
+          "parents": [
+            1
+          ]
+        },
+        {
+          "intent_id": 5,
+          "created_at": "2026-10-21T01:57:52.828Z",
+          "claimed_at": "2026-10-21T01:57:53.385Z",
+          "claim_latency_ms": 557,
+          "fact_id": 6,
+          "fact_published_at": "2026-10-21T01:58:00.400Z",
+          "completed_at": "2026-10-21T01:58:04.030Z",
+          "writeback_lead_ms": 3630,
+          "parents": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "case": "pause_restart",
+      "task_id": 2,
+      "exploration_id": 2,
+      "status": "passed",
+      "duration_seconds": 52.324,
+      "pause_latency_ms": 257,
+      "session_preserved": true,
+      "dedup": {
+        "submitted": 0,
+        "intents": [
+          {
+            "summary": "阶段 A：用 GET 读取 http://127.0.0.1:65164/pause_restart/sample，计算返回 values 的合计，并先用 tool_search（英文查询 asset_get）加载资产详情工具，再以字段 fingerprint 读取资产 ID=3 拿到完整 page_title；随即 record_fact 保存一条锚定资产 ID=3 的 observed 事实，含完整 values、合计、token、traffic_id、traffic 证据与完整 page_title，然后简短收尾。目的：为阶段 B 的独立 confirm 复核提供父证据，本阶段不请求 confirm。",
+            "intent_id": 9,
+            "created": false,
+            "dedup": {
+              "version": 2,
+              "strength": "structured",
+              "match": "equivalent_work"
+            },
+            "duplicate_of": 9
+          }
+        ],
+        "ids": [
+          9
+        ],
+        "errors": {},
+        "duplicates": {
+          "0": 9
+        }
+      },
+      "remaining_slots": 0,
+      "timeline": [
+        {
+          "intent_id": 9,
+          "created_at": "2026-10-21T01:58:31.374Z",
+          "claimed_at": "2026-10-21T01:58:31.481Z",
+          "claim_latency_ms": 107,
+          "fact_id": 10,
+          "fact_published_at": "2026-10-21T01:58:36.926Z",
+          "completed_at": "2026-10-21T01:58:42.097Z",
+          "writeback_lead_ms": 5171,
+          "parents": [
+            7
+          ]
+        },
+        {
+          "intent_id": 11,
+          "created_at": "2026-10-21T01:58:48.711Z",
+          "claimed_at": "2026-10-21T01:58:48.841Z",
+          "claim_latency_ms": 130,
+          "fact_id": 12,
+          "fact_published_at": "2026-10-21T01:58:53.593Z",
+          "completed_at": "2026-10-21T01:58:56.569Z",
+          "writeback_lead_ms": 2976,
+          "parents": [
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "case": "legacy_loadout",
+      "task_id": 3,
+      "exploration_id": 3,
+      "status": "passed",
+      "duration_seconds": 61.405,
+      "legacy_session": {
+        "id": "01a15c2f-59db-737d-b1fc-aa7ed7eb5bd0",
+        "intent_id": 15,
+        "active_tools": [
+          "context_get"
+        ]
+      },
+      "legacy_restored_tools": [
+        "context_get",
+        "read",
+        "http_request",
+        "context_search",
+        "record_fact",
+        "insert_assets",
+        "report_finding",
+        "tool_search"
+      ],
+      "dedup": {
+        "submitted": 0,
+        "intents": [
+          {
+            "summary": "阶段A（串行第一步，样本事实）：对资产 ID=5 只做 GET。1) 先 tool_search 英文查询 asset_get 加载资产详情工具，再 asset_get(ids=[5], fields=[\"fingerprint\"]) 读取资产实际 page_title 完整原文（Planner 预读为 LOCAL-SYNTHETIC-6238103a-4360-4841-afae-e64a311e6fb2，Worker 须自行读取并以实际返回值写入，不得只凭摘要或本句）。2) http_request GET http://127.0.0.1:65164/legacy_loadout/sample，记录响应中的完整 values 列表（不截断）、token，并取得该请求的 traffic_id。3) 自行计算 values 合计（写明计算方法/各项，避免四舍五入歧义）。4) 立刻 record_fact，锚定资产 ID=5，state=observed，payload 至少含：完整 values、values 合计、token、该请求 traffic_id、page_title 全文，以及请求 URL 与状态码；随后简短最终答复结束。不请求 /confirm，不接续阶段B，不做其他路径或参数尝试，不报漏洞。",
+            "intent_id": 15,
+            "created": false,
+            "dedup": {
+              "version": 2,
+              "strength": "structured",
+              "match": "equivalent_work"
+            },
+            "duplicate_of": 15
+          }
+        ],
+        "ids": [
+          15
+        ],
+        "errors": {},
+        "duplicates": {
+          "0": 15
+        }
+      },
+      "remaining_slots": 0,
+      "timeline": [
+        {
+          "intent_id": 15,
+          "created_at": "2026-10-21T01:59:29.060Z",
+          "claimed_at": "2026-10-21T01:59:30.312Z",
+          "claim_latency_ms": 1252,
+          "fact_id": 16,
+          "fact_published_at": "2026-10-21T01:59:35.496Z",
+          "completed_at": "2026-10-21T01:59:39.482Z",
+          "writeback_lead_ms": 3986,
+          "parents": [
+            13
+          ]
+        },
+        {
+          "intent_id": 17,
+          "created_at": "2026-10-21T01:59:45.678Z",
+          "claimed_at": "2026-10-21T01:59:45.865Z",
+          "claim_latency_ms": 187,
+          "fact_id": 18,
+          "fact_published_at": "2026-10-21T01:59:51.397Z",
+          "completed_at": "2026-10-21T01:59:54.865Z",
+          "writeback_lead_ms": 3468,
+          "parents": [
+            16
+          ]
+        }
+      ]
+    }
+  ],
+  "tool_rejections": [
+    {
+      "role": "goals",
+      "tool": "set_constraints",
+      "at": "2026-10-21T01:57:21.660Z",
+      "detail": "{\"error\":\"约束缺少当前用户原文依据；请引用完整段落并保留列表、否定词和例外。段落以空行分隔，单换行仍属同段；原文字段没有空行时须引用整个字段，不带宿主添加的【任务描述】等标题。不能引用图谱、工具输出或旧会话推断\"}"
+    },
+    {
+      "role": "planner",
+      "tool": "steer_work",
+      "at": "2026-10-21T01:58:42.558Z",
+      "detail": "{\"error\":\"意图不在当前执行器运行\"}"
+    },
+    {
+      "role": "planner",
+      "tool": "add_intent",
+      "at": "2026-10-21T01:58:46.290Z",
+      "detail": "Validation failed for tool \"add_intent\":\n  - contract.objective: must have required properties objective\n\nReceived arguments:\n{\n  \"asset_ids\": [\n    3\n  ],\n  \"contract\": {\n    \"acceptance\": [\n      \"先用 context_get 读取 node:10（字段 detail），取得 token=bd197376-75f4-43f0-8ddf-ec6245dc8688、合计 20、traffic_id 与 page_title，不重新请求 sample\",\n      \"用 GET 请求 http://127.0.0.1:65164/pause_restart/confirm?token=bd197376-75f4-43f0-8ddf-ec6245dc8688，且仅请求一次\",\n      \"record_fact 保存一条锚定资产 ID=3、state=observed 的复核事实，parent_ids=[10]，内容包含 confirm 的 verified、total、实际 HTTP 状态/响应正文与 traffic_id，并明确核对结论：verified 与 total 是否与样本合计 20 一致\",\n      \"保存后以简短最终答复结束，不需 report_finding（无漏洞）\"\n    ],\n    \"allowed_tools\": [\n      \"context_get\",\n      \"http_request\",\n      \"record_fact\"\n    ],\n    \"out_of_scope\": [\n      \"外部网络、扫描、命令、文件读写、MCP\",\n      \"重新请求 sample\",\n      \"除 confirm 外的其他路径\"\n    ],\n    \"work\": {\n      \"identity\": \"local-confirm-verifier\",\n      \"method_class\": \"GET\",\n      \"question_key\": \"verify_total\",\n      \"resource\": \"http://127.0.0.1:65164/pause_restart/confirm\"\n    }\n  },\n  \"parent_ids\": [\n    10\n  ],\n  \"priority\": 8,\n  \"summary\": \"阶段 B（阶段 A 已完成，事实 node:10 为父）：读 node:10 的 detail 取得 token/合计=20/traffic_id，以其为 parent_ids，用 GET http://127.0.0.1:65164/pause_restart/confirm?token=bd197376-75f4-43f0-8ddf-ec6245dc8688 做独立复核，核对 verified=true 与 total=20 是否一致，并把真实 HTTP 响应证据作为锚定资产 ID=3 的 observed 复核事实保存（parent_ids=[10]），简短收尾；不重新请求 sample。\"\n}"
+    }
+  ],
+  "runs": [
+    {
+      "name": "chain-first",
+      "status": "passed",
+      "requests": 51,
+      "usage": {
+        "input": 114857,
+        "output": 23184,
+        "cacheRead": 372992,
+        "cacheWrite": 0,
+        "totalTokens": 511033
+      }
+    },
+    {
+      "name": "legacy-first",
+      "status": "failed",
+      "requests": 29,
+      "error": "AssertionError [ERR_ASSERTION]: native deferred tool activation",
+      "usage": {
+        "input": 41346,
+        "output": 12094,
+        "cacheRead": 183424,
+        "cacheWrite": 0,
+        "totalTokens": 236864
+      }
+    },
+    {
+      "name": "chain-final",
+      "status": "passed",
+      "requests": 67,
+      "usage": {
+        "input": 155770,
+        "output": 29633,
+        "cacheRead": 439808,
+        "cacheWrite": 0,
+        "totalTokens": 625211
+      }
+    },
+    {
+      "name": "release-live-config",
+      "status": "passed",
+      "requests": 67,
+      "usage": {
+        "input": 159806,
+        "output": 30488,
+        "cacheRead": 469760,
+        "cacheWrite": 0,
+        "totalTokens": 660054
+      }
+    }
+  ],
+  "build_sha256": {
+    "pi/runner.js": "2c2f653b061651a28967adc6ed7fab2a0bb69e3886d15d8a75303097ef8346a8",
+    "engine/runtime-config.js": "24d23c179c3c7aa0c9a4ae57733def4fb78d5c849c72656c88d2ce6950c09a2a",
+    "engine/engine.js": "8a4fc7361ee9d0cc746e8c9aff2f423d47503d99fac4964faea06d550c669c7f",
+    "agent/constraint-policy.js": "159bf2b17e59270ac8e3a013be71accb7bb0a743a8239b23f38280cdefa54288",
+    "agent/tool-description-policy.js": "a035e42bbb5046b71ec9d01cba96367157504f8b6167e3086b43fe4a86bc2330",
+    "agent/tool-descriptions.js": "f19097f672da8a9d8a289769851c60b73b073c726606b5365ade9297a76ad262",
+    "agent/tool-bindings.js": "2e7a33932d14d9500c00fc174eff75b9fb7691794c71f103cd85f128855bf11b",
+    "agent/tool-loading.js": "41019de41bfd87d46e2dabec95b0d8065d63f99ee2785109398315661924740f",
+    "agent/tool-catalog.js": "d6cb7618e3a212a9c5a266dc930e11b5203b2a58e2fd1d54adc3fdc36b71bf9a",
+    "tools/define.js": "a873b2b14f92f5101bf9fe92fc4ab3450231bf98090575dbf04417f0c18718af"
+  },
+  "regression": {
+    "files_passed": 60,
+    "passed": 567,
+    "skipped": 1,
+    "skip_reason": "batch-a 模型列表测试的独立测试库未配置 DeepSeek；未计为通过。真实模型另行验收。",
+    "typecheck": "passed",
+    "build": "passed",
+    "focused_role_description_tests": 36
+  },
+  "fixture_requests_total": 18,
+  "release_audit": {
+    "completed": 67,
+    "aborted": 1,
+    "aborted_before_provider_transport": 1
+  }
+}

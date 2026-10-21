@@ -8,11 +8,12 @@ describe('platform role policy',()=>{
     expect(()=>validatePlatformRunner(role,{cwd:'/tmp/session',systemPrompt:'CUSTOM',toolAllowlist:['read']},1)).not.toThrow();
   });
   it('enforces execution boundaries without removing explicitly bound Auto integrations',()=>{
-    for(const role of ['goals','reporter','retester'])
+    for(const role of ['goals','reporter'])
       expect(()=>validatePlatformRunner(role,{cwd:'/tmp/session',systemPrompt:'CUSTOM',toolAllowlist:['mcp__server__exec']},1)).toThrow('边界');
     expect(()=>validatePlatformRunner('pentest',{cwd:'/tmp/session',systemPrompt:'CUSTOM',toolAllowlist:['bash']},0)).toThrow('边界');
     expect(()=>validatePlatformRunner('auto',{cwd:'/tmp/session',systemPrompt:'CUSTOM',toolAllowlist:['mcp__*']},0)).not.toThrow();
   });
+  it('never restores the retired role',()=>{expect(()=>validatePlatformRunner('retester',{cwd:'/tmp/history',systemPrompt:'old',toolAllowlist:[]},1)).toThrow('已移除');});
   it('defaults to native/deferred, preserves rollback and respects disabled search',async()=>{
     const settings:Record<string,string>={},rows:unknown[]=[];
     const db={platform:()=>({getSetting:async(k:string)=>settings[k]}),query:async()=>({rows})} as never;

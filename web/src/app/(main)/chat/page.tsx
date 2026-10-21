@@ -58,7 +58,7 @@ export default function ChatPage() {
   }
 
   async function pickFiles(files: FileList | null) {
-    if (!selected || !files?.length) return;
+    if (conversations.find(c=>c.id===selected)?.read_only || !selected || !files?.length) return;
     setError(""); setSending(true);
     const uploadConversation=selected;
     try {
@@ -69,7 +69,7 @@ export default function ChatPage() {
   }
 
   async function send() {
-    if (!selected || (!text.trim() && !attachments.length) || sending || running) return;
+    if (conversations.find(c=>c.id===selected)?.read_only || !selected || (!text.trim() && !attachments.length) || sending || running) return;
     setSending(true); setError("");
     const sentText=text,sentAttachments=attachments,requestID=crypto.randomUUID(),conversationID=selected;
     conversation.add({seq:-Date.now(),worker:"user",kind:"user",summary:sentText,detail:sentText,ts:new Date().toISOString(),turn_id:requestID,metadata:{turn_id:requestID,attachments:sentAttachments}});
@@ -123,8 +123,8 @@ export default function ChatPage() {
                 <span className="block truncate text-sm font-medium">{row.title || "新对话"}</span>
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">{name}{(selected===row.id?running:row.running) ? " · 运行中" : ""}{row.task_id ? ` · 任务 #${row.task_id}` : ""}</span>
               </button>
-              <Button size="icon" variant="ghost" className="size-8 opacity-70" onClick={() => void togglePin(row)} title={row.pinned ? "取消置顶" : "置顶"}>{row.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</Button>
-              <Button size="icon" variant="ghost" className="size-8 opacity-70" onClick={() => void remove(row)} title="删除对话"><Trash2 className="size-3.5" /></Button>
+              <>{!row.read_only && <><Button size="icon" variant="ghost" className="size-8 opacity-70" onClick={() => void togglePin(row)} title={row.pinned ? "取消置顶" : "置顶"}>{row.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</Button>
+              <Button size="icon" variant="ghost" className="size-8 opacity-70" onClick={() => void remove(row)} title="删除对话"><Trash2 className="size-3.5" /></Button></>}</>
             </div>;
           })}
           {!conversations.length && <p className="px-3 py-8 text-center text-sm text-muted-foreground">新建一个 Agent 对话开始使用。</p>}
@@ -146,7 +146,7 @@ export default function ChatPage() {
         </MessageScrollerViewport><MessageScrollerButton /></MessageScroller></MessageScrollerProvider>
         {selected&&!conversation.connected&&!conversation.loading&&<div role="status" className="px-4 py-1 text-xs text-muted-foreground">实时连接恢复中，已有内容已保留</div>}
         {(error||conversation.error)&&<div role="alert" className="border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">{error||conversation.error}</div>}
-        <div className="task-composer">
+        {current?.read_only ? <p role="status" className="border-t p-4 text-sm text-muted-foreground">此为历史复测会话，Retester 已移除，仅供读取。</p> : <div className="task-composer">
           {!!attachments.length && <div className="mb-2 flex flex-wrap gap-2">{attachments.map(file => <span key={file.path} className="flex items-center gap-2 rounded-md border bg-muted px-2 py-1 text-xs">{file.name} · {Math.ceil(file.size / 1024)} KB<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setAttachments(rows => rows.filter(a => a.path !== file.path))}>×</button></span>)}</div>}
           <div className="flex items-end gap-2 rounded-[var(--composer-radius)] border bg-card p-3">
             <label className="inline-flex size-10 cursor-pointer items-center justify-center rounded-md border hover:bg-muted" title="上传附件">
@@ -156,7 +156,7 @@ export default function ChatPage() {
             <Textarea value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} disabled={!selected || sending} placeholder={selected ? "输入消息，Enter 发送，Shift+Enter 换行" : "先新建或选择对话"} className="max-h-40 min-h-10 resize-y" />
             {running ? <Button size="icon" variant="destructive" onClick={() => void stop()} title="停止生成"><Square className="size-4" /></Button> : <Button size="icon" onClick={() => void send()} disabled={!selected || sending || (!text.trim() && !attachments.length)} title="发送">{sending ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</Button>}
           </div>
-        </div>
+        </div>}
       </section>
     </main>
   );

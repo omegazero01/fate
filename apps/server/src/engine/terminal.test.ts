@@ -103,14 +103,18 @@ it.each(['stop','pause'] as const)('preserves a completed Worker receipt when %s
 });
 
 it('bounds a Planner-only task by its deadline without falsely completing unmet goals',async()=>{
- const task=await db.tasks().createTaskWithOptions('LOCAL insufficient evidence','need unavailable evidence',{executionMode:'managed',timeoutSeconds:1});
+ const task=await db.tasks().createTaskWithOptions('LOCAL insufficient evidence','need unavailable evidence',{executionMode:'managed',timeoutSeconds:60});
  const s=db.exploration(task.exploration_id);await s.addGoal({text:'requires missing evidence'},'user');
  const faux=fauxProvider({provider:'terminal-no-work'}),runtime=await ModelRuntime.create({refreshOnCreate:false});await runtime.registerNativeProvider(faux.provider);
  faux.setResponses(Array.from({length:3},()=>[
   fauxAssistantMessage('LOCAL planning complete'),
  ]).flat());
  const roles:string[]=[];const e=new Engine(db,{...defaultEngineConfig(),debounceMs:2,workers:1},async(_id,role)=>{roles.push(role);return {modelRuntime:runtime,model:faux.getModel() as never};},dir);engines.push(e);
- await e.run(task.id);await until(async()=>(await db.tasks().getTask(task.id))?.status==='timeout',8000);
+ await e.run(task.id);
+ // Start the deadline after one normal round, rather than racing slow test-machine startup.
+ await until(async()=>!!(await db.query("SELECT 1 FROM runtime_role_configs WHERE task_id=$1 AND role='planner' AND finished_at IS NOT NULL",[task.id])).rowCount);
+ await db.query("UPDATE tasks SET deadline_at=now()-interval '1 second' WHERE id=$1",[task.id]);
+ await until(async()=>(await db.tasks().getTask(task.id))?.status==='timeout',8000);
  const saved=await db.tasks().getTask(task.id);expect(saved?.first_run_at).toBeTruthy();expect(saved?.completed_at).toBeTruthy();expect((await s.listByKind('goal'))[0]?.state).toBe('open');
  expect(roles).not.toContain('worker');expect(faux.state.callCount).toBe(2);await e.stop(task.id);
 });

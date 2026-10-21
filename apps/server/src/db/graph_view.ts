@@ -15,17 +15,17 @@ export async function graphSources(db: Database, taskID: number): Promise<Array<
     WHERE r.task_id=$1 AND t.deleted_at IS NULL ORDER BY t.id`, [taskID]);
   return r.rows.map(r => ({ taskID: Number(r.id), expID: Number(r.exploration_id) }));
 }
-export async function authorizedNodes(db: Database, taskID: number, expID: number, nodes: Node[], worker = false): Promise<Node[]> {
+export async function authorizedNodes(db: Database, taskID: number, expID: number, nodes: Node[]): Promise<Node[]> {
   if(!nodes.length)return [];
-  const result=await db.query('SELECT n.id FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id WHERE t.id=$1 AND n.exploration_id=$2 AND n.id=ANY($3::bigint[]) AND exploration_node_readable($2,n.id,$4)',[taskID,expID,nodes.map(n=>n.id),worker]);
+  const result=await db.query('SELECT n.id FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id WHERE t.id=$1 AND n.exploration_id=$2 AND n.id=ANY($3::bigint[]) AND exploration_node_readable($2,n.id)',[taskID,expID,nodes.map(n=>n.id)]);
   const allowed=new Set(result.rows.map(r=>Number(r.id)));
   return nodes.filter(n=>allowed.has(n.id));
 }
-export async function resolveGraphNode(db: Database, taskID: number, expID: number, nodeID: number, worker = false) {
+export async function resolveGraphNode(db: Database, taskID: number, expID: number, nodeID: number) {
   for (const owner of [{ taskID, expID }, ...await graphSources(db, taskID)]) {
     const node = await db.exploration(owner.expID).getNode(nodeID);
     if (!node) continue;
-    if (!(await authorizedNodes(db, owner.taskID, owner.expID, [node], worker)).length) throw new Error('节点关联资产未获授权或已封禁');
+    if (!(await authorizedNodes(db, owner.taskID, owner.expID, [node])).length) throw new Error('节点不属于有效任务');
     return { node, ...owner, inherited: owner.taskID !== taskID };
   }
   throw new Error(`节点 #${nodeID} 不存在或不属于本任务及直接来源任务`);

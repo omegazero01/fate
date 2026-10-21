@@ -1,3 +1,4 @@
+import {coverageGraph,queryAssets} from '../../db/asset-query.js';
 import {READABLE_FINDINGS} from "./finding-projection.js";
 import {modelTokenUsage} from '../model-token-usage.js';
 import {executionSnapshot} from '../../engine/coordinator.js';
@@ -184,7 +185,10 @@ export function registerCompatRoutes(app: FastifyInstance): void {
     const bodyOffset = q2n(q["body_offset"], 0);
     const WINDOW = 8000;
     const body = payload.slice(bodyOffset, bodyOffset + WINDOW);
+    const anchorIDs=(await db().query('SELECT asset_id FROM exploration_anchors WHERE node_id=$1 ORDER BY asset_id',[Number(p.id)])).rows.map(r=>Number(r.asset_id));
+    const assets=await queryAssets(db(),{taskID,ids:anchorIDs,limit:50,offset:q2n(q.asset_offset,0),summary:true});
     return {
+      assets:assets.assets,assets_total:assets.total,assets_next_offset:assets.next_offset,
       node: mapNode({...node,...(resolved.inherited?{source_task_id:resolved.taskID,inherited:true}:{})}),
       payload: body,
       payload_next_offset: bodyOffset + body.length < payload.length ? bodyOffset + body.length : 0,
@@ -643,13 +647,14 @@ export function registerCompatRoutes(app: FastifyInstance): void {
   app.get("/api/tasks/:id/constraints", async (req) => {
     const p = req.params as Record<string, string>;
     const expID = await expOf(Number(p["id"]));
-    const rows = await db().query(`SELECT id, kind, text, COALESCE(origin,'') AS origin, created_at FROM task_constraints WHERE exploration_id=$1 ORDER BY id`, [expID]);
+    const rows = await db().query(`SELECT id, kind, text, COALESCE(origin,'') AS origin, source, created_at FROM task_constraints WHERE exploration_id=$1 ORDER BY id`, [expID]);
     return {
       constraints: rows.rows.map((r) => ({
         id: String(r["id"]),
         kind: r["kind"],
         text: r["text"],
         origin: r["origin"],
+        source: r["source"],
         ts: r["created_at"] instanceof Date ? (r["created_at"] as Date).toISOString() : String(r["created_at"]),
       })),
     };
@@ -670,7 +675,7 @@ export function registerCompatRoutes(app: FastifyInstance): void {
   app.patch("/api/tasks/:id/constraints/:cid", async (req) => {
     const p = req.params as Record<string, string>;
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const changed=await db().query(`UPDATE task_constraints SET kind=$1, text=$2 WHERE id=$3 AND exploration_id=$4`, [String(b["kind"] ?? "deny"), String(b["text"] ?? ""), Number(p["cid"]),await expOf(Number(p["id"]))]);
+    const changed=await db().query(`UPDATE task_constraints SET kind=$1, text=$2,origin='user',source='{}'::jsonb,updated_at=now() WHERE id=$3 AND exploration_id=$4`, [String(b["kind"] ?? "deny"), String(b["text"] ?? ""), Number(p["cid"]),await expOf(Number(p["id"]))]);
     if(!changed.rowCount)throw Object.assign(new Error("constraint not found"),{statusCode:404});
     return { id: p["cid"], ...b };
   });
@@ -685,50 +690,8 @@ export function registerCompatRoutes(app: FastifyInstance): void {
   app.get("/api/tasks/:id/coverage-graph", async (req) => {
     const p = req.params as Record<string, string>;
     const taskID = Number(p["id"]);
-    const expID = await expOf(taskID);
-    // 范围内资产（覆盖度分母）+ tested 标记 → 二层图（公司/根域 → 资产）。
-    const rows = await db().query(
-      `SELECT a.id, a.type, a.domain, a.root_domain, a.ip, a.url, a.port, a.app_name, a.page_title, a.status_code,
-              a.company_id, COALESCE(l.tested, false) AS tested
-       FROM assets a
-       JOIN task_asset_links l ON l.asset_id=a.id AND l.task_id=$1
-       WHERE task_asset_effectively_approved($1, a.id)
-       ORDER BY a.type, a.id LIMIT 500`,
-      [taskID],
-    );
-    const nodes: Record<string, unknown>[] = [];
-    const edges: Record<string, unknown>[] = [];
-    const seen = new Set<string>();
-    for (const r of rows.rows) {
-      const key = `a:${r["id"]}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        nodes.push({
-          key, kind: r["type"], label: String(r["domain"] || r["ip"] || r["url"] || r["app_name"] || r["id"]),
-          tested: r["tested"] === true, in_scope: true, asset_id: Number(r["id"]),
-          ...(r["company_id"] ? { company_id: Number(r["company_id"]) } : {}),
-          ...(r["domain"] ? { domain: String(r["domain"]) } : {}),
-          ...(r["root_domain"] ? { root_domain: String(r["root_domain"]) } : {}),
-          ...(r["ip"] ? { ip: String(r["ip"]) } : {}),
-          ...(r["url"] ? { url: String(r["url"]) } : {}),
-          ...(r["port"] ? { port: Number(r["port"]) } : {}),
-          ...(r["app_name"] ? { app_name: String(r["app_name"]) } : {}),
-          ...(r["page_title"] ? { page_title: String(r["page_title"]) } : {}),
-          ...(r["status_code"] ? { status_code: Number(r["status_code"]) } : {}),
-        });
-      }
-      const rd = r["root_domain"];
-      if (rd) {
-        const pkey = `d:${rd}`;
-        if (!seen.has(pkey)) {
-          seen.add(pkey);
-          nodes.push({ key: pkey, kind: "root_domain", label: String(rd), tested: false, in_scope: true, root_domain: String(rd) });
-        }
-        edges.push({ src: pkey, dst: key });
-      }
-    }
-    void expID;
-    return { nodes, edges };
+    await expOf(taskID);
+    return coverageGraph(db(),taskID);
   });
 
   app.post("/api/tasks/:id/intents/:iid/control", async (req, reply) => {

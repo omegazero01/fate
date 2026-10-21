@@ -14,7 +14,8 @@ export async function pendingPlannerContext(db:Database,taskID:number,expID:numb
   const shown=new Set<number>();
   for(const n of nodes){
     const change={ref:`node:${n.id}`,source_task_id:n.source_task_id,version:n.content_version,kind:n.kind,state:n.state,
-      summary:String(n.payload.summary??n.payload.text??'').slice(0,160),progress:progressSummary(n.payload.progress),result:resultSummary(n.payload.execution_result),execution_stop:stopSummary(n.payload.execution_stop)};
+      summary:String(n.payload.summary??n.payload.text??'').slice(0,160),
+      ...(['fact','finding'].includes(n.kind)?{observation_type:n.payload.observation_type??'unknown',writeback:n.payload.writeback??{scope_status:'legacy_unspecified'},scope_read:n.payload.scope?{ref:`node:${n.id}`,field:'/payload/scope',version:n.content_version}:undefined}:{}),progress:progressSummary(n.payload.progress),result:resultSummary(n.payload.execution_result),execution_stop:stopSummary(n.payload.execution_stop)};
     if(Buffer.byteLength(JSON.stringify([...changes,change]))>12*1024)break;
     changes.push(change);shown.add(n.id);
   }

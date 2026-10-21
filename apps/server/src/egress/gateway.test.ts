@@ -102,32 +102,10 @@ interface UpstreamRecord {
   body: string;
 }
 
-/** 桩 db：只实现网关触达的 taskScope() 面（授权通过/拒绝可控，记忆可断言）。 */
-function stubDB(opts: { deny?: (host: string) => boolean }) {
-  const remembered: { taskID: number; hosts: string[] }[] = [];
-  const db = {
-    tasks:()=>({getTask:async()=>({exploration_id:42,status:'running',paused:false,queued:false})}),
-    exploration:()=>({getNode:async()=>({kind:'intent',state:'running',payload:{}})}),
-    taskScope: () => ({
-      validateIntentHostPort:async(_taskID:number,_intent:unknown,host:string)=>{if(opts.deny?.(host))throw new Error('目标已被主动限制 (revoked)');},
-      validateTaskHostPort:async(_taskID:number,host:string)=>{if(opts.deny?.(host))throw new Error('目标已被主动限制 (revoked)');},
-      validateWorkerHosts: async (_taskID: number, hosts: string[]) => {
-        const denied = hosts.find((h) => opts.deny?.(h) === true);
-        if (denied !== undefined) {
-          throw new Error(`task asset is not approved: host ${denied} 已被主动限制或任务无效 (revoked)`);
-        }
-      },
-      validateWorkerHostPort: async (_taskID:number,host:string,_port:number) => {
-        const denied=opts.deny?.(host)===true;
-        if(denied)throw new Error(`task asset is not approved: host ${host} 已被主动限制或任务无效 (revoked)`);
-      },
-      rememberTaskAssetDenials: async (taskID: number, hosts: string[], _ids: number[], _scopes: string[]) => {
-        remembered.push({ taskID, hosts });
-        return [];
-      },
-    }),
-  } as unknown as Database;
-  return { db, remembered };
+/** Minimal execution lifecycle fixture; destinations have no approval state. */
+function stubDB(opts: {paused?:boolean}) {
+ const db={tasks:()=>({getTask:async()=>({exploration_id:42,status:'running',paused:opts.paused===true,queued:false})}),exploration:()=>({getNode:async()=>({kind:'intent',state:'running',payload:{}})})} as unknown as Database;
+ return {db};
 }
 
 let upstream: http.Server;
@@ -139,7 +117,7 @@ let echoTCPAddr: string;
 
 let gatewayAllow: EgressGateway;
 let gatewayDeny: EgressGateway;
-let denyMemory: { taskID: number; hosts: string[] }[];
+
 
 beforeAll(async () => {
   // echo HTTP 上游：记录方法/路径/头/体并回显。
@@ -171,9 +149,8 @@ beforeAll(async () => {
   const allow = stubDB({});
   gatewayAllow = await startEgressGateway(allow.db, "127.0.0.1:0");
 
-  const deny = stubDB({ deny: (h) => h === "blocked.example" });
+  const deny = stubDB({paused:true});
   gatewayDeny = await startEgressGateway(deny.db, "127.0.0.1:0");
-  denyMemory = deny.remembered;
 }, 60_000);
 
 afterAll(async () => {
@@ -235,17 +212,15 @@ describe("普通 HTTP 代理转发", () => {
     expect(JSON.parse(res.body)).toMatchObject({ ok: true, body: "hello=egress" });
   });
 
-  it("未授权 host（mock 拒绝）→ 403，且不触达上游、拒绝被记忆", async () => {
+  it("暂停任务 → 403，不触达上游", async () => {
     const before = upstreamRecords.length;
     const creds = taskCredentials(42, "worker:7")!;
     const res = await proxiedRequest(gatewayDeny, "http://blocked.example:80/path", {
       headers: { "Proxy-Authorization": proxyAuthorizationHeader(creds) },
     });
     expect(res.status).toBe(403);
-    expect(res.body).toContain("任务资产执行被阻止");
-    expect(res.body).toContain("不要重试该地址");
+    expect(res.body).toContain("执行已停止");
     expect(upstreamRecords.length).toBe(before); // 上游零接触
-    expect(denyMemory.some((m) => m.taskID === 42 && m.hosts.includes("blocked.example"))).toBe(true);
   });
 
   it("篡改凭据 → 403（验签失败在任何授权之前）", async () => {
@@ -315,7 +290,7 @@ describe("CONNECT 隧道", () => {
     socket!.end();
   });
 
-  it("未授权 host 的 CONNECT → 403", async () => {
+  it("暂停任务的 CONNECT → 403", async () => {
     const creds = taskCredentials(42, "worker:7")!;
     const { status, socket } = await connectThrough(gatewayDeny, "blocked.example:443", {
       "Proxy-Authorization": proxyAuthorizationHeader(creds),

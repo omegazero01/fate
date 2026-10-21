@@ -10,7 +10,7 @@ import {pendingPlannerContext,acknowledgePlannerContext} from '../db/planner-con
 import {TriggerScheduler} from './triggers.js';
 import {acquireSessionLease} from './session-lease.js';
 import {leaseWatchdog} from './lease-watchdog.js';
-import {RetestService} from "./retests.js";
+
 import type {ChatImage} from "../evidence/attachments.js";
 import { Coordinator } from "./coordinator.js";
 import { compactColdGraph } from "../agent/coldgraph.js";
@@ -27,7 +27,6 @@ import {
 } from "../agent/roles.js";
 import { TodoStore } from "../tools/context.js";
 import { PLANNER_TASK_TIMEOUT_WRAPUP } from "../agent/prompts.js";
-import { interceptGate } from "../intercept/gate.js";
 
 export interface EngineConfig {
   workers: number;
@@ -110,7 +109,7 @@ export type EngineActivity = {
 export type ModelResolver = (taskID: number, role: string, context?: {conversationID?:number;profileID?:number}) => Promise<ModelSource>;
 
 export class Engine {
-  readonly retests:RetestService;
+
   readonly conversations:ConversationService;
   private triggerScheduler:TriggerScheduler;
   readonly bus = new EventEmitter(); // activity 广播（M5 SSE 接这里）
@@ -157,7 +156,7 @@ export class Engine {
     this.coordinator = new Coordinator(db,cfg.workers);
     this.conversations=new ConversationService(db,modelResolver,dataDir,this,egressAddr);
     this.triggerScheduler=new TriggerScheduler(db);
-    this.retests=new RetestService(db,modelResolver,dataDir,cfg.workers,egressAddr);
+
   }
 
   // ─── 任务运行时 ───────────────────────────────────────────────────────────
@@ -279,7 +278,7 @@ export class Engine {
       await recoverExpiredRuntimes(this.db);
       await this.coordinator.promote();
       await this.triggerScheduler.tick();
-      await this.retests.pump();
+
       await this.conversations.pump();
       const rows=await this.db.query(`SELECT id,description,queue_mode FROM tasks WHERE status='running' AND NOT paused AND NOT queued AND deleted_at IS NULL ORDER BY created_at,id`);
       for(const row of rows.rows){
@@ -436,22 +435,16 @@ export class Engine {
         }
         continue;
       }
-      // 全部资产待审批：省一次模型调用。
-      if (await s.waitingForAssetApproval().catch(() => false)) continue;
       if(Date.now()<retryAfter)continue;
       const wakeups=(await this.db.query('SELECT id,node_id,kind FROM blackboard_wakeups WHERE exploration_id=$1 AND acknowledged_at IS NULL ORDER BY id LIMIT 50',[rt.expID])).rows;
       const revision=await blackboardRevision(this.db,rt.expID);
       const heartbeat=Math.max(1,settings?.plan_heartbeat_seconds?settings.plan_heartbeat_seconds*1000:this.cfg.heartbeatMs);
       const inspect=Date.now()-lastPlannedAt>=heartbeat&&(counts.running>0||revision!==lastRevision);
       if(!wakeups.length&&!rt.triggers.length&&!inspect)continue;
-      const pending=await pendingPlannerContext(this.db,rt.taskID,rt.expID);
-
       // Durable settlement/control events are the wakeup authority, including
       // events whose result contains no new fact. Never discard one by a hash.
       await rt.todos.load(rt.expID);
 
-      const triggersText =
-        rt.triggers.length > 0 ? `【本轮触发】\n${rt.triggers.join("\n")}` : "【本轮触发】心跳唤醒（无新事件）";
       const task = await this.db.tasks().getTask(rt.taskID);
       const goal = task?.goal ?? task?.description ?? "";
 
@@ -460,6 +453,13 @@ export class Engine {
 
       await compactColdGraph(this.db, rt.expID);
       if (rt.stopped || rt.paused || rt.settling) continue;
+      // Compaction creates graph events too. Snapshot after it so the digest
+      // shown in this round is acknowledged with this round's actual delivery.
+      const pending=await pendingPlannerContext(this.db,rt.taskID,rt.expID);
+      const reasons=[...rt.triggers,
+        ...(wakeups.length?[`持久化通知：${wakeups.map(w=>`${w.kind} (#${w.id})`).join('、')}`]:[]),
+        ...(pending.ids.length?[`待交付领域变化：${pending.ids.length} 条${pending.more?'（后续仍有分页）':''}`]:[])];
+      const triggersText=`【本轮触发】\n${reasons.length?reasons.join('\n'):'心跳巡检（本轮无待交付通知）'}`;
       // Planning itself uses an execution lease and model resources. A Planner
       // that cannot dispatch any work must still be bounded by task timeout.
       if (task) await this.db.tasks().stampFirstRun(rt.taskID, task.timeout_seconds);
@@ -468,8 +468,9 @@ export class Engine {
       const triggerCount=rt.triggers.length;
       const turn=this.beginActivityTurn(rt,{worker:"planner"},planningRoundID);
       let planningSucceeded=false;
+      let deliveredContextIDs=pending.ids,deliveredWakeupIDs=wakeups.map(w=>w.id),moreContext=pending.more;
       const round = runPlannerRound({
-        planningRoundID,changes:pending.changes,events:wakeups.map(w=>({id:w.id,kind:w.kind,ref:w.node_id?`node:${w.node_id}`:null})),egressAddr:this.egressAddr,egressScope:`planner:${rt.lease}`,
+        planningRoundID,contextEventIDs:pending.ids,changes:pending.changes,events:wakeups.map(w=>({id:Number(w.id),kind:w.kind,ref:w.node_id?`node:${w.node_id}`:null})),egressAddr:this.egressAddr,egressScope:`planner:${rt.lease}`,
         db: this.db, taskID: rt.taskID, expID: rt.expID, goal, model,
         dataDir: this.dataDir, todos: rt.todos, hooks: this.engineHooks(rt),
         triggersText, maxTurns: this.cfg.plannerMaxTurns, signal: rt.plannerAbort.signal,
@@ -485,6 +486,9 @@ export class Engine {
         });
         if(!r.aborted && r.stopReason==='completed'){
           planningSucceeded=true;
+          deliveredContextIDs=r.deliveredContextIDs??pending.ids;
+          deliveredWakeupIDs=r.deliveredWakeupIDs??wakeups.map(w=>w.id);
+          moreContext=moreContext||r.moreContext===true;
         }else retryAfter=Date.now()+60_000;
       }).catch((err) => {
         retryAfter=Date.now()+60_000;
@@ -493,10 +497,10 @@ export class Engine {
       if(planningSucceeded){
         await this.db.transaction(async db=>{
           await this.coordinator.assert(rt.taskID,rt.lease!,db);
-          await acknowledgePlannerContext(db,rt.expID,planningRoundID,pending.ids);
-          await db.query('UPDATE blackboard_wakeups SET acknowledged_at=now() WHERE id=ANY($1::bigint[])',[wakeups.map(w=>w.id)]);
+          await acknowledgePlannerContext(db,rt.expID,planningRoundID,deliveredContextIDs);
+          await db.query('UPDATE blackboard_wakeups SET acknowledged_at=now() WHERE exploration_id=$1 AND id=ANY($2::bigint[])',[rt.expID,deliveredWakeupIDs]);
         });
-        rt.triggers.splice(0,triggerCount);if(pending.more)this.notify(rt.taskID,"继续读取本轮未交付的领域变化");lastPlannedAt=Date.now();lastRevision=revision;retryAfter=0;
+        rt.triggers.splice(0,triggerCount);if(moreContext)this.notify(rt.taskID,"继续读取本轮未交付的领域变化");lastPlannedAt=Date.now();lastRevision=revision;retryAfter=0;
       }
       await turn.finish();
       rt.plannerBusy = null;
@@ -604,7 +608,7 @@ export class Engine {
         hooks: this.engineHooks(rt),
         extraGuard: async g => {
           try { await this.coordinator.assert(rt.taskID,rt.lease!); } catch { return {block:true,reason:"执行租约已失效"}; }
-          return interceptGate(this.db, { taskID: rt.taskID, agentName: "worker", worker: name })(g);
+          return;
         },
         onActivity: turn.onActivity,
         signal: controller.signal,
@@ -672,6 +676,10 @@ export class Engine {
           summary=accepted.summary+(accepted.remaining?`\n恢复位置：${accepted.remaining}`:'');
         } catch(error) {terminal='blocked';reason='invalid_result';summary=`结果验收失败：${error instanceof Error?error.message:String(error)}`;}
       }
+      if(!cause&&!externallyStopped&&(await db.query("SELECT 1 FROM worker_operations WHERE intent_id=$1 AND status IN ('running','uncertain') LIMIT 1",[intent.id])).rowCount){
+        terminal='blocked';reason='operation_uncertain';acceptedResult=false;
+        summary='工具执行结果尚未核对，当前意图未确认完成；已保存的事实仍然保留。';
+      }
       const receipt=await workerStopReceipt(db,rt.expID,latest,reason,String(turn.metadata.turn_id),stopDetail|| (failure?String(failure):reason==='invalid_result'?summary:''));
       receipt.accepted_result=acceptedResult;
       if (!summary.trim()) summary = receipt.summary;
@@ -679,7 +687,13 @@ export class Engine {
       if (reason !== 'completed') summary += `\n已保存事实：${receipt.fact_refs.map(r=>`node:${r.node_id}`).join(', ')||'无'}\n恢复位置：${receipt.recovery}`;
       receipt.summary = summary;
       await db.query("UPDATE exploration_nodes SET payload=payload||jsonb_build_object('execution_stop',$3::jsonb) WHERE exploration_id=$1 AND id=$2",[rt.expID,intent.id,JSON.stringify(receipt)]);
-      if(cause==='pause' && !acceptedResult)terminal='open';
+      // Service replacement interrupts an attempt, not the intent. Preserve its
+      // identity/session and bypass stale Planner-basis checks on re-claim.
+      // A concurrent explicit pause/cancel always wins over shutdown recovery.
+      if(!externallyStopped && !acceptedResult && (cause==='pause'||cause==='shutdown'||cause==='lease-lost')){
+        terminal='open';
+        await db.query("UPDATE exploration_nodes SET owner='',payload=payload||'{\"resume_requested\":true}'::jsonb WHERE id=$1",[intent.id]);
+      }
       const id=await store.appendActivity({node_id:intent.id,worker:name,kind:'result',metadata:{...turn.metadata,status:terminal==='open'?'paused':terminal,event_type:'outcome',execution_stop:receipt},summary:summary||`意图 #${intent.id} ${terminal}`,detail:summary,
         ...(u?{input_tokens:u.input,output_tokens:u.output,cache_read_tokens:u.cacheRead,cache_write_tokens:u.cacheWrite}:{})});
       if(alreadyCommitted)await db.query('UPDATE worker_settlements SET activity_id=$2 WHERE intent_id=$1 AND released_at IS NULL',[intent.id,id]);
@@ -765,10 +779,10 @@ export class Engine {
         (selectingRunning&&n.state!=='running'))throw Object.assign(new Error(`意图 #${intentID} 不可下发或订阅`),{statusCode:409});
       if(segment!==undefined && (!Number.isSafeInteger(segment)||segment<0||(segment>0&&!(await db.query('SELECT 1 FROM main_sessions WHERE exploration_id=$1 AND seq=$2',[task.exploration_id,segment])).rowCount)))
         throw Object.assign(new Error('主会话不存在'),{statusCode:404});
-      if((await db.query('SELECT 1 FROM exploration_anchors WHERE node_id=$1 AND NOT task_asset_worker_executable($2,asset_id)',[intentID,taskID])).rowCount)
-        throw Object.assign(new Error('意图资产已封禁或撤权'),{statusCode:409});
+      if((await db.query('SELECT 1 FROM exploration_anchors WHERE node_id=$1 AND NOT task_asset_linked($2,asset_id)',[intentID,taskID])).rowCount)
+        throw Object.assign(new Error('意图资产不属于当前任务'),{statusCode:409});
       if(n.state==='open')await db.query(`UPDATE exploration_nodes SET payload=payload||jsonb_build_object('dispatch_requested',true,
-        'pending_asset_execution',jsonb_build_object('issuer','mainagent','granted_at',now())) WHERE id=$1`,[intentID]);
+        'dispatch_source','mainagent') WHERE id=$1`,[intentID]);
       if (segment !== undefined) await db.query(`INSERT INTO worker_feedback(exploration_id,task_id,intent_id,main_seg,after_activity)
         VALUES($1,$2,$3,$4,CASE WHEN $5 THEN COALESCE((SELECT after_activity FROM worker_feedback_run WHERE intent_id=$3),
           (SELECT max(id) FROM activity WHERE exploration_id=$1 AND node_id=$3),0)
@@ -849,7 +863,7 @@ export class Engine {
 
   async shutdown(): Promise<void> {
     this.closing=true;clearInterval(this.scheduler);
-    await this.retests.shutdown();
+
     await this.conversations.shutdown();
     await Promise.all([...this.tasks.keys()].map((id) => this.stop(id,'shutdown')));
   }

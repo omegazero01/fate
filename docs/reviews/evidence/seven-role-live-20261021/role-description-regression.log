@@ -1,0 +1,26 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+(node:61139) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ src/agent/seven-role-loadout.test.ts (17 tests) 18827ms
+   ✓ goals actual entrypoint matches preview and required tools execute 2510ms
+   ✓ planner actual entrypoint matches preview and required tools execute 6829ms
+   ✓ mainagent actual entrypoint matches preview and required tools execute 489ms
+   ✓ worker actual entrypoint matches preview and required tools execute 1112ms
+   ✓ auto actual entrypoint matches preview and required tools execute 616ms
+   ✓ pentest actual entrypoint matches preview and required tools execute 355ms
+   ✓ reporter actual entrypoint matches preview and required tools execute 366ms
+ ✓ src/pi/internal-discovery.test.ts (6 tests) 156ms
+stdout | src/agent/tool-catalog.test.ts > all seven previews use real schemas and never include Retester capabilities
+LOADOUT_BUDGET [{"role":"goals","resident":["context_search","context_get","set_goals","set_constraints","register_user_target","read"],"deferred":[],"schema_bytes":{"before":5150,"resident":4864,"registered":4864}},{"role":"planner","resident":["context_search","context_get","graph_overview","add_intent","prove_goal","kill_work","steer_work","todo_write","read","bash","write","edit","tool_search"],"deferred":["add_task_scope","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17268,"resident":12085,"registered":15255}},{"role":"mainagent","resident":["record_fact","report_finding","insert_assets","context_search","context_get","add_intent","dispatch_intents","steer_work","read","bash","write","edit","tool_search"],"deferred":["graph_overview","set_goals","set_constraints","kill_work","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":24194,"resident":15187,"registered":20146}},{"role":"worker","resident":["http_request","context_search","context_get","record_fact","insert_assets","report_finding","read","bash","write","edit","tool_search"],"deferred":["graph_overview","asset_search","asset_get","shell_open","shell_send","shell_read","shell_close","shell_list"],"schema_bytes":{"before":17337,"resident":10971,"registered":14130}},{"role":"auto","resident":["context_get","list_tasks","get_task","spawn_task","pause_task","resume_task","context_search","read","tool_search"],"deferred":["list_llm_profiles","add_task_hint","get_finding","update_finding_report","asset_search","asset_get","list_findings"],"schema_bytes":{"before":7814,"resident":4764,"registered":6653}},{"role":"pentest","resident":["context_get","context_search","record_conversation_fact","report_conversation_finding","http_request","read","bash","write","edit","tool_search"],"deferred":["asset_search","asset_get","list_findings","graph_overview"],"schema_bytes":{"before":11897,"resident":8635,"registered":10060}},{"role":"reporter","resident":["context_get","get_finding","update_finding_report","context_search","read","tool_search"],"deferred":["list_findings"],"schema_bytes":{"before":4789,"resident":4216,"registered":3908}}]
+
+ ✓ src/agent/tool-catalog.test.ts (3 tests) 3531ms
+   ✓ all seven previews use real schemas and never include Retester capabilities 309ms
+ ✓ src/agent/tool-description-policy.test.ts (10 tests) 7ms
+
+ Test Files  4 passed (4)
+      Tests  36 passed (36)
+   Start at  09:52:18
+   Duration  31.85s (transform 1.55s, setup 0ms, collect 7.56s, tests 22.52s, environment 1ms, prepare 347ms)
+

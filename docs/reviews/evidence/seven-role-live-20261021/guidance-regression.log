@@ -1,0 +1,11 @@
+
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+ ✓ src/pi/internal-discovery.test.ts (6 tests) 97ms
+ ✓ src/agent/constraint-policy.test.ts (5 tests) 4ms
+
+ Test Files  2 passed (2)
+      Tests  11 passed (11)
+   Start at  09:43:16
+   Duration  1.12s (transform 166ms, setup 0ms, collect 662ms, tests 101ms, environment 1ms, prepare 99ms)
+

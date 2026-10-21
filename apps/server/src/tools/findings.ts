@@ -8,10 +8,11 @@ import { domainTool } from "./define.js";
 import type { ToolRunContext } from "./context.js";
 import { KindFinding, RelYields, RelProves } from "../db/exploration.js";
 import { jsonbClean } from "../db/exploration.js";
+import {normalizeWritebackScope,writebackReceipt,savedWritebackReceipt,writebackScopeSchema,type WritebackScope} from './writeback-scope.js';
 
 const SEVERITIES = ["critical", "high", "medium", "low"];
 
-interface ReportFindingArgs { traffic_refs?:Array<{traffic_id:string;role?:string;note?:string}>; vulnclass: string; name?: string; severity: "critical" | "high" | "medium" | "low"; summary: string; evidence: string; asset_ids?: number[]; }
+interface ReportFindingArgs { scope?:WritebackScope; traffic_refs?:Array<{traffic_id:string;role?:string;note?:string}>; vulnclass: string; name?: string; severity: "critical" | "high" | "medium" | "low"; summary: string; evidence: string; asset_ids?: number[]; }
 
 export function reportFindingTool(ctx: ToolRunContext) {
   return domainTool<ReportFindingArgs>(
@@ -30,7 +31,8 @@ export function reportFindingTool(ctx: ToolRunContext) {
           severity: { type: "string", enum: SEVERITIES },
           summary: { type: "string", description: "影响与成因概述" },
           evidence: { type: "string", description: "复现证据（请求/响应/命令输出原文）" },
-          asset_ids: { type: "array", items: { type: "integer" }, description: "受影响资产 id" },
+          asset_ids: { type: "array", items: { type: "integer" }, description: "本漏洞实际受影响的资产 ID；上下游背景资产写入说明，不混作受影响资产。缺省不继承意图资产" },
+          scope:writebackScopeSchema,
         },
         required: ["vulnclass", "severity", "summary", "evidence"],
       },
@@ -53,8 +55,8 @@ export function reportFindingTool(ctx: ToolRunContext) {
           if(existing){
             const payload=existing.payload as Record<string,unknown>;
             if(!sameSource(c,origin,payload))throw new Error('工具调用编号已用于其他来源');
-            await writeAnchors({...c,db},origin,await s.anchorAssetIDs(Number(existing.node_id)));
-            return {finding_node_id:Number(existing.node_id),finding_id:Number(existing.id)};
+            const savedAnchors=await writeAnchors({...c,db},origin,await s.anchorAssetIDs(Number(existing.node_id)));
+            return {finding_node_id:Number(existing.node_id),finding_id:Number(existing.id),asset_ids:savedAnchors,writeback:savedWritebackReceipt(payload.writeback)};
           }
         }
 
@@ -65,6 +67,9 @@ export function reportFindingTool(ctx: ToolRunContext) {
           summary: args.summary,
           ...sourceFields(c,origin),
         };
+        const scope=normalizeWritebackScope(args.scope);
+        if(scope)payload.scope=scope;
+        payload.writeback=writebackReceipt(anchors,scope,args.evidence,'finding');
         const nodeID = await s.addNode(KindFinding, payload, 0, "confirmed", c.workerName ?? c.role, anchors);
         await s.link(origin.id, RelYields, nodeID);
 
@@ -83,15 +88,12 @@ export function reportFindingTool(ctx: ToolRunContext) {
             jsonbClean(JSON.stringify(anchors)),
           ],
         );
-        if (anchors.length > 0) {
-          await db.taskScope().markTaskAssetsTested(c.taskID, anchors, c.workerName ?? c.role);
-        }
         const findingID=Number(ins.rows[0]!.id);
         await db.query("UPDATE findings SET tool_call_id=$2 WHERE id=$1",[findingID,c.toolCallID??null]);
         if(args.traffic_refs?.length)await bindEvidence(db,findingID,args.traffic_refs,c.taskID);
         await findingPublished(db,c.expID,nodeID);
         created=true;
-        return { finding_node_id: nodeID, finding_id: findingID };
+        return { finding_node_id: nodeID, finding_id: findingID,asset_ids:anchors,writeback:payload.writeback };
         });
         // Nested callers leave delivery to the durable wakeup after their outer commit.
         if(created&&!c.db.transactionClient)c.hooks.notifyFinding?.(c.expID, saved.finding_node_id);
@@ -142,11 +144,8 @@ export function listFindingsTool(ctx: ToolRunContext) {
           const ownerTask=Number(row.task_id),owner=ownerTask===c.taskID?{taskID:c.taskID,expID:c.expID}:sourceByTask.get(ownerTask);
           if(!owner)continue;
           try{
-            if(row.node_id!==null){await resolveGraphNode(c.db,c.taskID,c.expID,Number(row.node_id),c.role==='worker');}
+            if(row.node_id!==null){await resolveGraphNode(c.db,c.taskID,c.expID,Number(row.node_id));}
             else{
-              const ids=Array.isArray(row.asset_ids)?row.asset_ids.map(Number):[];
-              const states=await c.db.taskScope().taskAssetApprovalStates(owner.taskID,ids);
-              if(!ids.every(id=>states.get(id)==='approved'||(c.role==='worker'&&states.get(id)==='pending')))continue;
             }
             visible.push(row);
           }catch{/* Unauthorized evidence is omitted from the role's projection. */}
@@ -203,6 +202,7 @@ export function proveGoalTool(ctx: ToolRunContext) {
             ? (await db.query('SELECT evidence,status FROM findings WHERE node_id=$1',[evidence.id])).rows[0] : undefined;
           const observation = finding?.evidence ?? evidence.payload.evidence;
           if (typeof observation !== 'string' || !observation.trim()) throw new Error('目标证据缺少实际观察内容，请读取或补充证据后再证明');
+          if(evidence.payload.observation_type==='negative')throw new Error('负面报告缺少宿主核验的目标测试范围，不能泛化为目标达成或未测方向已否定');
           if (['inferred','unknown'].includes(String(evidence.payload.observation_type)) || finding?.status === 'false_positive')
             throw new Error('推测、未知观察或已判定误报不能作为目标达成证据');
           await s.link(evidence.id, RelProves, goal.id);

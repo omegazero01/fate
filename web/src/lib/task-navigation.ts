@@ -2,7 +2,7 @@ export type TaskView = "sessions" | "findings" | "graph" | "files" | "traffic";
 export function taskNavigation(params: Pick<URLSearchParams, "get">) {
   const tab = params.get("tab") || "sessions";
   const explore = tab === "coverage" || tab === "assets" ? tab : params.get("explore") || "graph";
-  const legacyPanel = ["overview", "broadcast", "asset-approvals", "intercept"].includes(tab) ? tab : null;
+  const legacyPanel = ["overview", "broadcast"].includes(tab) ? tab : null;
   const requestedPanel = legacyPanel || params.get("panel");
   const detailPanel = requestedPanel === "overview" || requestedPanel === "broadcast";
   const section = detailPanel ? requestedPanel : params.get("section") || "chat";
@@ -18,7 +18,7 @@ export function taskNavigation(params: Pick<URLSearchParams, "get">) {
     view: detailPanel ? "sessions" as const : view,
     section: ["chat", "overview", "broadcast"].includes(section) ? section : "chat",
     explore: ["graph", "coverage", "assets"].includes(explore) ? explore : "graph",
-    panel: detailPanel ? null : requestedPanel,
+    panel: requestedPanel === "settings" ? "settings" : null,
   };
 }
 export function taskViewURL(search: string, patch: Record<string, string | null>) {

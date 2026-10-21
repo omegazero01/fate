@@ -27,7 +27,8 @@ export function normalizeContract(value: unknown, summary: string): IntentContra
   if (value === undefined) return { version: 1, objective: text(summary, 'summary'), acceptance: [summary.trim()], out_of_scope: [], basis: [] };
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('contract 必须是对象');
   const c = value as Record<string, unknown>;
-  if (!Array.isArray(c.acceptance) || !c.acceptance.length || c.acceptance.length > 10) throw new Error('acceptance 需要 1–10 条完成条件');
+  const acceptance = c.acceptance ?? [summary.trim()];
+  if (!Array.isArray(acceptance) || !acceptance.length || acceptance.length > 10) throw new Error('acceptance 需要 1–10 条完成条件');
   const list = (v: unknown, name: string, max: number) => {
     if (v === undefined) return [];
     if (!Array.isArray(v) || v.length > max) throw new Error(`${name} 列表无效`);
@@ -46,7 +47,7 @@ export function normalizeContract(value: unknown, summary: string): IntentContra
     work = { resource: text(w.resource, 'resource'), question_key: text(w.question_key, 'question_key', 200), method_class: text(w.method_class, 'method_class', 200), identity: text(w.identity, 'identity', 200) };
   }
   const allowed = c.allowed_tools === undefined ? undefined : list(c.allowed_tools, 'allowed_tools', 50);
-  const contract:IntentContract={ version: 1, objective: text(c.objective, 'objective'), acceptance: c.acceptance.map(x => text(x, 'acceptance')), out_of_scope: list(c.out_of_scope, 'out_of_scope', 20), basis: refs, ...(work ? { work } : {}), ...(allowed ? { allowed_tools: allowed } : {}) };
+  const contract:IntentContract={ version: 1, objective: text(c.objective ?? summary, 'objective'), acceptance: acceptance.map(x => text(x, 'acceptance')), out_of_scope: list(c.out_of_scope, 'out_of_scope', 20), basis: refs, ...(work ? { work } : {}), ...(allowed ? { allowed_tools: allowed } : {}) };
   if(Buffer.byteLength(JSON.stringify(contract))>12*1024)throw new Error('执行约定超过 12 KiB，请缩短约定并通过 basis 引用详情');
   return contract;
 }

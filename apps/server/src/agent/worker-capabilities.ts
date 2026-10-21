@@ -4,23 +4,33 @@ import {boundCustomTools} from '../tools/custom.js';
 import type {ToolRunContext} from '../tools/context.js';
 import {roleResources} from './resources.js';
 import {hasDeferredMcp} from '../pi/platform-mcp.js';
+import {prepareToolLoading} from './tool-loading.js';
+import {platformPolicy} from '../pi/platform-policy.js';
+import {resolveRolePrompt} from './prompts.js';
+import {skillDir} from '../config/index.js';
 
 /** Uses the same factories/bindings as execution, without connecting MCP or running a model. */
 export async function workerCapabilities(ctx: ToolRunContext) {
   // Lazy import avoids a module initialization cycle through graph_overview/add_intent.
   const {workerTools} = await import('../tools/index.js');
-  const [tools, disabled, custom, resources, agent] = await Promise.all([
+  const {legacyReadCandidates} = await import('../tools/legacy-reads.js');
+  const [tools, disabled, custom, resources, agent, policy, prompt] = await Promise.all([
     applyToolBindings(ctx.db, 'worker', workerTools({...ctx, role:'worker'})),
     disabledBuiltinTools(ctx.db), boundCustomTools(ctx.db, 'worker'),
-    roleResources(ctx.db, 'worker'), ctx.db.platform().getAgentByKey('worker'),
+    roleResources(ctx.db, 'worker',skillDir()), ctx.db.platform().getAgentByKey('worker'),
+    platformPolicy(ctx.db,'worker'),resolveRolePrompt(ctx.db,'worker'),
   ]);
-  const names = [...new Set([
+  const candidates = [...new Set([
     ...['bash','read','write','edit'].filter(name => !disabled.has(name)),
     ...(agent?.interactiveShell?TERMINAL_TOOLS.filter(name=>!disabled.has(name)):[]),
     ...tools.map(t => t.name), ...custom.map(t => t.key),
     ...(resources.mcpEntries?.length ? resources.mcpResourceTools ?? [] : []),
-    ...(hasDeferredMcp(resources) ? ['tool_search'] : []),
   ])].sort();
+  const loadout=await prepareToolLoading(ctx.db,'worker',{
+    customTools:tools,toolAllowlist:candidates,legacyTools:legacyReadCandidates({...ctx,role:'worker'}),
+    systemPrompt:prompt.template,...resources,
+  },policy.builtinLoading==='direct',policy.fallback);
+  const names=[...loadout.toolAllowlist,...(loadout.toolLoading.deferred.length||hasDeferredMcp(resources)?['tool_search']:[])];
   const cached=(await ctx.db.query(`SELECT s.name,c.tool_name FROM mcp_servers s JOIN mcp_tools_cache c ON c.server_id=s.id ORDER BY s.id,c.tool_name`)).rows;
   const mcp = (resources.mcpEntries ?? []).map(e => {
     const config=e.config as {exposure?:string;toolExposure?:Record<string,string>};

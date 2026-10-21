@@ -155,7 +155,7 @@ it('summary batches retain authentication, task isolation, and revoked node visi
  expect((await app.inject({url})).statusCode).toBe(401);
  expect((await app.inject({url,headers})).json().items).toHaveLength(1);
  const parent=Number((await db.query("SELECT a.id FROM assets a JOIN task_asset_links l ON l.asset_id=a.id WHERE l.task_id=$1 AND a.type IN ('root_domain','subdomain') AND a.domain='summary.local.invalid'",[task.id])).rows[0]!.id);
- await db.taskScope().revokeTaskAssets(task.id,[parent],'user','LOCAL summary authorization regression');
- expect((await app.inject({url,headers})).json().items).toEqual([]);
- expect((await app.inject({url:`/api/tasks/${task.id}/turns?ids=${Array.from({length:101},(_,i)=>i).join(',')}`,headers})).statusCode).toBe(400);
+ await db.query('UPDATE tasks SET deleted_at=now() WHERE id=$1',[task.id]);
+ expect((await app.inject({url,headers})).statusCode).toBe(404);
+
 });

@@ -1,51 +1,21 @@
+import {migrateDirectionWriteback} from '../agent/direction-migration.js';
+import {TOOL_POLICY_VERSION,ACTIVE_ROLES} from '../agent/tool-registry.js';
+import {migrateConstraintProvenance} from './constraint-provenance.js';
+import {migrateConstraintPrompts} from '../agent/constraint-migration.js';
+import {migrateAssetTools} from './asset-migration.js';
 import {migrateArtex} from './artex-migration.js';
-import {migrateBuiltinPrompts} from '../agent/prompts.js';
+import {migrateBuiltinPrompts,migrateApprovalPrompts,migrateSeriesPlannerPrompt} from '../agent/prompts.js';
 // 平台配置 store：settings KV / agent 提示词 / 工具目录 / MCP / LLM profile / 内置种子。
 // 平移自 Go 版 db/settings.go + db/config.go(settings·prompts·mcp·profiles 部分) + db/tools.go +
-// db/db.go 的 seedBuiltins（六角色 agent、变量目录、内置拦截规则 v1/v2/v3、内置 MCP）。
 // task_llm_profiles 链已按决策删除：profile 只有 CRUD + 激活/故障转移链读取。
 
 import type { Database } from "./index.js";
 import { jsonbClean, utf8Clean } from "./exploration.js";
 
-// ─── settings 键与默认值（server/manager.go + intercept/intercept.go）─────────
 
 /** 并发 worker 数（未设置/非法时默认 3）。 */
 export const SETTING_WORKERS = "workers";
 export const DEFAULT_WORKERS = 3;
-
-/** 进入拦截规则系统的工具白名单（JSON 数组文本；未设置时用硬编码默认集）。 */
-export const SETTING_INTERCEPT_ENABLED_TOOLS = "intercept_enabled_tools";
-export const DEFAULT_INTERCEPT_ENABLED_TOOLS = [
-  "Bash", "WebFetch", "web_search",
-  "shell_open", "shell_send",
-  "Write", "Edit", "MultiEdit",
-];
-
-/** LLM 兜底审批（judge）settings 键。 */
-export const SETTING_JUDGE_ENABLED = "llm_judge_enabled";
-export const SETTING_JUDGE_PROFILE_ID = "llm_judge_profile_id";
-export const SETTING_JUDGE_PROMPT = "llm_judge_prompt";
-export const SETTING_JUDGE_TIMEOUT_SECONDS = "llm_judge_timeout_seconds";
-export const SETTING_JUDGE_FAIL_ACTION = "llm_judge_fail_action";
-export const SETTING_JUDGE_ASK_TIMEOUT_SECONDS = "llm_judge_ask_timeout_seconds";
-export const SETTING_JUDGE_ASK_TIMEOUT_ACTION = "llm_judge_ask_timeout_action";
-
-export const DEFAULT_JUDGE_TIMEOUT_SECONDS = 15;
-export const DEFAULT_JUDGE_FAIL_ACTION = "allow";
-export const DEFAULT_JUDGE_ASK_TIMEOUT_SECONDS = 300;
-export const DEFAULT_JUDGE_ASK_TIMEOUT_ACTION = "deny";
-
-/** judge 解析后的配置。prompt 为空串表示未覆盖（内置模板随 M4 Reviewer 接线注入）。 */
-export interface JudgeConfig {
-  enabled: boolean;
-  profileID: number; // 0 = 跟随全局激活配置
-  prompt: string;
-  timeoutSeconds: number;
-  failAction: "allow" | "ask" | "deny";
-  askTimeoutSeconds: number;
-  askTimeoutAction: "allow" | "deny";
-}
 
 // ─── LLM profile 类型（db/config.go）─────────────────────────────────────────
 
@@ -354,54 +324,6 @@ export class PlatformStore {
     await this.setSetting(SETTING_WORKERS, String(Math.trunc(n)));
   }
 
-  /** 拦截白名单工具列表；未保存过 → 硬编码默认集，坏 JSON → 空表（Go 语义）。 */
-  async getEnabledTools(): Promise<string[]> {
-    const v = await this.getSetting(SETTING_INTERCEPT_ENABLED_TOOLS);
-    if (v === null) return [...DEFAULT_INTERCEPT_ENABLED_TOOLS];
-    try {
-      const names = JSON.parse(v) as unknown;
-      if (!Array.isArray(names)) return [];
-      return names.map(String);
-    } catch {
-      return [];
-    }
-  }
-
-  async setEnabledTools(tools: string[]): Promise<void> {
-    await this.setSetting(SETTING_INTERCEPT_ENABLED_TOOLS, JSON.stringify(tools));
-  }
-
-  /** judge 配置解析：缺省/非法键回退默认；prompt 空串=未覆盖（内置模板 M4 接线）。 */
-  async judgeConfig(): Promise<JudgeConfig> {
-    const cfg: JudgeConfig = {
-      enabled: await this.getBool(SETTING_JUDGE_ENABLED, false),
-      profileID: await this.getInt(SETTING_JUDGE_PROFILE_ID, 0),
-      prompt: (await this.getSetting(SETTING_JUDGE_PROMPT))?.trim() ?? "",
-      timeoutSeconds: await this.getInt(SETTING_JUDGE_TIMEOUT_SECONDS, DEFAULT_JUDGE_TIMEOUT_SECONDS),
-      failAction: await this.getChoice(SETTING_JUDGE_FAIL_ACTION, DEFAULT_JUDGE_FAIL_ACTION, [
-        "allow", "ask", "deny",
-      ]) as JudgeConfig["failAction"],
-      askTimeoutSeconds: await this.getInt(SETTING_JUDGE_ASK_TIMEOUT_SECONDS, DEFAULT_JUDGE_ASK_TIMEOUT_SECONDS),
-      askTimeoutAction: await this.getChoice(SETTING_JUDGE_ASK_TIMEOUT_ACTION, DEFAULT_JUDGE_ASK_TIMEOUT_ACTION, [
-        "allow", "deny",
-      ]) as JudgeConfig["askTimeoutAction"],
-    };
-    if (cfg.timeoutSeconds <= 0) cfg.timeoutSeconds = DEFAULT_JUDGE_TIMEOUT_SECONDS;
-    if (cfg.askTimeoutSeconds <= 0) cfg.askTimeoutSeconds = DEFAULT_JUDGE_ASK_TIMEOUT_SECONDS;
-    return cfg;
-  }
-
-  /** 持久化 judge 配置。空 prompt 清除覆盖（重新用内置模板）。 */
-  async setJudgeConfig(c: JudgeConfig): Promise<void> {
-    await this.setBool(SETTING_JUDGE_ENABLED, c.enabled);
-    await this.setSetting(SETTING_JUDGE_PROFILE_ID, String(c.profileID));
-    await this.setSetting(SETTING_JUDGE_PROMPT, c.prompt.trim()); // 内置模板对比留在 M4（Reviewer 接线处）
-    await this.setSetting(SETTING_JUDGE_TIMEOUT_SECONDS, String(c.timeoutSeconds));
-    await this.setSetting(SETTING_JUDGE_FAIL_ACTION, c.failAction);
-    await this.setSetting(SETTING_JUDGE_ASK_TIMEOUT_SECONDS, String(c.askTimeoutSeconds));
-    await this.setSetting(SETTING_JUDGE_ASK_TIMEOUT_ACTION, c.askTimeoutAction);
-  }
-
   // ─── agents / 提示词（db/config.go Agents·prompts 段）─────────────────────
 
   private mapAgent(row: Record<string, unknown>): Agent {
@@ -431,7 +353,7 @@ export class PlatformStore {
   }
 
   async listAgents(): Promise<Agent[]> {
-    const res = await this.db.query<Record<string, unknown>>(`SELECT ${AGENT_COLS} FROM agents ORDER BY id`);
+    const res = await this.db.query<Record<string, unknown>>(`SELECT ${AGENT_COLS} FROM agents WHERE key<>'retester' ORDER BY id`);
     return res.rows.map((r) => this.mapAgent(r));
   }
 
@@ -923,61 +845,15 @@ const BUILTIN_AGENTS: BuiltinAgent[] = [
   },
 ];
 
-/** 内置拦截规则 v3 的删除类接口路径正则（导出供无 DB 单测）。 */
-export const DELETE_ENDPOINT_PATH_PATTERN = String.raw`(?i)/(?:(?:delete|remove|unlink|erase|destroy)[-\w]*|del)(?:[/?#"'\s]|$)`;
+const BUILTIN_SKILL_VISIBILITY: Record<string,string[]> = {"api-recon":["auto","pentest","worker"]};
 
-interface SeedRule {
-  name: string;
-  target: "tool_name" | "tool_input";
-  type: "string" | "regex";
-  pattern: string;
-  action: "allow" | "deny" | "ask";
-  message: string;
-  priority: number;
-}
-
-/** v1：系统破坏性(100) / 数据库破坏性(90) / HTTP 破坏性(80)，共 17 条，全部 deny。 */
-const INTERCEPT_RULES_V1: SeedRule[] = [
-  // ── 系统破坏性命令 (priority 100) ──────────────────────────────────
-  { name: "[内置] 递归强制删除 rm -rf", target: "tool_input", type: "regex", pattern: String.raw`(?i)\brm\b.{0,80}(?:-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*|--recursive|--no-preserve-root)`, action: "deny", message: "禁止执行递归强制删除（rm -rf / rm --recursive），可能永久损坏系统或靶机环境", priority: 100 },
-  { name: "[内置] 删除系统关键目录", target: "tool_input", type: "regex", pattern: String.raw`\brm\b[^"'\n]{0,60}["'\s](/|/etc|/bin|/usr|/boot|/var|/lib|/sys|/proc|/dev|/sbin|/root)`, action: "deny", message: "禁止删除系统关键路径", priority: 100 },
-  { name: "[内置] 磁盘格式化 mkfs", target: "tool_input", type: "regex", pattern: String.raw`\bmkfs\b`, action: "deny", message: "禁止格式化磁盘（mkfs）", priority: 100 },
-  { name: "[内置] 覆写磁盘设备 dd", target: "tool_input", type: "regex", pattern: String.raw`\bdd\b[^|\n]{0,100}\bof=\s*/dev/[a-zA-Z]`, action: "deny", message: "禁止使用 dd 覆写磁盘设备", priority: 100 },
-  { name: "[内置] Fork 炸弹", target: "tool_input", type: "regex", pattern: String.raw`:\(\)\s*\{[^}]*:\|:`, action: "deny", message: "禁止执行 Fork 炸弹", priority: 100 },
-  { name: "[内置] 关机 / 重启", target: "tool_input", type: "regex", pattern: String.raw`\b(?:shutdown|reboot|halt|poweroff|init\s+[06])\b`, action: "deny", message: "禁止执行关机或重启命令", priority: 100 },
-  { name: "[内置] 杀死全部进程", target: "tool_input", type: "regex", pattern: String.raw`\bkill\s+-9\s+-1\b|\bkillall\s+-9\b`, action: "deny", message: "禁止 kill -9 -1 或 killall -9（杀死所有进程）", priority: 100 },
-  { name: "[内置] 磁盘擦除 shred / wipe", target: "tool_input", type: "regex", pattern: String.raw`\b(?:shred|wipe)\b[^|\n]{0,80}/dev/[a-zA-Z]`, action: "deny", message: "禁止对磁盘设备执行 shred/wipe 擦除", priority: 100 },
-  { name: "[内置] 清空防火墙规则", target: "tool_input", type: "regex", pattern: String.raw`\biptables\s+(?:-F|--flush)\b|\bnft\s+flush\s+ruleset\b`, action: "deny", message: "禁止清空防火墙规则（iptables -F / nft flush）", priority: 100 },
-  // ── 数据库破坏性操作 (priority 90) ─────────────────────────────────
-  { name: "[内置] SQL DROP DATABASE / TABLE / SCHEMA", target: "tool_input", type: "regex", pattern: String.raw`(?i)\bDROP\s+(?:DATABASE|TABLE|SCHEMA|INDEX|VIEW|TABLESPACE|USER|ROLE)\b`, action: "deny", message: "禁止执行 DROP 操作，可能不可逆地销毁数据库对象", priority: 90 },
-  { name: "[内置] SQL TRUNCATE", target: "tool_input", type: "regex", pattern: String.raw`(?i)\bTRUNCATE\s+(?:TABLE\s+)?\w`, action: "deny", message: "禁止执行 TRUNCATE，可能清空数据表所有数据", priority: 90 },
-  { name: "[内置] MongoDB drop / dropDatabase", target: "tool_input", type: "regex", pattern: String.raw`(?i)\.(?:dropDatabase|dropCollection|drop)\s*\(`, action: "deny", message: "禁止执行 MongoDB drop 操作", priority: 90 },
-  { name: "[内置] Redis FLUSHALL / FLUSHDB", target: "tool_input", type: "regex", pattern: String.raw`(?i)\b(?:FLUSHALL|FLUSHDB)\b`, action: "deny", message: "禁止执行 Redis FLUSHALL / FLUSHDB，可能清空全部缓存数据", priority: 90 },
-  // ── HTTP 破坏性请求 (priority 80) ──────────────────────────────────
-  { name: "[内置] curl / wget 发送 DELETE 请求", target: "tool_input", type: "regex", pattern: String.raw`(?i)\bcurl\b[^|\n&;"]{0,300}(?:-X\s*DELETE|--request\s+DELETE|-XDELETE)|\bwget\b[^|\n&;"]{0,300}--method[=\s]+DELETE`, action: "deny", message: "禁止通过 curl/wget 发送 HTTP DELETE 请求，可能删除目标系统数据", priority: 80 },
-  { name: "[内置] Python HTTP 客户端 DELETE（requests/httpx/aiohttp）", target: "tool_input", type: "regex", pattern: String.raw`(?i)\b(?:requests|httpx|aiohttp|urllib\.request)\.delete\s*\(|session\.delete\s*\(|client\.delete\s*\(`, action: "deny", message: "禁止使用 Python HTTP 客户端发送 DELETE 请求", priority: 80 },
-  { name: "[内置] 脚本中声明 HTTP DELETE 方法（JS/通用）", target: "tool_input", type: "regex", pattern: String.raw`(?i)axios\.delete\s*\(|method\s*[:=]\s*['"]DELETE['"]`, action: "deny", message: "禁止在脚本中声明并发送 HTTP DELETE 请求", priority: 80 },
-  { name: "[内置] 批量清空 / 清除接口路径", target: "tool_input", type: "regex", pattern: String.raw`(?i)/(?:clear|wipe|flush|purge|truncate|drop|destroy|factory[-_]reset|reset[-_]all)(?:[/?#"'\s]|$)`, action: "deny", message: "禁止调用批量清空或销毁类接口（/clear /wipe /flush /purge 等）", priority: 80 },
-];
-
-/** 内置 skill 目录名 → 默认可见的内置 agent key（api-recon；其余 skill 默认不可见）。 */
-const BUILTIN_SKILL_VISIBILITY: Record<string, string[]> = {
-  "api-recon": ["auto", "pentest", "worker"],
-};
-
-/**
- * seedBuiltins：内置 agents + 变量目录、交互式 shell 默认开关（一次性）、browser→playwright
- * 迁移、内置 MCP 三件套、skill 可见性、内置拦截规则 v1/v2/v3。幂等：ON CONFLICT /
- * settings 旗标门控，用户改动永不被覆盖。在 openDatabase 迁移后调用一次。
- */
-/** 内置工具种子：领域工具（按角色工厂名单）+ pi 内置本地工具。幂等首插。 */
 export async function seedBuiltinTools(db: Database): Promise<void> {
   const P = ["planner"], W = ["worker"], M = ["mainagent"], G = ["goals"];
   const SHARED = ["planner", "worker", "mainagent"];
   const ALL = ["planner", "worker", "mainagent", "goals"];
   const seeds: Array<[string, string, string[]]> = [
-    ["bash", "执行 shell 命令（经出口网关做任务级授权）", ALL],
-    ["read", "读取文件", [...ALL,"auto","reporter","pentest","retester"]],
+    ["bash", "执行 shell 命令（出口网关记录任务流量）", ALL],
+    ["read", "读取文件", [...ALL,"auto","reporter","pentest"]],
     ["write", "写入文件", ["worker"]],
     ["edit", "编辑文件（字符串替换）", ["worker"]],
     ["graph_overview", "读取探索态势总览（目标/frontier/在跑/近期事实/覆盖度）", SHARED],
@@ -1012,8 +888,10 @@ export async function seedBuiltinTools(db: Database): Promise<void> {
 export async function seedBuiltins(db: Database): Promise<void> {
   // New roles are insert-only: operator prompts, budgets and bindings survive upgrades.
   await db.query(`INSERT INTO agents(key,name,role,builtin,enabled,trigger_run_mode,trigger_merge_mode,trigger_max_parallel)
-    VALUES ('reporter','Reporter','assistant',false,true,'parallel','none',5),('retester','Retester','assistant',false,true,'parallel','none',5) ON CONFLICT(key) DO NOTHING`);
+    VALUES ('reporter','Reporter','assistant',false,true,'parallel','none',5) ON CONFLICT(key) DO NOTHING`);
   await seedBuiltinTools(db);
+  await db.query(`INSERT INTO settings(key,value) SELECT 'tool_catalog_before_'||$1,jsonb_agg(to_jsonb(t) ORDER BY key)::text FROM tools t WHERE kind='builtin' ON CONFLICT(key) DO NOTHING`,[TOOL_POLICY_VERSION]);
+  await db.query(`INSERT INTO tools(key,system,kind,description,schema,agents,enabled) VALUES('tool_search',true,'builtin','按需发现已绑定工具；使用英文工具名或关键词','{}',$1::jsonb,true) ON CONFLICT(key) DO NOTHING`,[JSON.stringify(ACTIVE_ROLES)]);
   await db.transaction(async tx=>{
     // Retire the active catalog entries, preserving customized historical metadata.
     const retired=['checkpoint_intent','complete_intent'];
@@ -1026,15 +904,13 @@ export async function seedBuiltins(db: Database): Promise<void> {
   const store = new PlatformStore(db);
   const extensionTools:Array<[string,string,string[]]>=[
    ...['shell_open','shell_send','shell_read','shell_close','shell_list'].map(key=>[key,'当前 PI 执行会话的交互终端',['worker','planner','mainagent']] as [string,string,string[]]),
-   ['context_search','检索授权探索节点、执行结果与冷图原文',['worker','planner','mainagent','pentest','auto','goals','reporter','retester']],
-   ['context_get','按稳定引用分页读取节点详情与血缘',['worker','planner','mainagent','pentest','auto','goals','reporter','retester']],
-   ['read_tool_output','续读完整工具 JSON 原文',['goals','planner','mainagent','worker','auto','pentest','reporter','retester']],
-   ['http_request','执行授权 HTTP 请求并保存证据',['worker','pentest','retester']],
-   ['traffic_body','分页读取流量证据',['worker','pentest','reporter','retester']],
-   ['read_attachment','分页读取当前会话附件',['worker','mainagent','auto','pentest','reporter','retester']],
-   ['record_finding_retest_result','保存明确的复测结论',['retester']],
-   ['get_finding_retest_context','读取原漏洞与复测约束',['retester']],
-   ['get_finding','读取漏洞和证据版本',['reporter','retester','auto','pentest']],
+   ['context_search','检索授权探索节点、执行结果与冷图原文',['worker','planner','mainagent','pentest','auto','goals','reporter']],
+   ['context_get','按稳定引用分页读取节点详情与血缘',['worker','planner','mainagent','pentest','auto','goals','reporter']],
+   ['read_tool_output','续读完整工具 JSON 原文',['goals','planner','mainagent','worker','auto','pentest','reporter']],
+   ['http_request','执行授权 HTTP 请求并保存证据',['worker','pentest']],
+   ['traffic_body','分页读取流量证据',['worker','pentest','reporter']],
+   ['read_attachment','分页读取当前会话附件',['worker','mainagent','auto','pentest','reporter']],
+   ['get_finding','读取漏洞和证据版本',['reporter','auto','pentest']],
    ['update_finding_report','以证据版本更新报告',['reporter','auto']],
    ['list_tasks','列出平台任务',['auto']],['get_task','查询任务状态',['auto']],
    ['record_conversation_fact','绑定任务的 Pentest 写回有来源的事实',['pentest']],['report_conversation_finding','绑定任务的 Pentest 原子提交有证据的漏洞',['pentest']],['resume_task','恢复任务并查询准入结果',['auto']],
@@ -1045,10 +921,10 @@ export async function seedBuiltins(db: Database): Promise<void> {
     const legacyShared=['planner','worker','mainagent'],legacyAll=[...legacyShared,'goals'];
     const bindings:Array<[string[],string[],string[]]>=[
       [['bash'],legacyAll,['pentest']],
-      [['read'],legacyAll,['pentest','retester','auto','reporter']],
+      [['read'],legacyAll,['pentest','auto','reporter']],
       [['write','edit'],['worker'],['pentest']],
       [['graph_overview','node_detail'],legacyShared,['pentest']],
-      [['list_assets'],legacyShared,['pentest','retester','auto']],
+      [['list_assets'],legacyShared,['pentest','auto']],
       [['list_findings'],['worker','planner','mainagent'],['pentest','reporter','auto']],
     ];
     // Only recognize untouched legacy defaults; never broaden a custom binding.
@@ -1100,7 +976,13 @@ export async function seedBuiltins(db: Database): Promise<void> {
   );
 
   await migrateBuiltinPrompts(db);
+  await migrateConstraintProvenance(db);
+  await migrateConstraintPrompts(db);
   await migrateArtex(db);
+  await migrateApprovalPrompts(db);
+  await migrateAssetTools(db);
+  await migrateSeriesPlannerPrompt(db);
+  await migrateDirectionWriteback(db);
 
   // 5. 内置 MCP 只是配置预设：disabled 且不授予任何 agent。ON CONFLICT 保证重启不覆盖用户改动。
   await db.query(
@@ -1125,70 +1007,4 @@ export async function seedBuiltins(db: Database): Promise<void> {
     }
   }
 
-  // 7. 内置拦截规则 v1/v2/v3：各自 settings 旗标门控（旧库也补种；用户改动不覆盖）
-  await seedInterceptRulesV1(db, store);
-  await seedInterceptRulesV2(db, store);
-  await seedInterceptRulesV3(db, store);
-}
-
-async function seedInterceptRulesV1(db: Database, store: PlatformStore): Promise<void> {
-  if ((await store.getSetting("intercept_default_rules_v1")) === "done") return;
-  for (const r of INTERCEPT_RULES_V1) {
-    await db.query(
-      `INSERT INTO intercept_rules(name, enabled, priority, match_target, match_type, pattern, action, message, timeout_enabled, timeout_seconds, timeout_action)
-       VALUES ($1, true, $2, $3, $4, $5, $6, $7, false, 60, 'deny')
-       ON CONFLICT DO NOTHING`,
-      [r.name, r.priority, r.target, r.type, r.pattern, r.action, r.message],
-    );
-  }
-  await store.setSetting("intercept_default_rules_v1", "done");
-}
-
-/** v2：guard.go 两条硬编码安全模式转普通规则；外泄管道规则默认 DISABLED（CTF/渗透场景误伤）。 */
-async function seedInterceptRulesV2(db: Database, store: PlatformStore): Promise<void> {
-  if ((await store.getSetting("intercept_default_rules_v2")) === "done") return;
-  const rules = [
-    {
-      name: "[内置] 破坏性系统命令",
-      pattern: String.raw`(?i)\b(rm\s+-rf\s+/|mkfs|dd\s+if=|:\(\)\s*\{|shutdown|reboot|>\s*/dev/sd)`,
-      action: "deny",
-      message: "破坏性命令被拒绝（rm -rf / / mkfs / dd / fork bomb / 关机重启 / 覆写磁盘设备）",
-      enabled: true,
-      priority: 100,
-    },
-    {
-      name: "[内置] 数据外泄管道",
-      pattern: String.raw`(?i)(curl|wget|nc|ncat)\b[^|]*\b(\|\s*(curl|wget|nc))`,
-      action: "deny",
-      message: "疑似数据外泄管道被拒绝（命令输出经 curl/wget/nc 外传）",
-      enabled: false,
-      priority: 80,
-    },
-  ];
-  for (const r of rules) {
-    await db.query(
-      `INSERT INTO intercept_rules(name, enabled, priority, match_target, match_type, pattern, action, message, timeout_enabled, timeout_seconds, timeout_action)
-       VALUES ($1, $2, $3, 'tool_input', 'regex', $4, $5, $6, false, 60, 'deny')
-       ON CONFLICT DO NOTHING`,
-      [r.name, r.enabled, r.priority, r.pattern, r.action, r.message],
-    );
-  }
-  await store.setSetting("intercept_default_rules_v2", "done");
-}
-
-/** v3：删除类接口路径规则（v1 只拦 DELETE 方法与若干路径词根，GET/POST 打删除接口此前漏网）。 */
-async function seedInterceptRulesV3(db: Database, store: PlatformStore): Promise<void> {
-  if ((await store.getSetting("intercept_default_rules_v3")) === "done") return;
-  const name = "[内置] 删除类接口路径";
-  await db.query(
-    `INSERT INTO intercept_rules(name, enabled, priority, match_target, match_type, pattern, action, message, timeout_enabled, timeout_seconds, timeout_action)
-     SELECT $1, true, 80, 'tool_input', 'regex', $2, 'deny', $3, false, 60, 'deny'
-     WHERE NOT EXISTS (SELECT 1 FROM intercept_rules WHERE name = $1)`,
-    [
-      name,
-      DELETE_ENDPOINT_PATH_PATTERN,
-      "禁止调用删除类接口（/delete /remove /unlink /erase 等），不论使用哪种 HTTP 方法——多数应用的删除接口用 GET/POST 就能触发，同样会真实删除目标数据",
-    ],
-  );
-  await store.setSetting("intercept_default_rules_v3", "done");
 }

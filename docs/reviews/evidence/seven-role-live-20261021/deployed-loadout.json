@@ -1,0 +1,251 @@
+{
+  "at": "2026-10-21T01:46:33.195Z",
+  "status": 200,
+  "roles": [
+    {
+      "role": "goals",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_search",
+        "context_get",
+        "set_goals",
+        "set_constraints",
+        "register_user_target",
+        "read"
+      ],
+      "deferred": [],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 6008,
+        "resident": 5722,
+        "registered": 5722
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "planner",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_search",
+        "context_get",
+        "graph_overview",
+        "add_intent",
+        "prove_goal",
+        "kill_work",
+        "steer_work",
+        "todo_write",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "http_request",
+        "add_task_scope",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 20930,
+        "resident": 13108,
+        "registered": 17238
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "mainagent",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "http_request",
+        "record_fact",
+        "report_finding",
+        "insert_assets",
+        "context_search",
+        "context_get",
+        "add_intent",
+        "dispatch_intents",
+        "steer_work",
+        "list_assets",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "list_facts",
+        "tool_search"
+      ],
+      "deferred": [
+        "set_goals",
+        "set_constraints",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [
+        "list_assets",
+        "list_facts"
+      ],
+      "schema_bytes": {
+        "before": 28493,
+        "resident": 19778,
+        "registered": 24542
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "worker",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "http_request",
+        "context_search",
+        "context_get",
+        "record_fact",
+        "insert_assets",
+        "report_finding",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "ct_test_shell_metadata",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 19019,
+        "resident": 12413,
+        "registered": 15082
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "auto",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "list_tasks",
+        "get_task",
+        "spawn_task",
+        "pause_task",
+        "resume_task",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_llm_profiles",
+        "add_task_hint",
+        "get_finding",
+        "update_finding_report",
+        "asset_search",
+        "asset_get",
+        "list_findings"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 9906,
+        "resident": 4871,
+        "registered": 8015
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "pentest",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "context_search",
+        "list_assets",
+        "record_conversation_fact",
+        "report_conversation_finding",
+        "http_request",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "list_findings",
+        "graph_overview"
+      ],
+      "compatibility": [
+        "list_assets"
+      ],
+      "schema_bytes": {
+        "before": 13672,
+        "resident": 10198,
+        "registered": 12172
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "reporter",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "get_finding",
+        "update_finding_report",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_findings"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 5088,
+        "resident": 3991,
+        "registered": 4207
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    }
+  ]
+}

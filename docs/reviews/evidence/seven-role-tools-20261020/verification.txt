@@ -1,0 +1,4 @@
+Server typecheck: node node_modules/typescript/bin/tsc --noEmit; exit 0.
+Isolated build: prepare-pty.mjs + tsc -p tsconfig.json --outDir /tmp/fate-seven-role-build-20261020 + copy src/db/sql; exit 0.
+Full suite: SERIES_TEST_PG_DSN points to isolated fate_seven_full_test_20261020; vitest run; exit 0; 59 files, 555 passed, 1 skipped.
+No DeepSeek model calls or external testing targets. Current service was not restarted.

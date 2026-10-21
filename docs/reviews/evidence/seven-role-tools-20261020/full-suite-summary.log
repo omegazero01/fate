@@ -1,0 +1,160 @@
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+ ✓ migration-regression.test.ts (45 tests) 30224ms
+   ✓ migration invariants > enforces trigger role concurrency across two conversation executors at the next claim 603ms
+   ✓ migration invariants > pauses Goals during bootstrap and resumes with a new fenced decomposition and scheduler 3166ms
+   ✓ migration invariants > R3 selecting a task after restart must not execute a paused task 589ms
+   ✓ migration invariants > R4 manual mode must not call the planner 2103ms
+   ✓ migration invariants > R8 graph overview must expose every hidden block or an expansion index 391ms
+   ✓ migration invariants > R12 direct intent pause must abort its active pi session 2071ms
+   ✓ migration invariants > R21 cross-instance task pause waits for the task-lease owner to stop pi and acknowledge 2070ms
+   ✓ migration invariants > R22 explicit resume supersedes a pending cross-instance pause command 2095ms
+   ✓ migration invariants > G5 an admitted Planner actually executing a model request starts the task deadline 2048ms
+   ✓ migration invariants > R13 Main commits a new intent before the host issues its one-intent dispatch grant 2116ms
+   ✓ migration invariants > R13 Main can explicitly dispatch newly discovered assets 2106ms
+   ✓ migration invariants > R20 restarting a timed out task must reset its expired deadline 2042ms
+   ✓ restored feature contracts > prevents a second engine from resetting another owner’s running intent 2049ms
+   ✓ restored feature contracts > shares the worker concurrency limit across tasks 2194ms
+ ✓ src/http/batch-c.test.ts (12 tests) 4352ms
+   ✓ 批次C：分类与批量控制 > CRUD + 批量移动分类 + 批量 pause/resume 344ms
+ ✓ context-coordination.test.ts (30 tests) 18124ms
+   ✓ context coordination > projects actual Worker tools and honors changed bindings instead of stale builtin rows 460ms
+   ✓ context coordination > runs native pi incremental writeback and ends on a final summary 2049ms
+   ✓ context coordination > allows a native pi Worker to end with no new facts or completion manifest 2048ms
+   ✓ context coordination > keeps a waiting planner idle until a durable graph change arrives 6059ms
+   ✓ context coordination > rejects stale completion evidence when recovering an already submitted result 2089ms
+   ✓ context coordination > keeps complete evidence pageable beyond the tool response budget 438ms
+   ✓ context coordination > preserves committed facts and records blocked when the final model response fails 2043ms
+ ✓ src/engine/blackboard.test.ts (23 tests) 14687ms
+   ✓ ends on the final summary without a completion tool or extra model request 2127ms
+   ✓ refills one released slot from final graph results while the other two workers keep their intents 4049ms
+   ✓ reads legacy private observations and checkpoints without automatically publishing them 2057ms
+   ✓ does not audit a synthetic aborted pi continuation as another provider request 2062ms
+   ✓ lets Planner read a live Worker finding and wakes again after Worker release 2037ms
+ ✓ src/http/batch-a.test.ts (14 tests | 1 skipped) 5380ms
+   ✓ 批次A：主对话链 > SSE task→expID 换算：?task= 回放该任务 exploration 的活动行；expID 优先 4064ms
+ ✓ src/db/assets.test.ts (25 tests) 839ms
+ ✓ src/agent/planner-memory.test.ts (19 tests) 8217ms
+   ✓ continues the native session, deduplicates unchanged projections and refreshes current state 1253ms
+   ✓ recovers completed delivery acknowledgement without an extra request and defers unseen events 403ms
+   ✓ retries interrupted batches using the original input, not a duplicated delivery 334ms
+   ✓ keeps a history search snapshot stable while a later round appends entries 503ms
+   ✓ keeps direct dispatch and preserves custom descriptions 315ms
+   ✓ searches original entries instead of recall queries/results, including mixed calls: false 375ms
+   ✓ searches original entries instead of recall queries/results, including mixed calls: true 349ms
+   ✓ delivers and acknowledges a newly compacted graph in the same planning round 2058ms
+   ✓ publishes only host-grounded outcomes even when the model insists untested ports are negated and partial reading is complete 504ms
+ ✓ src/engine/artex-flow.test.ts (17 tests) 11337ms
+   ✓ Planner ends on one normal response without a decision tool or an extra model request 636ms
+   ✓ resumes a paused Worker outside the full pool exactly once through the resume button 2066ms
+   ✓ limits concurrent Planner probes to three and stops probing once Worker evidence exists 619ms
+   ✓ Main goal editing does not start a Worker pool 478ms
+   ✓ continues the original session through repeated button pause/resume cycles 2043ms
+   ✓ button resume cannot admit a paused task or replay legacy human messages 2055ms
+ ✓ prompt-regression.test.ts (29 tests) 3757ms
+   ✓ lightweight role prompts > assembles a Planner round with one todo copy and ends on its normal summary 550ms
+ ✓ src/engine/worker-lifecycle.test.ts (18 tests) 40904ms
+   ✓ gives PI and Bash the same absolute working directory when dataDir is relative 2158ms
+   ✓ delivers native PI steering while preserving incremental writes and final summary 2103ms
+   ✓ explicitly resumes a legacy partial intent without accepting its old result again 2067ms
+   ✓ budget closing refuses further exploration while allowing facts and a summary in the same bounded turn 2065ms
+   ✓ budget exhaustion preserves a truthful recovery receipt and never invents an accepted result or finding 2055ms
+   ✓ Worker sees the early budget notice, recovers from a stale bash call and publishes partial observations before exit 2097ms
+   ✓ more than six operations never block further operations or existing evidence reads 2078ms
+   ✓ closing without verified observations saves an exhaustion receipt without inventing facts 2100ms
+   ✓ honors configured zero as unlimited and completes beyond the old 30+2 implicit cap 2072ms
+   ✓ connection errors preserve facts, progress, token usage and the original Main feedback subscription 2081ms
+   ✓ records kill independently of generic stopped and retains written facts 2061ms
+   ✓ records task-timeout independently of generic stopped and retains written facts 2059ms
+   ✓ records task-completed independently of generic stopped and retains written facts 2066ms
+   ✓ records shutdown independently of generic stopped and retains written facts 2060ms
+   ✓ records pause independently of generic stopped and retains written facts 2105ms
+   ✓ a fenced executor records lease loss without overwriting graph state owned by the next executor 2254ms
+   ✓ Planner reads changed facts, dispatches a dependent second intent, and naturally completes the task 2055ms
+   ✓ graceful shutdown resumes the original PI session and intent without repeating a committed fact 4097ms
+ ✓ src/http/api.test.ts (9 tests) 3881ms
+   ✓ M5 HTTP API > 创建任务：modelResolver 抛错时 decompose 容错（不 5xx，任务可查询/控制） 2183ms
+   ✓ M5 HTTP API > 活动 SSE：since 回放 DB + engine.bus 实时帧（data: {json}\n\n，id: 行） 579ms
+ ✓ src/db/asset-graph.test.ts (13 tests) 3175ms
+   ✓ asset_get preserves methods/params and paginates Unicode; default omits auth 555ms
+   ✓ MCP/PI-compatible complete input schema and no old 20-row silent truncation 382ms
+ ✓ src/db/tasks.test.ts (13 tests) 717ms
+ ✓ src/http/workspace-ui.test.ts (14 tests) 2003ms
+ ✓ src/tools/context-pages.test.ts (14 tests) 3759ms
+   ✓ on-demand graph reads > pages long Chinese summaries at item boundaries without loading evidence or skipping IDs 1037ms
+   ✓ on-demand graph reads > keeps cold negative conclusions and real asset/parent/yield links in Planner overview 570ms
+ ✓ src/db/operation-journal.test.ts (12 tests) 2405ms
+   ✓ recovers a real SIGKILL at before_return without replaying the effect 312ms
+ ✓ src/http/chat-stream.test.ts (9 tests) 6796ms
+   ✓ shared snapshots stream both channels before completion and reconnect on another DB connection 591ms
+ ✓ src/tools/tools.test.ts (9 tests) 1239ms
+   ✓ 工具层 > graph_overview 投影结构与 worker 视角删 coverage 405ms
+ ✓ src/pi/runner.test.ts (14 tests) 1194ms
+   ✓ pi native lifecycle > reserves closing time within the deadline and blocks new operations without blocking writeback 949ms
+ ✓ src/egress/gateway.test.ts (15 tests) 23ms
+ ✓ src/agent/seven-role-loadout.test.ts (17 tests) 3766ms
+   ✓ planner actual entrypoint matches preview and required tools execute 984ms
+ ✓ src/engine/engine.test.ts (2 tests) 5237ms
+   ✓ engine 端到端（faux 模型） > 完整闭环：goals→planner→worker→prove_goal→done 2359ms
+   ✓ engine 端到端（faux 模型） > 旧 steering 不注入意图，恢复后保留每次已写回的结果 2368ms
+ ✓ src/db/approval-removal.test.ts (5 tests) 2640ms
+   ✓ archives legacy decisions once and removes active tables, columns, triggers and judge settings 505ms
+ ✓ src/http/batch-b.test.ts (3 tests) 3148ms
+ ✓ platform-adaptation.test.ts (6 tests) 1915ms
+   ✓ platform adaptation integration > recovers only the expired runtime and its in-flight model attempts, preserving concurrent Workers 314ms
+ ✓ src/db/platform.test.ts (5 tests) 746ms
+ ✓ context-prefix.test.ts (5 tests) 3036ms
+   ✓ assembles Worker custom role and Skill before mandate, keeps live constraints once and recovers saved facts 485ms
+   ✓ Planner reads facts and completed work outside the startup window and rejects a duplicate dispatch 1306ms
+ ✓ src/agent/context-needs.test.ts (8 tests) 1826ms
+ ✓ src/engine/terminal.test.ts (9 tests) 16220ms
+   ✓ recovers durable completed goals without another Planner model request 2107ms
+   ✓ a failed terminal commit leaves the executor retryable and does not publish success 2033ms
+   ✓ a stale executor cannot finish a task after another owner acquired its lease 2105ms
+   ✓ a persisted pause wins against terminal publication from an in-flight Planner 2044ms
+   ✓ preserves a completed Worker receipt when stop arrives after execution ends 2089ms
+   ✓ preserves a completed Worker receipt when pause arrives after execution ends 2080ms
+   ✓ bounds a Planner-only task by its deadline without falsely completing unmet goals 2369ms
+ ✓ src/engine/regression.test.ts (6 tests) 5335ms
+   ✓ scheduler and graph regressions > manual dispatch commits before wake; a single worker drains multiple intents without a 30s sleep 2319ms
+   ✓ scheduler and graph regressions > concurrent run requests start only one worker pool 2039ms
+ ✓ src/pi/domain-compaction.test.ts (18 tests) 207ms
+ ✓ src/engine/triggers.test.ts (9 tests) 4711ms
+   ✓ durable trigger acceptance > drains goal and timeout events beyond the first page without replaying history 2601ms
+ ✓ src/pi/platform-mcp.test.ts (7 tests) 255ms
+ ✓ src/tools/constraint-grounding.test.ts (6 tests) 1974ms
+ ✓ src/agent/work-identity.test.ts (8 tests) 2064ms
+   ✓ serializes concurrent equivalent proposals, including asset aliases and different prose 599ms
+ ✓ src/http/overview.test.ts (6 tests) 1733ms
+ ✓ src/db/exploration.core.test.ts (6 tests) 656ms
+ ✓ src/pi/internal-discovery.test.ts (6 tests) 93ms
+ ✓ src/pi/providerFromProfile.test.ts (6 tests) 145ms
+ ✓ src/http/retester-retirement.test.ts (3 tests) 1508ms
+ ✓ src/agent/tool-catalog.test.ts (3 tests) 1588ms
+ ✓ src/http/model-token-usage.test.ts (4 tests) 1400ms
+ ✓ src/tools/context-evidence.test.ts (3 tests) 1531ms
+ ✓ src/egress/recording.test.ts (1 test) 1628ms
+   ✓ records HTTP and self-signed wrong-host HTTPS through both target transports without changing global TLS 416ms
+ ✓ src/engine/turn-summary.test.ts (10 tests) 4ms
+ ✓ src/db/asset-repair.test.ts (1 test) 1373ms
+ ✓ src/engine/blackboard-crash.test.ts (2 tests) 12505ms
+   ✓ survives SIGKILL after published without losing or replaying observations 6427ms
+   ✓ survives SIGKILL after finished without losing or replaying observations 6077ms
+ ✓ src/pi/mcpTransport.test.ts (3 tests) 134ms
+ ✓ src/db/constraint-correction.test.ts (2 tests) 1398ms
+ ✓ src/engine/tool-revocation.test.ts (1 test) 1631ms
+   ✓ revoking interactive shell removes it from discovery and blocks execution without blocking writeback 333ms
+ ✓ src/tools/custom.test.ts (4 tests) 93ms
+ ✓ src/agent/constraint-policy.test.ts (4 tests) 4ms
+ ✓ src/pi/terminal.test.ts (2 tests) 511ms
+   ✓ keeps a REPL alive across input, Unicode output, incremental reads and exit 380ms
+ ✓ src/agent/tool-registry.test.ts (3 tests) 6ms
+ ✓ src/pi/platform-policy.test.ts (10 tests) 4ms
+ ✓ src/agent/planner-repair.test.ts (1 test) 1250ms
+ ✓ src/agent/coldgraph.test.ts (3 tests) 2ms
+ ✓ src/http/auth-stream.test.ts (1 test) 53ms
+ ✓ src/pi/modelResolver.test.ts (3 tests) 55ms
+ Test Files  59 passed (59)
+      Tests  555 passed | 1 skipped (556)
+   Start at  22:45:07
+   Duration  280.71s (transform 1.01s, setup 0ms, collect 26.65s, tests 245.40s, environment 6ms, prepare 2.14s)
+Exit code: 0

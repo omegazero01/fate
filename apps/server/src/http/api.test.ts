@@ -1,7 +1,7 @@
 import {LiveStreamWriter} from '../engine/live-stream.js';
 // M5 HTTP API 集成测试：fastify inject（登录/me、建任务容错、拦截 decide 幂等、
 // 已删模块 404）+ 真实监听口的活动 SSE（inject 只在流结束时 resolve，无法观测
-// 长连 SSE，故该用例起 :0 端口用 fetch 读流）。DB 共享开发库（series-ts-pg）。
+// 长连 SSE，故该用例起 :0 端口用 fetch 读流）。DB 使用独立测试库，禁止连接生产 series 库。
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -14,6 +14,7 @@ import { buildApp } from "./app.js";
 import { AUTH_PASSWORD_KEY, hashPassword, signJWT, verifyJWT } from "./auth.js";
 
 const TEST_DSN = process.env.SERIES_TEST_PG_DSN ?? "postgres://series:series@127.0.0.1:5433/series_test?sslmode=disable";
+if (!/(?:test|fixture)/i.test(new URL(TEST_DSN).pathname)) throw new Error('API tests require an isolated test/fixture database');
 const JWT_KEY = "unit-test-hmac-key-0123456789abcdef0123456789";
 const PASSWORD = "test-pass-1234";
 
@@ -27,6 +28,8 @@ let token = "";
 const createdTaskIDs: number[] = [];
 const createdExpIDs: number[] = [];
 let savedPasswordHash: string | null = null;
+let savedPlannerPrompt: unknown;
+let savedWorkers: string | null = null;
 
 /** 抛错的模型解析器：验证建任务/启动路径在无 LLM 配置时的容错（decompose 失败不 5xx）。 */
 const throwingResolver: ModelResolver = async () => {
@@ -47,6 +50,8 @@ beforeAll(async () => {
   mkdirSync(path.join(skillsRoot, "demo-skill"), { recursive: true });
   writeFileSync(path.join(skillsRoot, "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: 测试用技能\n---\n# demo\n");
 
+  savedPlannerPrompt = (await db!.query("SELECT current_prompt_id FROM agents WHERE key='planner'")).rows[0]?.current_prompt_id;
+  savedWorkers = await db!.platform().getSetting('workers');
   savedPasswordHash = await db!.platform().getSetting(AUTH_PASSWORD_KEY);
   await db!.platform().setSetting(AUTH_PASSWORD_KEY, hashPassword(PASSWORD));
 
@@ -75,6 +80,9 @@ afterAll(async () => {
   } else {
     await db!.platform().setSetting(AUTH_PASSWORD_KEY, savedPasswordHash);
   }
+  await db!.query("UPDATE agents SET current_prompt_id=$1 WHERE key='planner'",[savedPlannerPrompt]);
+  if(savedWorkers===null)await db!.query("DELETE FROM settings WHERE key='workers'");
+  else await db!.platform().setSetting('workers',savedWorkers);
   await db?.close().catch(() => undefined);
   rmSync(dataDir, { recursive: true, force: true });
 });
@@ -282,46 +290,8 @@ describe.skipIf(!haveDB)("M5 HTTP API", () => {
     await sseApp.close().catch(() => undefined);
   });
 
-  it("拦截审批：pending 列表 + decide 幂等（重复 409）+ 唤醒事件", async () => {
-    const pendingID = await db!.interceptStore().createInterceptPending({
-      ruleID: 0,
-      convID: 0,
-      taskID: "1",
-      agentName: "worker",
-      toolName: "Bash",
-      input: { command: "ls -la" },
-      reason: "测试审批",
-    });
-
-    const list = await authed("GET", "/api/intercept/pending");
-    expect(list.statusCode).toBe(200);
-    const pendingList = (list.json() as { pending: { id: number; tool_name: string; status: string }[] }).pending;
-    const row = pendingList.find((p) => p.id === pendingID);
-    expect(row).toBeDefined();
-    expect(row!.tool_name).toBe("Bash");
-    expect(row!.status).toBe("pending");
-
-    let wakeups = 0;
-    app.pendingEvents.on(`decided:${pendingID}`, () => {
-      wakeups += 1;
-    });
-
-    const bad = await authed("POST", `/api/intercept/pending/${pendingID}/decide`, { decision: "maybe" });
-    expect(bad.statusCode).toBe(400);
-
-    const ok = await authed("POST", `/api/intercept/pending/${pendingID}/decide`, { decision: "allowed" });
-    expect(ok.statusCode).toBe(200);
-    expect((ok.json() as { ok: boolean }).ok).toBe(true);
-
-    const dup = await authed("POST", `/api/intercept/pending/${pendingID}/decide`, { decision: "denied" });
-    expect(dup.statusCode).toBe(409);
-
-    await new Promise((r) => setTimeout(r, 50));
-    expect(wakeups).toBe(1); // 只有首次 decide 广播一次
-  });
-
   it("已删除模块：404 + 统一文案", async () => {
-    for (const url of ["/api/update/check", "/api/task-archives", "/api/task-templates", "/api/side-questions/x/events", "/api/intercept/judge", "/api/tasks/notifications"]) {
+    for (const url of ["/api/update/check", "/api/task-archives", "/api/task-templates", "/api/side-questions/x/events", "/api/tasks/notifications"]) {
       const r = await authed("GET", url);
       expect(r.statusCode, url).toBe(404);
       expect((r.json() as { error: string }).error, url).toBe("模块已在重构中移除");

@@ -10,7 +10,7 @@ export async function ownObservations(c:Pick<ToolRunContext,'db'|'role'|'intentI
   const rows=(await c.db.query(`SELECT * FROM worker_observations WHERE exploration_id=$1 AND intent_id=$2 AND published_at IS NULL
     AND ($3::bigint IS NULL OR node_id=$3) ORDER BY node_id`,[c.expID,c.intentID,id??null])).rows;
   const visible=[];
-  for(const row of rows){try{await c.db.taskScope().validateIntentAssets(c.taskID,intent,row.asset_ids as number[]);visible.push(row);}catch{/* Revoked observations stay durable, but are not injected. */}}
+  for(const row of rows){try{await c.db.taskScope().validateTaskAssets(c.taskID,row.asset_ids as number[]);visible.push(row);}catch{/* Revoked observations stay durable, but are not injected. */}}
   return visible;
 }
 

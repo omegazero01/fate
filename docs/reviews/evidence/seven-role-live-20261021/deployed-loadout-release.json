@@ -1,0 +1,274 @@
+{
+  "at": "2026-10-21T01:57:13.029Z",
+  "status": 200,
+  "health": {
+    "status": "ok",
+    "version": "seven-role-tools-da80d5b2-20261021",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 25
+  },
+  "roles": [
+    {
+      "role": "goals",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_search",
+        "context_get",
+        "set_goals",
+        "set_constraints",
+        "register_user_target",
+        "read"
+      ],
+      "deferred": [],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 5497,
+        "resident": 5211,
+        "registered": 5211
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "planner",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_search",
+        "context_get",
+        "graph_overview",
+        "add_intent",
+        "prove_goal",
+        "kill_work",
+        "steer_work",
+        "todo_write",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "http_request",
+        "add_task_scope",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 20428,
+        "resident": 12419,
+        "registered": 16549
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "mainagent",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "http_request",
+        "record_fact",
+        "report_finding",
+        "insert_assets",
+        "context_search",
+        "context_get",
+        "add_intent",
+        "dispatch_intents",
+        "steer_work",
+        "list_assets",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "list_facts",
+        "tool_search"
+      ],
+      "deferred": [
+        "set_goals",
+        "set_constraints",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [
+        "list_assets",
+        "list_facts"
+      ],
+      "schema_bytes": {
+        "before": 27480,
+        "resident": 18839,
+        "registered": 23342
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "worker",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "http_request",
+        "context_search",
+        "context_get",
+        "record_fact",
+        "insert_assets",
+        "report_finding",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "ct_test_shell_metadata",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 18769,
+        "resident": 12163,
+        "registered": 14832
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "auto",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "list_tasks",
+        "get_task",
+        "spawn_task",
+        "pause_task",
+        "resume_task",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_llm_profiles",
+        "add_task_hint",
+        "get_finding",
+        "update_finding_report",
+        "asset_search",
+        "asset_get",
+        "list_findings"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 9656,
+        "resident": 4621,
+        "registered": 7765
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "pentest",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "context_search",
+        "list_assets",
+        "record_conversation_fact",
+        "report_conversation_finding",
+        "http_request",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "list_findings",
+        "graph_overview"
+      ],
+      "compatibility": [
+        "list_assets"
+      ],
+      "schema_bytes": {
+        "before": 13422,
+        "resident": 9948,
+        "registered": 11922
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    },
+    {
+      "role": "reporter",
+      "policy": "lean-tools-v1",
+      "resident": [
+        "context_get",
+        "get_finding",
+        "update_finding_report",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_findings"
+      ],
+      "compatibility": [],
+      "schema_bytes": {
+        "before": 4838,
+        "resident": 3741,
+        "registered": 3957
+      },
+      "mcp": {
+        "status": "not_connected",
+        "servers": [],
+        "schema_counted": false
+      }
+    }
+  ],
+  "descriptions": [
+    {
+      "key": "add_intent",
+      "source": "builtin",
+      "description": "创建探索意图。先检索已有工作；提供 summary、asset_ids、parent_ids、priority；执行约定可选，宿主记录引用版本，只派前置已满足的工作。Main 提交会请求宿主下发；以返回的准入状态为准。"
+    },
+    {
+      "key": "record_fact",
+      "source": "custom",
+      "description": "EDITED DESC"
+    },
+    {
+      "key": "set_constraints",
+      "source": "builtin",
+      "description": "保存用户明确的操作要求，text/source_quote 必须为任务原文或本轮用户消息中的完整段落，保留例外和原有语气。段落以空行分隔，单换行仍属同段；原文字段没有空行时须引用整个字段，不带宿主添加的【任务描述】等标题。不能把目标 URL 改写成仅限该地址；allow 不默认排他。"
+    }
+  ]
+}

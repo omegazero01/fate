@@ -6,12 +6,11 @@ export async function executionSnapshot(db:Database,taskID:number) {
   const rows=(await db.query(`SELECT s.task_id,s.phase,s.manual,n.payload ? 'execution_result' committed FROM engine_worker_slots s
     JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token AND l.expires_at>clock_timestamp()
     LEFT JOIN exploration_nodes n ON n.id=s.intent_id`)).rows;
-  const retests=Number((await db.query("SELECT count(*) n FROM finding_retests WHERE status='running' AND lease_until>clock_timestamp()")).rows[0]?.n);
   const own=rows.filter(r=>Number(r.task_id)===taskID);
-  return {policy:'blackboard-v1',limit,global_active:rows.filter(r=>r.phase==='running'&&!r.manual).length+retests,
+  return {policy:'blackboard-v1',limit,global_active:rows.filter(r=>r.phase==='running'&&!r.manual).length,
     task_active:own.filter(r=>r.phase==='running').length,exiting:own.filter(r=>r.phase==='running'&&r.committed).length,
     ready:own.filter(r=>r.phase==='ready').length,planning:own.filter(r=>r.phase==='planning').length,
-    available:Math.max(0,limit-rows.filter(r=>!r.manual).length-retests)};
+    available:Math.max(0,limit-rows.filter(r=>!r.manual).length)};
 }
 export class Coordinator {
   readonly owner=randomUUID();
@@ -76,7 +75,7 @@ export class Coordinator {
       const task=await tx.tasks().getTask(taskID);
       if(!task||task.status!=='running'||task.paused||task.queued)return undefined;
       await tx.query(`DELETE FROM engine_worker_slots s WHERE NOT EXISTS(SELECT 1 FROM engine_task_leases l WHERE l.task_id=s.task_id AND l.token=s.token AND l.expires_at>now())`);
-      const active=Number((await tx.query("SELECT (SELECT count(*) FROM engine_worker_slots WHERE phase='running' AND NOT manual)+(SELECT count(*) FROM finding_retests WHERE status='running' AND lease_until>now()) n")).rows[0]?.n);
+      const active=Number((await tx.query("SELECT count(*) n FROM engine_worker_slots WHERE phase='running' AND NOT manual")).rows[0]?.n);
       if(active>=await this.workers())return undefined;
       const id=randomUUID();
       await tx.query("INSERT INTO engine_worker_slots(id,task_id,token,phase) VALUES($1,$2,$3,'running')",[id,taskID,token]);

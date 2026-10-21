@@ -14,6 +14,8 @@ import { SourceTranscript } from "@/components/source-transcript";
 
 import {
   ArrowUpIcon,
+  SlidersHorizontalIcon,
+  GaugeIcon,
   BrainIcon,
   ChevronDownIcon,
   CircleCheckIcon,
@@ -40,7 +42,6 @@ import {
 import { toast } from "sonner";
 
 import { TodoPopover } from "@/components/todo-popover";
-import { ApprovalExecutionFocus, useApprovalFocus, useApprovalHistory } from "@/components/approval-execution-focus";
 import { Transcript } from "@/components/transcript";
 import {
   AlertDialog,
@@ -71,7 +72,6 @@ import type {
   Activity,
   ChatAttachment,
   IntentAsset,
-  InterceptApprovalRow,
   Session,
   SessionStatus,
   SessionTokenUsage,
@@ -333,7 +333,6 @@ function SessionItem({
   s,
   active,
   displayTitle,
-  hasPending,
   unread,
   onClick,
   onCancel,
@@ -347,7 +346,6 @@ function SessionItem({
   s: Session;
   active: boolean;
   displayTitle: string;
-  hasPending?: boolean;
   unread?: number;
   onClick: () => void;
   onCancel?: () => void;
@@ -413,7 +411,6 @@ function SessionItem({
             已取消执行
           </Badge>
         )}
-        {hasPending && <ShieldAlertIcon className="size-3.5 shrink-0 text-amber-500" />}
         {!active && unread ? (
           <span className="inline-flex min-w-4 items-center justify-center rounded-md bg-blue-500/15 px-1 text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-400">
             {unread > 99 ? "99+" : unread}
@@ -500,14 +497,13 @@ function WorkerAssetBadge({ assets }: { assets: IntentAsset[] }) {
 
 export function SessionsTab({
   taskId,
-  pendingIntercepts,
-  processOpen, onProcessOpenChange,
+  processOpen, onProcessOpenChange, onOpenSettings,
   workerExecutionAllowed = true,
 }: {
   taskId: string;
   workerExecutionAllowed?: boolean;
   processOpen: boolean; onProcessOpenChange: (open:boolean)=>void;
-  pendingIntercepts: InterceptApprovalRow[];
+  onOpenSettings?:()=>void;
 }) {
   const [relatedSession,setRelatedSession]=React.useState<import("@/lib/types").Conversation|null>(null);
   const [selectedSessionId, setActiveId] = React.useState(MAIN_ID);
@@ -526,36 +522,7 @@ export function SessionsTab({
     next.delete("activity");
     route.replace(`/function/tasks/detail?${next}`, { scroll: false });
   };
-  const approvalFocus = useApprovalFocus({ taskId, enabled: !focused && !invalidFocus });
-  const approvalSession = React.useMemo<Session | undefined>(() => {
-    const source = approvalFocus.state?.source;
-    if (!source) return undefined;
-    if (source.session.startsWith("main:")) {
-      const seg = Number(source.session.slice(5));
-      return { ...MAIN_SESSION, id: mainSessionId(seg), seg, title: mainSessionTitle(seg), live: false };
-    }
-    if (source.session === "plan") return { ...PLANNER_SESSION, live: false };
-    if (source.session.startsWith("intent:")) {
-      const id = source.session.slice(7);
-      return {
-        id,
-        role: "worker",
-        intent_id: id,
-        title: `Worker #${id}`,
-        status: "done",
-        live: false,
-        last_activity: source.items[0]?.ts ?? "",
-      };
-    }
-    return undefined;
-  }, [approvalFocus.state?.source]);
-  // Keep a located archived/older session selectable after leaving focus mode.
-  const [locatedSession, setLocatedSession] = React.useState<{ taskId: string; session: Session }>();
-  React.useEffect(() => {
-    if (approvalSession) setLocatedSession({ taskId, session: approvalSession });
-  }, [taskId, approvalSession]);
-  const retainedSession = locatedSession?.taskId === taskId ? locatedSession.session : undefined;
-  const activeId = approvalSession?.id ?? selectedSessionId;
+  const activeId = selectedSessionId;
   // Main-agent conversation segments (newest-first); currentSeg is the writable one.
   const [mainSegs, setMainSegs] = React.useState<{ seq: number; created_at: string }[]>([{ seq: 0, created_at: "" }]);
   const [currentSeg, setCurrentSeg] = React.useState(0);
@@ -1335,23 +1302,6 @@ export function SessionsTab({
     return map;
   }, [allIntents]);
 
-  // Returns true if any pending intercept belongs to this session.
-  // Worker agent_name format: "work#N · #intentID". Main/planner match by role key.
-  const hasPendingForSession = React.useCallback(
-    (s: Session): boolean => {
-      if (s.inherited) return false;
-      if (!pendingIntercepts.length) return false;
-      if (s.role === "mainagent") return pendingIntercepts.some((r) => r.agent_name === "mainagent");
-      if (s.role === "planner") return pendingIntercepts.some((r) => r.agent_name === "planner");
-      // Worker: extract intent ID from "work#N · #<intentID>"
-      return pendingIntercepts.some((r) => {
-        const m = r.agent_name.match(/·\s*#(\d+)$/);
-        return m ? m[1] === s.intent_id : false;
-      });
-    },
-    [pendingIntercepts],
-  );
-
   // Liveness from each session's last-seen activity time (kept fresh by the 1.5s tick).
   const recentLive = React.useCallback(
     (key: string) => {
@@ -1473,10 +1423,8 @@ export function SessionsTab({
 
   const sessions = React.useMemo(() => {
     const items = [...mainSessions, { ...PLANNER_SESSION, live: plannerLive }, ...workerSessions, SYSTEM_SESSION];
-    const located = approvalSession ?? retainedSession;
-    if (located && !items.some((s) => s.id === located.id)) items.push(located);
     return items;
-  }, [mainSessions, workerSessions, plannerLive, approvalSession, retainedSession]);
+  }, [mainSessions, workerSessions, plannerLive]);
 
   const grouped = {
     mainagent: sessions.filter((s) => s.role === "mainagent"),
@@ -1529,7 +1477,7 @@ export function SessionsTab({
   const mainBusy=sending||(mainChatRunning??recentLive(mainKey));
   React.useEffect(()=>{if(isMain)setViewedMainSeg(active.seg??currentSeg);},[isMain,active.seg,currentSeg]);
   React.useEffect(()=>{loadSession(mainKey);},[mainKey,loadSession]);
-  React.useEffect(()=>{if(focused||approvalFocus.state)onProcessOpenChange(!isMain);},[focused,approvalFocus.state,isMain,onProcessOpenChange]);
+  React.useEffect(()=>{if(focused)onProcessOpenChange(!isMain);},[focused,isMain,onProcessOpenChange]);
   // 折叠态（手机端）标题栏要替代整张列表：显示当前会话名 + 其它会话的未读合计，
   // 否则收起后既不知道自己在看哪个会话，也看不到别处有新消息。
   const activeDisplayTitle = (active.role === "worker" ? sessionMeta.get(active.id)?.title : "") || active.title;
@@ -1541,7 +1489,7 @@ export function SessionsTab({
   // Keep the SSE dispatcher's notion of the active session current, and lazily load
   // + clear unread whenever the active session changes. Recheck after boot resolves
   // the current segment: it releases the initial main:0 reservation, which may
-  // still be selected by an approval link into an older segment.
+  // still be selected by an activity link into an older segment.
   // biome-ignore lint/correctness/useExhaustiveDependencies: cache updates must not reactivate the current session.
   React.useEffect(() => {
     activeKeyRef.current = activeKey;
@@ -1552,32 +1500,6 @@ export function SessionsTab({
       patchStore(activeKey, (s) => ({ ...s, unread: 0 }));
     }
   }, [activeKey, currentSeg]);
-
-  const focusKey = approvalFocus.state?.source?.session;
-  const loadFocusPage = React.useCallback(
-    (before: number) => api.activityHistory(taskId, focusKey ?? "main", before, PAGE),
-    [taskId, focusKey],
-  );
-  const mergeFocusPage = React.useCallback(
-    (page: { items: Activity[]; hasMore: boolean }) => {
-      if (!focusKey) return;
-      patchStore(focusKey, (s) => {
-        const items = mergeBySeq(page.items, s.items);
-        return { ...s, items, hasMore: page.hasMore, earliestSeq: items[0]?.seq ?? s.earliestSeq };
-      });
-    },
-    [focusKey, patchStore],
-  );
-  const focusHistory = useApprovalHistory(
-    approvalFocus.state?.source,
-    !!focusKey && !!store[focusKey]?.loaded,
-    focusKey ? (store[focusKey]?.items ?? []) : [],
-    loadFocusPage,
-    mergeFocusPage,
-  );
-  React.useEffect(() => {
-    if (approvalFocus.state) atBottomRef.current = false;
-  }, [approvalFocus.state]);
 
   // Main agent is the human↔orchestrator CONSOLE: only the conversation (user msgs +
   // the main agent's own replies/steps). Planner session shows planner steps; a
@@ -1690,13 +1612,12 @@ export function SessionsTab({
     const vp = viewport();
     if (!vp) return;
     const onScroll = () => {
-      if (approvalFocus.state && !focusHistory.ready) return;
       atBottomRef.current = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 60;
       if (vp.scrollTop <= 80) loadEarlier(activeKeyRef.current, viewport); // near top → older page
     };
     vp.addEventListener("scroll", onScroll, { passive: true });
     return () => vp.removeEventListener("scroll", onScroll);
-  }, [viewport, focused, activeId, loadEarlier, approvalFocus.state, focusHistory.ready]);
+  }, [viewport, focused, activeId, loadEarlier]);
   function stop() {
     if (stopping) return;
     setStopping(true);
@@ -1784,6 +1705,7 @@ export function SessionsTab({
                   onChange={(e) => void pickFiles(e.target.files)}
                 />
                 <InputGroup className="min-h-9 has-disabled:opacity-100">
+                  {onOpenSettings && <InputGroupAddon align="block-start"><InputGroupButton variant="outline" className="composer-config" onClick={onOpenSettings}><GaugeIcon data-icon="inline-start"/>任务配置</InputGroupButton></InputGroupAddon>}
                   <MentionTextarea
                     inputGroup
                     rows={1}
@@ -1802,6 +1724,7 @@ export function SessionsTab({
                     className="max-h-36 min-h-9 overflow-y-auto"
                   />
                   <InputGroupAddon align="block-end">
+                    {onOpenSettings && <InputGroupButton size="icon-sm" variant="ghost" onClick={onOpenSettings} aria-label="打开任务设置"><SlidersHorizontalIcon/></InputGroupButton>}
                     <InputGroupButton
                       size="icon-xs"
                       variant="ghost"
@@ -1819,8 +1742,8 @@ export function SessionsTab({
                     )}
                     {mainBusy ? (
                       <InputGroupButton
-                        className="ml-auto"
-                        size="icon-xs"
+                        className="composer-send ml-auto"
+                        size="icon-sm"
                         variant="destructive"
                         onClick={stop}
                         disabled={stopping}
@@ -1831,8 +1754,8 @@ export function SessionsTab({
                       </InputGroupButton>
                     ) : (
                       <InputGroupButton
-                        className="ml-auto"
-                        size="icon-xs"
+                        className="composer-send ml-auto"
+                        size="icon-sm"
                         variant="default"
                         onClick={send}
                         disabled={(!input.trim() && attachments.length === 0) || sending}
@@ -2056,11 +1979,9 @@ export function SessionsTab({
                           s={s}
                           active={s.id === active.id}
                           displayTitle={meta?.title ?? s.title}
-                          hasPending={hasPendingForSession(s)}
                           unread={store[keyForSession(s)]?.unread}
                           onClick={() => {
                             if (focused || invalidFocus) clearFocus();
-                            approvalFocus.close();
                             setActiveId(s.id);
                             onProcessOpenChange(true);
                           }}
@@ -2235,23 +2156,13 @@ export function SessionsTab({
                 </div>
               );
             })()}
-            <ApprovalExecutionFocus
-              focus={{
-                ...approvalFocus,
-                close: () => {
-                  setActiveId(activeId);
-                  approvalFocus.close();
-                },
-              }}
-              history={focusHistory}
-            />
             {/* Force Radix's internal viewport wrapper (display:table, sizes to content)
             to block so wide/unbreakable steps (long commands, code, URLs) can't blow
             out the width and defeat the truncation below — the transcript wraps to
             the panel instead of overflowing horizontally. */}
               {invalidFocus ? (
                 <Alert variant="destructive">
-                  <AlertDescription>来源定位参数无效，请返回资产审批重新打开来源。</AlertDescription>
+                  <AlertDescription>来源定位参数无效，请返回资产页重新打开来源。</AlertDescription>
                   <Button variant="outline" onClick={clearFocus}>
                     返回会话
                   </Button>
@@ -2271,7 +2182,7 @@ export function SessionsTab({
                   }}
                 />
               ) : (
-                <MessageScrollerProvider key={activeKey} autoScroll={!approvalFocus.state}>
+                <MessageScrollerProvider key={activeKey} autoScroll>
                 <MessageScroller><MessageScrollerViewport preserveScrollOnPrepend>
                   <MessageScrollerContent className="gap-2 p-4" ref={contentRef}>
                     {activeState?.loadingMore && (
@@ -2306,7 +2217,6 @@ export function SessionsTab({
                         pendingStatus={isMain&&stopping?"stopping":undefined}
                         taskId={taskId}
                         chat={isMain}
-                        focusedSeq={focusHistory.ready ? approvalFocus.state?.source?.seq : undefined}
                       />
                     ) : (
                       <div className="pl-9 text-xs text-muted-foreground">
@@ -2345,11 +2255,11 @@ export function SessionsTab({
   );
   const mainItems=withLiveStreams(mainState?.items??[],streaming.filter(stream=>sessionKeyOf({...stream,seq:-1,kind:stream.channel,summary:stream.text})===mainKey));
   return <TooltipProvider delayDuration={300}>
-    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={!isMain||!!relatedSession} onBack={()=>{setRelatedSession(null);clearFocus();approvalFocus.close();setActiveId(mainSessionId(mainSeg));}}
+    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={!isMain||!!relatedSession} onBack={()=>{setRelatedSession(null);clearFocus();setActiveId(mainSessionId(mainSeg));}}
       list={agentList} detail={relatedSession?<RelatedSessionDetail key={relatedSession.id} row={relatedSession}/>:isMain?null:processDetail} main={<MainConversation key={mainKey} taskId={taskId} items={mainItems} live={!!mainBusy} stopping={stopping} loading={mainState?.loading} error={mainState?.error} hasMore={mainState?.hasMore}
         onEarlier={()=>loadEarlier(mainKey,()=>null)} onRetry={()=>loadSession(mainKey)} composer={composer}
         heading={<><span>主 Agent · {mainSeg===currentSeg?'当前会话':`历史会话 ${mainSeg}`}</span><span className="text-xs">{sseLive?'实时连接':'正在重连，已保留内容'}</span></>}
-        focused={isMain&&(focused||invalidFocus||approvalFocus.state)?processDetail:undefined}/>} />
+        focused={isMain&&(focused||invalidFocus)?processDetail:undefined}/>} />
         <AlertDialog
           open={deleteWorkers.length > 0}
           onOpenChange={(open) => {

@@ -7,10 +7,7 @@ import type { AgentRunnerOptions } from "../pi/runner.js";
 export async function roleResources(db: Database, role: string, skillsDir?: string): Promise<Pick<AgentRunnerOptions, "skillsDir" | "allowedSkills" | "mcpEntries" | "mcpResourceTools">> {
   const skills = await db.query<{ skill_name: string }>(
     `SELECT v.skill_name FROM agent_skill_visibility v JOIN agents a ON a.id=v.agent_id WHERE a.key=$1 AND v.enabled ORDER BY v.skill_name`, [role]);
-  // Main/planner/goals remain orchestration-only. Auto may use explicitly bound
-  // platform integrations, while Pentest/Worker receive scoped execution tools.
-  // Retester intentionally receives no MCP execution path; its tool boundary is
-  // limited to evidence reads and bounded HTTP verification in RetestService.
+  // Only explicitly bound resources are registered; execution guards remain live.
   if (!["worker", "planner", "mainagent", "pentest", "auto"].includes(role)) return { skillsDir, allowedSkills: skills.rows.map((r) => r.skill_name) };
   const visibility = await db.query<{ resource_id: string; mcp_tool_name: string; enabled: boolean }>(
     `SELECT v.resource_id,v.mcp_tool_name,v.enabled FROM agent_visibility v JOIN agents a ON a.id=v.agent_id

@@ -1,0 +1,284 @@
+{
+  "version": "retester-removed-lean-tools-v1-20261020",
+  "started_at": "2026-10-20T08:48:22.697Z",
+  "before_idle": {
+    "workers": "0",
+    "active_roles": "0",
+    "sessions": "0",
+    "requests": "0",
+    "retests": "0"
+  },
+  "before": {
+    "retest_count": "11",
+    "completed_retest_digest": "85005a44908ee097a5d22878a966a28f",
+    "retired_conversations": "0",
+    "finding_status_digest": "cc91a57effd772ef621c77489f2b8669",
+    "fact_finding_nodes": "1562",
+    "tasks": "853"
+  },
+  "before_health": {
+    "status": "ok",
+    "version": "constraint-source-20261020",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 18742
+  },
+  "old_pid": 15755,
+  "stopped_at": "2026-10-20T08:48:23.797Z",
+  "pid": 37532,
+  "after": {
+    "retest_count": "11",
+    "completed_retest_digest": "85005a44908ee097a5d22878a966a28f",
+    "retired_conversations": "0",
+    "finding_status_digest": "cc91a57effd772ef621c77489f2b8669",
+    "fact_finding_nodes": "1562",
+    "tasks": "853"
+  },
+  "roles": [
+    "goals",
+    "planner",
+    "mainagent",
+    "worker",
+    "auto",
+    "pentest",
+    "lock_agent_1792203943728614000",
+    "write_lock_agent_1792203944689486000",
+    "reporter",
+    "lock_agent_1792204548866493000",
+    "write_lock_agent_1792204549847807000",
+    "lock_agent_1792204686313533000",
+    "write_lock_agent_1792204687268572000",
+    "lock_agent_1792204827011160000",
+    "write_lock_agent_1792204827996885000",
+    "lock_agent_1792205198917426000",
+    "write_lock_agent_1792205199925214000",
+    "lock_agent_1792205327286747000",
+    "write_lock_agent_1792205328388881000",
+    "lock_agent_1792205443431234000",
+    "write_lock_agent_1792205444416246000",
+    "lock_agent_1792205583159784000",
+    "write_lock_agent_1792205584169796000",
+    "lock_agent_1792207054498783000",
+    "write_lock_agent_1792207055481066000",
+    "lock_agent_1792214790608764000",
+    "write_lock_agent_1792214791562097000",
+    "lock_agent_1792221651596019000",
+    "write_lock_agent_1792221652662306000"
+  ],
+  "loadouts": [
+    {
+      "role": "goals",
+      "resident": [
+        "context_search",
+        "context_get",
+        "set_goals",
+        "set_constraints",
+        "register_user_target",
+        "read"
+      ],
+      "deferred": [],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 6008,
+        "resident": 5722,
+        "registered": 5722
+      }
+    },
+    {
+      "role": "planner",
+      "resident": [
+        "context_search",
+        "context_get",
+        "graph_overview",
+        "add_intent",
+        "prove_goal",
+        "kill_work",
+        "steer_work",
+        "todo_write",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "http_request",
+        "add_task_scope",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 20930,
+        "resident": 12854,
+        "registered": 16984
+      }
+    },
+    {
+      "role": "mainagent",
+      "resident": [
+        "http_request",
+        "record_fact",
+        "report_finding",
+        "insert_assets",
+        "context_search",
+        "context_get",
+        "add_intent",
+        "dispatch_intents",
+        "steer_work",
+        "list_assets",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "list_facts",
+        "tool_search"
+      ],
+      "deferred": [
+        "set_goals",
+        "set_constraints",
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 28493,
+        "resident": 19524,
+        "registered": 24288
+      }
+    },
+    {
+      "role": "worker",
+      "resident": [
+        "http_request",
+        "context_search",
+        "context_get",
+        "record_fact",
+        "insert_assets",
+        "report_finding",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "ct_test_shell_metadata",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "shell_open",
+        "shell_send",
+        "shell_read",
+        "shell_close",
+        "shell_list"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 19019,
+        "resident": 12413,
+        "registered": 15082
+      }
+    },
+    {
+      "role": "auto",
+      "resident": [
+        "context_get",
+        "list_tasks",
+        "get_task",
+        "spawn_task",
+        "pause_task",
+        "resume_task",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_llm_profiles",
+        "add_task_hint",
+        "get_finding",
+        "update_finding_report",
+        "asset_search",
+        "asset_get",
+        "list_findings"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 9906,
+        "resident": 4871,
+        "registered": 8015
+      }
+    },
+    {
+      "role": "pentest",
+      "resident": [
+        "context_get",
+        "context_search",
+        "list_assets",
+        "record_conversation_fact",
+        "report_conversation_finding",
+        "http_request",
+        "read",
+        "bash",
+        "write",
+        "edit",
+        "tool_search"
+      ],
+      "deferred": [
+        "asset_search",
+        "asset_get",
+        "list_findings",
+        "graph_overview"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 13672,
+        "resident": 10198,
+        "registered": 12172
+      }
+    },
+    {
+      "role": "reporter",
+      "resident": [
+        "context_get",
+        "get_finding",
+        "update_finding_report",
+        "context_search",
+        "tool_search"
+      ],
+      "deferred": [
+        "list_findings"
+      ],
+      "policy": "lean-tools-v1",
+      "schema_bytes": {
+        "before": 5088,
+        "resident": 3991,
+        "registered": 4207
+      }
+    }
+  ],
+  "retest_post": {
+    "status": 410,
+    "body": {
+      "error": "Retester 功能已移除；历史复测记录仅供读取，需要复测请正常下发任务。",
+      "code": "RETESTER_RETIRED"
+    }
+  },
+  "backend_verified_at": "2026-10-20T08:48:28.366Z",
+  "web_pid": 37682,
+  "frontend_shutdown_note": "Old Next process released listener but retained browser connections after SIGTERM; terminated the obsolete process after timeout, then reloaded against the sole new listener.",
+  "finished_at": "2026-10-20T08:54:26.717355+00:00",
+  "frontend_verified": {
+    "url": "http://localhost:5173/system/tools",
+    "listening_pid": 37688,
+    "console_errors": 0,
+    "screenshot": "tools-live.png"
+  }
+}

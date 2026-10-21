@@ -144,16 +144,16 @@ describe('lightweight role prompts',()=>{
   const {task,faux,source}=await fixture();faux.setResponses([fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'LOCAL deliverable'}]})]),fauxAssistantMessage('saved')]);
   await runGoalsDecompose({db,taskID:task.id,expID:task.exploration_id,description:'LOCAL deliverable',model:source,dataDir:dir,maxTurns:5,hooks:{}});expect(faux.state.callCount).toBe(1);
  });
- it('honors Retester custom prompts and only settles after a persisted conclusion',async()=>{
-  const {task,request,faux}=await fixture();const agent=(await db.platform().getAgentByKey('retester'))!;
-  await db.platform().savePrompt(agent.id,'CUSTOM-RETEST-MARKER','custom','fixture');
-  try{
-   const fid=Number((await db.query("INSERT INTO findings(task_id,name,summary,evidence,status) VALUES($1,'LOCAL','synthetic','LOCAL','open') RETURNING id",[task.id])).rows[0]!.id);
-   faux.setResponses([context=>{expect(JSON.stringify(context.messages)).toContain('CUSTOM-RETEST-MARKER');return fauxAssistantMessage('finished without saving');},fauxAssistantMessage([fauxToolCall('record_finding_retest_result',{verdict:'inconclusive',summary:'LOCAL fixture has no target',evidence:'LOCAL'})]),fauxAssistantMessage('saved')]);
-   const res=await request('POST',`/api/exploration/findings/${fid}/retests`,{notes:'LOCAL no network'});expect(res.statusCode).toBe(200);const id=Number(res.json().retest.id);
-   await until(async()=>!(await db.query("SELECT 1 FROM finding_retests WHERE id=$1 AND status IN ('pending','running')",[id])).rowCount);
-   expect((await db.query('SELECT status,verdict,error FROM finding_retests WHERE id=$1',[id])).rows[0]).toMatchObject({status:'completed',verdict:'inconclusive'});expect(faux.state.callCount).toBe(2);
-  }finally{await db.query('UPDATE agents SET current_prompt_id=NULL WHERE id=$1',[agent.id]);}
+ it('rejects Retester prompt/configuration changes and independent session creation',async()=>{
+  const {request,faux}=await fixture();
+  for(const [method,url,body] of [
+   ['PUT','/api/agents/retester/prompt',{template:'CUSTOM-RETEST'}],
+   ['PUT','/api/agents/retester/config',{enabled:true}],
+   ['POST','/api/agents/retester/prompt/reset',{}],
+   ['POST','/api/agents',{key:'retester',name:'Retester'}],
+   ['POST','/api/conversations',{agent_key:'retester'}],
+  ] as const)expect((await request(method,url,body)).statusCode,url).toBe(410);
+  expect(faux.state.callCount).toBe(0);
  });
  it('recalls Worker feedback once in its original Main segment across session recovery',async()=>{
   const {task,faux,source}=await fixture();
@@ -215,7 +215,7 @@ describe('lightweight role prompts',()=>{
 
  it('actual role assembly preserves configured unlimited budgets outside terminal task settlement',async()=>{
   const rows=(await db.query('SELECT role,effective FROM runtime_role_configs ORDER BY started_at')).rows;
-  for(const role of ['goals','planner','mainagent','auto','pentest','reporter','retester'])
+  for(const role of ['goals','planner','mainagent','auto','pentest','reporter'])
    expect(rows.find(r=>r.role===role)?.effective,role).toMatchObject({max_turns:0,max_duration_ms:0});
  });
 

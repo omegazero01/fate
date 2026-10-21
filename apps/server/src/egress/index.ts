@@ -38,7 +38,7 @@ function clientHost(bindHost: string): string {
   return bindHost === "0.0.0.0" || bindHost === "::" || bindHost === "" ? "127.0.0.1" : bindHost;
 }
 
-/** 启动出口网关：授权校验用 db.taskScope()（worker 口径，pending 可放行）。 */
+/** 启动出口代理：保留执行身份、暂停和租约校验。 */
 export async function startEgressGateway(db: Database, addr: string, dataDir?: string): Promise<EgressGateway> {
   const { host, port } = parseListenAddr(addr);
   if(dataDir)return startRecordingGateway(db,host,port,dataDir);

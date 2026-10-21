@@ -22,7 +22,7 @@ export async function contextNode(c:ToolRunContext,id:number){
     FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id
     WHERE n.id=$1 AND t.deleted_at IS NULL AND
       (t.id=$2 OR t.id IN (SELECT source_task_id FROM task_relations WHERE task_id=$2))
-      AND exploration_node_readable(n.exploration_id,n.id,$3)`,[id,c.taskID,['worker','mainagent'].includes(c.role)])).rows[0];
+      AND exploration_node_readable(n.exploration_id,n.id)`,[id,c.taskID])).rows[0];
   if(!row)throw new Error('节点不存在或不属于当前授权范围');
   return {id:Number(row.id),kind:String(row.kind),state:String(row.state),version:Number(row.content_version),
     expID:Number(row.exploration_id),taskID:Number(row.task_id),summary:String(row.summary)};
@@ -45,7 +45,7 @@ export async function contextRelations(c:ToolRunContext,node:Awaited<ReturnType<
   const rows=(await c.db.query(`SELECT n.id,n.kind,n.state,n.content_version,
     left(COALESCE(n.payload->>'summary',n.payload->>'text',''),300) summary
     FROM exploration_nodes n WHERE n.exploration_id=$1 AND n.id>$3 AND n.id<=$4 AND ${relation}
-      AND exploration_node_readable($1,n.id,$5) ORDER BY n.id LIMIT 21`,[node.expID,node.id,after,upper,['worker','mainagent'].includes(c.role)])).rows;
+      AND exploration_node_readable($1,n.id) ORDER BY n.id LIMIT 21`,[node.expID,node.id,after,upper])).rows;
   const current=await contextNode(c,node.id);
   if(current.version!==node.version)throw new Error('关系或节点版本已变化，请重新读取');
   const items=boundedContextPage(rows.slice(0,20).map(n=>({ref:`node:${n.id}`,kind:n.kind,version:Number(n.content_version),state:n.state,summary:n.summary})));

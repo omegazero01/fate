@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-20",
+  "branch": "codex/neo-ui-detail",
+  "base": "30e364e2",
+  "backend_port": 18892,
+  "frontend_port": 15192,
+  "model_requests": 0,
+  "external_target_requests": 0,
+  "server_full": {
+    "files": 42,
+    "passed": 454,
+    "failed": 2,
+    "skipped": 1,
+    "duration_seconds": 370.05,
+    "failed_file": "src/pi/terminal.test.ts",
+    "failure_detail": [
+      "REPL response arrived after short polling window",
+      "long output not yet available at fixed wait"
+    ]
+  },
+  "server_followup": {
+    "files": [
+      "src/http/batch-a.test.ts",
+      "src/http/workspace-ui.test.ts",
+      "src/pi/terminal.test.ts"
+    ],
+    "passed": 29,
+    "failed": 0,
+    "skipped": 1,
+    "duration_seconds": 19.69
+  },
+  "frontend_protocol": {
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0
+  },
+  "builds": {
+    "server_typecheck": "passed",
+    "web_typecheck": "passed",
+    "server_build": "passed",
+    "next_build": "passed",
+    "next_static_export": "passed"
+  },
+  "browser": {
+    "actual_widths": [
+      985,
+      653
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "task_ids": [
+      1,
+      3
+    ],
+    "network_requests_seeded_per_task": 65,
+    "page_two_range": "51–65 / 65",
+    "path_filter": {
+      "path": "/health",
+      "count": 21,
+      "4xx_count": 4
+    },
+    "body_paging": {
+      "total_bytes": 41400,
+      "observed_next_offset": 16384
+    },
+    "model_chain_reopen_count": 2,
+    "model_chain_active": "Local B",
+    "model_draft_survived_category_and_theme_change": true,
+    "escape_focus_returned_to": "任务设置",
+    "console_errors": 0,
+    "stream": {
+      "observed_while_running": "实时第1段 through 实时第8段",
+      "final_segments": 12,
+      "final_dom_copies": 1,
+      "latency_sla_measured": false
+    },
+    "tab_switch_preserved_draft": true,
+    "viewport_override": "Requested 390 and 1440 but observed viewport did not follow; exact 390/846/1280/1440 matrix not counted as passed"
+  },
+  "published_to_main_service": false
+}

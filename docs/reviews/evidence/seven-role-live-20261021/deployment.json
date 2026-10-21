@@ -1,0 +1,91 @@
+{
+  "version": "seven-role-tools-4fa0df0e-20261021",
+  "started_at": "2026-10-21T01:34:17.619Z",
+  "old_pid": 37532,
+  "executor_counts": {
+    "runtimes": 0,
+    "slots": 0,
+    "sessions": 0
+  },
+  "before_health": {
+    "status": "ok",
+    "version": "retester-removed-lean-tools-v1-20261020",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 60350
+  },
+  "before_tasks": [
+    {
+      "id": "4842",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    },
+    {
+      "id": "4843",
+      "status": "done",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4844",
+      "status": "running",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4845",
+      "status": "done",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4846",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    }
+  ],
+  "backup": "/Users/pphua/.local/share/fate/backups/seven-role-live-20261021",
+  "stopped_at": "2026-10-21T01:34:19.470Z",
+  "new_pid": 53389,
+  "after_health": {
+    "status": "ok",
+    "version": "seven-role-tools-4fa0df0e-20261021",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 0
+  },
+  "after_tasks": [
+    {
+      "id": "4842",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    },
+    {
+      "id": "4843",
+      "status": "done",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4844",
+      "status": "running",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4845",
+      "status": "done",
+      "paused": false,
+      "queued": false
+    },
+    {
+      "id": "4846",
+      "status": "running",
+      "paused": true,
+      "queued": false
+    }
+  ],
+  "finished_at": "2026-10-21T01:34:25.752Z",
+  "status": "passed"
+}
