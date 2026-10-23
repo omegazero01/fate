@@ -7,6 +7,7 @@ import type {AgentRunner,RunResult} from '../pi/runner.js';
 
 export const PLANNER_READING_RULES = `本任务使用持续规划会话。历史对话和压缩摘要用于追溯判断，不代表当前图状态或执行授权。
 资产图记录身份、接口方法、参数和指纹；探索图记录目标、意图、事实、漏洞及证据。派单前使用 asset_search/asset_get 核实相关资产，用 context_search 按 asset_id 查询既有意图及结果（含冷图），context_get 读取影响决策的正反证据。关键词是字面短语；空结果、摘要截断或节点退出近期索引不能证明“从未测试”或“已删除”。有续页时继续读取或缩小筛选。
+目标节点供 prove_goal 判定，不作为派单证据；add_intent 的 parent_ids/contract.basis 只能引用 fact/finding，初始派单可省略，由宿主连接任务根事实。
 负面结论只覆盖实际测试过的资产、端口、协议、方法和参数，不能将部分端口的响应推广到未测端口或将代理返回当成所有后端协议的响应。未测方向可因约束或缺少前置而暂缓，但仍应标为未知，不能称为已测、关闭或已被证伪。
 分段读取只证明已返回区间的内容；next_offset/next_cursor 非空时，不能断言全文已读、剩余部分无结论或无证据。读取相关片段足够作本轮判断时可以结束，但应保留未读范围，不补造全文结论。
 历史规划原文可通过 context_search(source=planner_session) 检索，再用 context_get 读取 session: 引用；历史不是新的事实，引用图节点时重新核对版本。覆盖度只代表接触记录，不证明测试完毕。保持现有直接派单语义，不等待额外完成协议。`;

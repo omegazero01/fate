@@ -1,3 +1,4 @@
+import {requireTaskGoal} from "../agent/task-goal.js";
 import type {ToolDefinition} from '@earendil-works/pi-coding-agent';
 import {domainTool} from './define.js';
 import type {ToolRunContext} from './context.js';
@@ -12,10 +13,11 @@ export function conversationDomainTools(ctx:ToolRunContext,engine:Pick<Engine,'a
      make('get_task','查询任务状态',{task_id:{type:'integer'}},async a=>({task:await ctx.db.tasks().getTask(Number(a.task_id))}),['task_id']),
      make('list_llm_profiles','列出可选模型，不返回密钥',{},async()=>({profiles:(await ctx.db.platform().listProfiles()).map(p=>({id:p.id,name:p.name,model:p.model}))})),
      make('spawn_task','按用户目标创建并启动任务',{description:{type:'string'},goal:{type:'string'},asset_ids:{type:'array',items:{type:'integer'}},company_ids:{type:'array',items:{type:'integer'}},execution_mode:{type:'string',enum:['managed','manual']},source_task_ids:{type:'array',items:{type:'integer'}},llm_profile_id:{type:'integer'},seed_first_intent:{type:'boolean'}},async a=>{
+      const goal=requireTaskGoal(a.goal);
       const profile=Number(a.llm_profile_id)||profileID||0;
-      const t=await ctx.db.tasks().createTaskWithOptions(String(a.description),String(a.goal??a.description),{companyIDs:a.company_ids as number[]|undefined,executionMode:a.execution_mode==='manual'?'manual':'managed',assetIDs:a.asset_ids as number[]|undefined,sourceTaskIDs:a.source_task_ids as number[]|undefined,llmProfileIDs:profile?[profile]:[],seedFirstIntent:a.seed_first_intent===true});
+      const t=await ctx.db.tasks().createTaskWithOptions(String(a.description),goal,{initializeGoals:true,companyIDs:a.company_ids as number[]|undefined,executionMode:a.execution_mode==='manual'?'manual':'managed',assetIDs:a.asset_ids as number[]|undefined,sourceTaskIDs:a.source_task_ids as number[]|undefined,llmProfileIDs:profile?[profile]:[],seedFirstIntent:a.seed_first_intent===true});
       await ctx.db.query('UPDATE tasks SET parent_ref=$2 WHERE id=$1',[t.id,`conversation:${id}`]);await engine.admitTask(t.id,{decompose:{description:t.description}});return {task:t};
-     },['description']),
+     },['description','goal']),
      make('pause_task','暂停指定任务',{task_id:{type:'integer'}},async a=>{const n=Number(a.task_id);await ctx.db.tasks().applyTaskPause(n);const result=await engine.pause(n);return {task_id:n,status:result.status,command_id:result.command_id};},['task_id']),
      make('resume_task','恢复指定任务并返回实际准入状态',{task_id:{type:'integer'}},async a=>{const n=Number(a.task_id);await engine.admitTask(n);return {task:await ctx.db.tasks().getTask(n)};},['task_id']),
      make('add_task_hint','追加任务提示',{task_id:{type:'integer'},message:{type:'string'}},async a=>{const n=Number(a.task_id),t=await ctx.db.tasks().getTask(n);if(!t)throw new Error('任务不存在');const node=await ctx.db.exploration(t.exploration_id).addNode('hint',{text:String(a.message),source:'user_request',conversation_id:id},0,'open','auto',[]);engine.notify(n);await ctx.db.query("WITH saved AS (INSERT INTO blackboard_wakeups(exploration_id,event_key,kind,node_id) VALUES($1,$2,'control_changed',$3) ON CONFLICT DO NOTHING RETURNING id) UPDATE explorations SET published_revision=published_revision+1 WHERE id=$1 AND EXISTS(SELECT 1 FROM saved)",[t.exploration_id,`hint:${node}`,node]);return {saved:true,node_id:node};},['task_id','message']));

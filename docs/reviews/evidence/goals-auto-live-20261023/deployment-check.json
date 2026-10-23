@@ -1,0 +1,24 @@
+{
+  "version": "fate-goals-auto-tools-20261023",
+  "completed_at": "2026-10-23T10:22:45.164843+08:00",
+  "backend_pid": 52134,
+  "frontend_pid": 44208,
+  "compiled_components_match_acceptance": true,
+  "goal_fingerprint_before": "6d903ddee1c7f00e45be9584ee5c1e13",
+  "goal_fingerprint_after": "6d903ddee1c7f00e45be9584ee5c1e13",
+  "task_states_unchanged": true,
+  "model_requests_added": 0,
+  "paused_tasks": [
+    4842,
+    4844,
+    4846,
+    4847
+  ],
+  "active_executors_after": {
+    "workers": 0,
+    "task_leases": 0,
+    "session_leases": 0,
+    "pending_runs": 0,
+    "active_runtimes": 0
+  }
+}

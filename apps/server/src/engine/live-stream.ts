@@ -6,6 +6,7 @@ export type StreamIdentity = { worker: string; node_id?: number; main_seg?: numb
 
 /** Native message metadata is durable even when a response contains only tools. */
 export function runnerActivityMetadata(a: RunnerActivity) {
+  if(a.kind==='host_status')return {event_type:'goals_phase',phase:a.phase};
   if(a.kind==='settled')return {event_type:'runner_settled',stop_reason:a.stopReason};
   if(a.kind==='run_metadata')return {event_type:'turn_start',runtime_id:a.runtimeID,role:a.role,mode:a.mode,started_at:a.startedAt};
   if(a.kind==='assistant_message_end')return {final_answer:a.final,stream_id:a.streamID,channel:a.isThinking?'thinking':'text',...(a.response?{response:a.response}:{})};

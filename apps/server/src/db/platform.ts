@@ -1,6 +1,7 @@
 import {migrateDirectionWriteback} from '../agent/direction-migration.js';
 import {TOOL_POLICY_VERSION,ACTIVE_ROLES} from '../agent/tool-registry.js';
 import {migrateConstraintProvenance} from './constraint-provenance.js';
+import {migrateIsolatedGoalsPrompt} from '../agent/goals-migration.js';
 import {migrateConstraintPrompts} from '../agent/constraint-migration.js';
 import {migrateAssetTools} from './asset-migration.js';
 import {migrateArtex} from './artex-migration.js';
@@ -796,10 +797,11 @@ interface BuiltinAgent {
 const BUILTIN_AGENTS: BuiltinAgent[] = [
   {
     key: "goals", name: "目标拆解", role: "goals",
-    desc: "把渗透任务目标拆解成若干独立、可验证的子目标。",
+    desc: "先提取原文约束与资产，再用独立会话仅拆解目标栏。",
     vars: [
       // Now 是全局 runtime 变量(server.globalPromptVars)，不再在各 agent 目录里重复定义。
-      { name: "EngagementDescription", description: "任务描述（测试对象/背景）", example: "测试 example.com 站点", source: "exploration" },
+      { name: "Goal", description: "目标栏原文（唯一目标来源）", example: "资产测试覆盖度100%", source: "exploration" },
+      { name: "EngagementDescription", description: "描述背景（仅阶段一可见；目标阶段置空）", example: "测试 example.com 站点", source: "exploration" },
     ],
     interactiveShell: false, runSeconds: null,
   },
@@ -978,6 +980,7 @@ export async function seedBuiltins(db: Database): Promise<void> {
   await migrateBuiltinPrompts(db);
   await migrateConstraintProvenance(db);
   await migrateConstraintPrompts(db);
+  await migrateIsolatedGoalsPrompt(db);
   await migrateArtex(db);
   await migrateApprovalPrompts(db);
   await migrateAssetTools(db);

@@ -1,3 +1,4 @@
+import {goalsBootstrap,saveBootstrapGoals,activeBootstrap,type GoalSubmission} from '../db/goals-bootstrap.js';
 // 目标与约束工具：set_goals（目标分解/mainagent 追加）、set_constraints（操作边界）、
 // register_user_target（显式授权登记）。
 
@@ -6,16 +7,16 @@ import type { ToolRunContext } from "./context.js";
 import { RelSpawns } from "../db/exploration.js";
 import {CONSTRAINT_TOOL_DESCRIPTION,groundConstraint,type ConstraintInput} from '../agent/constraint-policy.js';
 
-interface SetGoalsArgs { goals: { text: string; vulnclass?: string }[]; }
+interface SetGoalsArgs { goals: GoalSubmission[]; }
 
 export function setGoalsTool(ctx: ToolRunContext) {
   return domainTool<SetGoalsArgs>(
     {
       name: "set_goals",
       description:
-        "登记任务的可验证最终目标（主 Agent 追加；初始分解阶段替换）。目标 = 可独立核验的交付物（拿到什么权限/证明什么漏洞/" +
+        "登记任务的可验证最终目标（主 Agent 追加；新任务分阶段幂等保存，旧任务保持兼容）。目标 = 可独立核验的交付物（拿到什么权限/证明什么漏洞/" +
         "覆盖什么范围）；信息收集、漏洞验证过程、攻击步骤都不是目标。每个目标给漏洞类别便于归类。",
-      promptSnippet: "设定/替换任务目标",
+      promptSnippet: "保存目标栏要求的最终结果",
       parameters: {
         type: "object",
         properties: {
@@ -27,9 +28,10 @@ export function setGoalsTool(ctx: ToolRunContext) {
               type: "object",
               properties: {
                 text: { type: "string", description: "目标描述（自包含、可验证）" },
+                ...(ctx.goalsPhase==='objectives'?{source_quote:{type:"string",description:"逐字引用目标栏原文；不能引用描述或背景"}}:{}),
                 vulnclass: { type: "string", description: "关联漏洞类别（可选）" },
               },
-              required: ["text"],
+              required: ctx.goalsPhase==='objectives'?["text","source_quote"]:["text"],
             },
           },
         },
@@ -38,6 +40,7 @@ export function setGoalsTool(ctx: ToolRunContext) {
       // Notify the running scheduler only after the replacement/append is committed.
       transactional: false,
       async run(args, c) {
+        if(c.role==='goals'&&await goalsBootstrap(c.db,c.taskID))return {goals:await saveBootstrapGoals(c,args.goals)};
         const ids = await c.db.transaction(async db=>{
           await c.hooks.assertOwnership?.(db);
           const s=db.exploration(c.expID),originFact=await s.originFactID();
@@ -94,6 +97,7 @@ export function setConstraintsTool(ctx: ToolRunContext) {
           await tx.query("SELECT pg_advisory_xact_lock($1)", [c.expID]);
           const task=await tx.tasks().getTask(c.taskID);
           if(!task||task.exploration_id!==c.expID)throw new Error('约束所属任务不匹配');
+          if(c.role==='goals'&&await goalsBootstrap(tx,c.taskID)){const state=await activeBootstrap(c,tx);if(c.goalsPhase!=='constraints'||state.phase!=='constraints')throw new Error('当前阶段不能写入约束');}
           const sources=c.role==='goals'?{goal:task.goal,description:task.description}:{user_message:c.userMessage};
           // Validate the whole batch before replacement; an invalid call leaves existing rules intact.
           const grounded=args.constraints.map(k=>groundConstraint(k,sources));
@@ -144,6 +148,7 @@ export function registerUserTargetTool(ctx: ToolRunContext) {
         required: ["kind", "value", "evidence"],
       },
       async run(args, c) {
+        if(c.role==='goals'&&await goalsBootstrap(c.db,c.taskID)){const state=await activeBootstrap(c,c.db);if(c.goalsPhase!=='constraints'||state.phase!=='constraints')throw new Error('当前阶段不能登记资产');}
         if (!args.evidence.trim()) throw new Error("必须提供任务描述中的授权语句原文");
         await c.db.taskScope().addAgentScope(c.taskID, args.kind, args.value, args.evidence, "manual");
         return { registered: true, kind: args.kind, value: args.value };

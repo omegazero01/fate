@@ -1,3 +1,4 @@
+import {GOALS_STAGE_TOOLS,GOALS_STAGE_PROTOCOL} from './goals-policy.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
 import {effectiveToolDescription} from './tool-descriptions.js';
 import {createReadToolDefinition,createBashToolDefinition,createWriteToolDefinition,createEditToolDefinition,createToolSearchExtension,type ToolDefinition,type ExtensionAPI} from '@earendil-works/pi-coding-agent';
@@ -22,6 +23,7 @@ import {prepareToolLoading,compactToolSchema} from './tool-loading.js';
 import {platformPolicy} from '../pi/platform-policy.js';
 import {hasDeferredMcp,TOOL_SEARCH_HINT} from '../pi/platform-mcp.js';
 import {resolveRolePrompt} from './prompts.js';
+import {PLANNER_READING_RULES} from './planner-memory.js';
 import {roleResources} from './resources.js';
 import {skillDir} from '../config/index.js';
 import type {Database} from '../db/index.js';
@@ -47,20 +49,20 @@ export function builtinDefinitions(db:Database){
 export async function previewRoleTools(db:Database,role:string,taskBound=true){
  const agent=await db.platform().getAgentByKey(role);if(!agent)throw Object.assign(new Error('Agent 不存在'),{statusCode:404});
  const ctx=runContext(db,taskBound?1:0,taskBound?1:0,role as never);
- const nativeNames=['worker','planner','mainagent'].includes(role)||role==='pentest'&&taskBound?['read','bash','write','edit']:['auto','reporter','pentest','goals'].includes(role)?['read']:[];
+ const nativeNames=['worker','planner','mainagent'].includes(role)||role==='pentest'&&taskBound?['read','bash','write','edit']:['auto','reporter','pentest'].includes(role)?['read']:[];
  const disabled=await disabledBuiltinTools(db,role);
- const domain=await applyToolBindings(db,role,roleDefinitions(db,role,taskBound));
- const custom=role==='pentest'&&!taskBound?[]:await customWorkerTools(ctx,previewCwd);
+ const domain=await applyToolBindings(db,role,role==='goals'?goalsTools({...ctx,goalsPhase:'objectives'}).filter(t=>[...GOALS_STAGE_TOOLS.constraints,...GOALS_STAGE_TOOLS.objectives].includes(t.name as never)):roleDefinitions(db,role,taskBound));
+ const custom=role==='goals'||role==='pentest'&&!taskBound?[]:await customWorkerTools(ctx,previewCwd);
  const candidate=[...domain,...native().filter(t=>nativeNames.includes(t.name)&&!disabled.has(t.name)),...(agent.interactiveShell&&['worker','planner','mainagent'].includes(role)?terminalToolDefinitions():[]),...custom];
  if(['worker','planner','mainagent'].includes(role)){const bash=candidate.find(t=>t.name==='bash');if(bash)bash.description=await platformBashDescription(ctx,bash.description,agent.interactiveShell);}
  const permitted=new Set((await applyToolBindings(db,role,candidate.map(t=>({name:t.name})))).map(t=>t.name));
- const bound=candidate.filter(t=>permitted.has(t.name)),policy=await platformPolicy(db,role),prompt=await resolveRolePrompt(db,role),resources=await roleResources(db,role,skillDir());
- const loadout=await prepareToolLoading(db,role,{customTools:bound,legacyTools:taskBound?legacyReadCandidates(ctx):[],toolAllowlist:bound.map(t=>t.name),systemPrompt:prompt.template,...resources},policy.builtinLoading==='direct',policy.fallback);
+ const bound=candidate.filter(t=>permitted.has(t.name)),policy=await platformPolicy(db,role),prompt=await resolveRolePrompt(db,role),resources=role==='goals'?{}:await roleResources(db,role,skillDir());
+ const loadout=await prepareToolLoading(db,role,{customTools:bound,legacyTools:taskBound&&role!=='goals'?legacyReadCandidates(ctx):[],toolAllowlist:bound.map(t=>t.name),systemPrompt:prompt.template+(role==='planner'?'\n'+PLANNER_READING_RULES:''),...resources},policy.builtinLoading==='direct',policy.fallback);
  const definitions=new Map(loadout.customTools.map(t=>[t.name,t]));
  const initial=loadout.toolLoading.initialActive.map(n=>definitions.get(n)!).filter(Boolean);
  if(loadout.toolLoading.deferred.length||hasDeferredMcp(resources))initial.push(searchDefinition());
  const measure=(tools:ToolDefinition[])=>Buffer.byteLength(JSON.stringify(tools.map(t=>({name:t.name,description:t.description,parameters:t.parameters}))));
- return {role,scope:taskBound?'task_bound':'standalone',policy_version:loadout.toolLoading.version,platform_policy:policy,
+ return {role,context_activation:{policy:'explicit-references-v1',task_context:'runtime_only'},stages:role==='goals'?Object.entries(GOALS_STAGE_TOOLS).map(([phase,names])=>({phase,resident:initial.filter(t=>(names as readonly string[]).includes(t.name)).map(t=>t.name),deferred:[],schema_bytes:measure(initial.filter(t=>(names as readonly string[]).includes(t.name))),protocol:GOALS_STAGE_PROTOCOL[phase as keyof typeof GOALS_STAGE_PROTOCOL],context:phase==='constraints'?'目标与描述原文；仅约束和资产':'仅目标栏原文；不加载历史、Skill、MCP 或其他读取工具'})):undefined,scope:taskBound?'task_bound':'standalone',policy_version:loadout.toolLoading.version,platform_policy:policy,
   resident:initial.map(t=>t.name),deferred:loadout.toolLoading.deferred,compatibility:loadout.toolLoading.compatibility,fallback:loadout.toolLoading.fallback,
   schema_bytes:{before:measure(bound),resident:measure(initial),registered:measure([...definitions.values()])},
   mcp:{status:'not_connected',servers:resources.mcpEntries?.map(e=>e.name)??[],schema_counted:false},

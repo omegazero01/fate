@@ -1,3 +1,4 @@
+import {GOALS_STAGE_PROTOCOL,goalsStageVariables} from '../../agent/goals-policy.js';
 import {previewRoleTools} from '../../agent/tool-catalog.js';
 import {assertActiveRole} from '../../agent/retired-roles.js';
 import {platformPolicy} from '../../pi/platform-policy.js';
@@ -254,7 +255,7 @@ export function registerAgentConfigRoutes(app: FastifyInstance): void {
     const rendered = renderPrompt(b["template"], values);
     const resolved = await resolveRolePrompt(db(), key);
     const candidate = builtinPrompt(key);
-    return { rendered, platform_policy:await platformPolicy(db(),key), candidate: candidate === null ? null : renderPrompt(candidate, values),
+    return { rendered, stages:key==='goals'?Object.entries(GOALS_STAGE_PROTOCOL).map(([phase,protocol])=>({phase,rendered:renderPrompt(b['template'] as string,goalsStageVariables(values.Goal??'示例目标',values.Description??values.EngagementDescription??'示例描述',phase as 'constraints'|'objectives')),host_protocol:hostProtocol(key)+'\n'+protocol,context:phase==='constraints'?'目标与描述原文':'仅目标栏原文；无描述、历史、MCP、Skill 或文件能力'})):undefined, platform_policy:await platformPolicy(db(),key), candidate: candidate === null ? null : renderPrompt(candidate, values),
       configured_source: resolved.source, builtin_version: PROMPT_VERSION, host_protocol: hostProtocol(key),
       diagnostics: { role_body: {...textSize(rendered),source:'preview_template'},
         host_protocol: {...textSize(hostProtocol(key)),source:'host'},

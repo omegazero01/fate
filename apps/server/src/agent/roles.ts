@@ -1,3 +1,5 @@
+import {goalsBootstrap,activeBootstrap,saveBootstrapGoals,type GoalsPhase} from '../db/goals-bootstrap.js';
+import {GOALS_STAGE_TOOLS,GOALS_STAGE_PROTOCOL,goalsStageVariables} from './goals-policy.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
 import {assertActiveRole} from '../agent/retired-roles.js';
 import {plannerGrounding,plannerReceipt,projectPlannerReceipts} from './planner-grounding.js';
@@ -242,7 +244,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
   // at every request boundary, including after compaction and session recovery.
   const anchored = await db.exploration(expID).anchorAssetIDs(intent.id);
   const assets = anchored.length > 0 ? await db.assets().getByIDs(anchored) : [];
-  const assetsJSON=clampOutput(JSON.stringify({total:assets.length,items:assets.slice(0,20).map(a=>({id:a.id,type:a.type,url:a.url,method:a.method,host:a.domain||a.ip||a.app_name})),detail_tool:'asset_get'}));
+  const assetsJSON=clampOutput(JSON.stringify({total:assets.length,items:assets.slice(0,20).map(a=>({id:a.id,type:a.type,url:a.url,method:a.method,host:a.domain||a.ip||a.app_name})),...(assets.length?{detail_tool:'asset_get'}:{})}));
   const system = await systemRolePrompt(db, "worker");
   const taskContext =
     `\n\n【当前意图 #${intent.id} 执行约定】\n${JSON.stringify(contract)}` +
@@ -567,6 +569,10 @@ export interface GoalsRunInput {
 
 /** goals：任务创建时的一次性目标分解；内存会话，仅缺少目标提交时提醒保存。 */
 export async function runGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunResult> {
+  if(await goalsBootstrap(input.db,input.taskID))return runIsolatedGoals(input);
+  return runLegacyGoalsDecompose(input);
+}
+async function runLegacyGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunResult> {
   const { db, taskID, expID, model, dataDir } = input;
   const goalCounter=withUsageCounter(input.onActivity??(()=>{}));
   const gc=await agentRunConfig(db, "goals"),disabled=await disabledBuiltinTools(db,"goals");
@@ -607,4 +613,63 @@ export async function runGoalsDecompose(input: GoalsRunInput): Promise<WorkerRun
   if(!res.aborted&&!goalsSaved)throw new Error('Goals 未保存可验收目标');
   return { ...res, usage: goalCounter.usage() };
   } finally { await runner.dispose(); }
+}
+
+/** Separate native sessions: neither previous messages nor domain compaction can leak description into objectives. */
+async function runIsolatedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
+ const {db,taskID,expID,model,dataDir}=input;
+ const counter=withUsageCounter(input.onActivity??(()=>{}));
+ let state=(await goalsBootstrap(db,taskID))!;
+ const completed=():WorkerRunResult=>({aborted:false,stopReason:'completed',lastAssistantText:undefined,usage:counter.usage()});
+ if(state.phase==='completed')return completed();
+ const ctx=runContext(db,taskID,expID,'goals',{hooks:input.hooks??{},signal:input.signal});
+ await db.transaction(tx=>activeBootstrap(ctx,tx));
+ await agentRunConfig(db,'goals');
+ if(!(await applyToolBindings(db,'goals',goalsTools({...ctx,goalsPhase:'objectives'}))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
+ const phaseRun=async(phase:GoalsPhase)=>{
+  const config=await agentRunConfig(db,'goals');
+  const phaseCtx={...ctx,goalsPhase:phase};
+  const tools=(await applyToolBindings(db,'goals',goalsTools(phaseCtx))).filter(t=>(GOALS_STAGE_TOOLS[phase] as readonly string[]).includes(t.name));
+  const cwd=path.resolve(dataDir,'tasks',String(taskID),'goals',phase);mkdirSync(cwd,{recursive:true});
+  const errors=new Set<string>();
+  input.onActivity?.({kind:'host_status',phase,text:phase==='constraints'?'阶段一：提取原文约束与目标资产':'阶段二：仅拆解目标栏'}, {worker:'goals'});
+  const runner=await createTrackedRunner(db,taskID,'goals',{
+   ...model,cwd,agentDir:path.join(dataDir,'pi-agent'),inMemory:true,goalsPhase:phase,
+   systemPrompt:await systemRolePrompt(db,'goals',goalsStageVariables(state.goal,state.description,phase),false,hostProtocol('goals')+'\n'+GOALS_STAGE_PROTOCOL[phase]),
+   customTools:tools,toolAllowlist:tools.map(t=>t.name),signal:input.signal,
+   ...agentBudgets(config,{maxTurns:input.maxTurns??8,maxDurationMs:120_000}),
+   maxWrapupTurns:config.wrapupMaxTurns||1,wrapup:phase==='objectives'?()=>({prompt:GOALS_STAGE_PROTOCOL[phase]}):undefined,
+   stopWhen:async()=>phase==='objectives'&&(await goalsBootstrap(db,taskID))?.phase==='completed',
+   onRequestSize:async()=>{await db.transaction(tx=>activeBootstrap(phaseCtx,tx));await agentRunConfig(db,'goals');if(phase==='objectives'&&!(await applyToolBindings(db,'goals',goalsTools(phaseCtx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');},
+   loadDomainState:async()=>({phase,goal:state.goal,...(phase==='constraints'?{description:state.description}:{})}),
+   guard:async()=>{await db.transaction(tx=>activeBootstrap(phaseCtx,tx));return undefined;},
+   onActivity:a=>{if(a.kind==='tool_end'){if(a.isError)errors.add(a.toolName);else errors.delete(a.toolName);}counter.wrapped(a,{worker:'goals'});},
+  });
+  try{
+   const result=await runner.prompt(phase==='constraints'?`【目标栏原文】\n${state.goal}\n\n【描述原文；仅供约束与资产提取】\n${state.description}`:`【目标栏原文】\n${state.goal}`);
+   input.signal?.throwIfAborted();
+   if(phase==='objectives'&&(await goalsBootstrap(db,taskID))?.phase==='completed')return;
+   if(result.aborted||result.stopReason!=='completed'||errors.size)throw new Error(`Goals ${phase} 阶段未完成：${result.stopReason} ${[...errors].join(',')}`);
+  }finally{await runner.dispose();}
+ };
+ if(state.phase==='constraints'){
+  await phaseRun('constraints');
+  await db.transaction(async tx=>{await activeBootstrap(ctx,tx);await tx.query("UPDATE goals_bootstrap SET phase='objectives',updated_at=now() WHERE task_id=$1 AND phase='constraints'",[taskID]);});
+  state=(await goalsBootstrap(db,taskID))!;
+ }
+ try{await phaseRun('objectives');}catch(error){
+  input.signal?.throwIfAborted();
+  await db.transaction(tx=>activeBootstrap(ctx,tx));
+  // A role/tool disable is configuration, not permission to bypass the disabled writer.
+  await agentRunConfig(db,'goals');
+  if(!(await applyToolBindings(db,'goals',goalsTools(ctx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
+  input.onActivity?.({kind:'host_status',text:'目标阶段未完成；回退保存目标栏原文为单一目标。'}, {worker:'goals'});
+ }
+ if((await goalsBootstrap(db,taskID))?.phase!=='completed'){
+  await agentRunConfig(db,'goals');
+  if(!(await applyToolBindings(db,'goals',goalsTools(ctx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
+  await saveBootstrapGoals({...ctx,goalsPhase:'objectives'},[{text:state.goal,source_quote:state.goal}],true);
+  input.onActivity?.({kind:'host_status',text:'已回退为原始目标单目标；未使用任务描述。'}, {worker:'goals'});
+ }
+ return completed();
 }

@@ -3,7 +3,15 @@ import {createServerTransport} from './mcpTransport.js';
 import type {AgentRunnerOptions} from './runner.js';
 
 export const MCP_RESOURCE_TOOLS=['list_mcp_resources','list_mcp_resource_templates','read_mcp_resource'];
-export const TOOL_SEARCH_HINT=' 使用服务器名、工具名或英文关键词检索；只有获授权的工具会被加载。';
+export const TOOL_SEARCH_HINT=' 未出现在本轮工具声明中的能力，必须先用此工具按精确英文工具名或关键词检索，成功加载后再调用；仅在提示词中出现不代表已激活。只有获授权的工具会被加载。';
+
+/** Stable per-session instructions for custom system prompts, which bypass pi's
+ * default tool guidance. Names come only from the permitted registration set. */
+export function toolDiscoveryInstructions(opts:Pick<AgentRunnerOptions,'toolLoading'|'mcpEntries'>){
+  if(!opts.toolLoading?.deferred.length&&!hasDeferredMcp(opts))return '';
+  const names=[...opts.toolLoading?.deferred??[]].sort();
+  return '\n<tool_loading>\n以本轮工具声明为当前可调用集合；提示词、黑板或旧会话提及的工具名不代表已激活。未在声明中的能力先用 tool_search 的 query=精确英文工具名检索，成功加载后再调用，不直接试调用。禁用或撤销的能力不能恢复。'+(names.length?' 本会话获准的内部按需工具：'+names.join(', ')+'。':'')+'\n</tool_loading>';
+}
 
 export function hasDeferredMcp(opts:Pick<AgentRunnerOptions,'mcpEntries'>) {
   return opts.mcpEntries?.some(e=>e.config.exposure==='deferred'||Object.values(e.config.toolExposure??{}).includes('deferred'))??false;

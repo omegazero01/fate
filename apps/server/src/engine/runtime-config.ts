@@ -32,11 +32,11 @@ export async function createTrackedRunner(db:Database,taskID:number,role:string,
  options.modelPolicy?.setRuntimeID?.(id);
  const controller=new AbortController();
  const signal=options.signal?AbortSignal.any([options.signal,controller.signal]):controller.signal;
- const effective={tool_loading:options.toolLoading,context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
+ const effective={goals_phase:options.goalsPhase,tool_loading:options.toolLoading,context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
   model:configured.model,model_route:{provider:options.model.provider,id:options.model.id},streaming:options.streaming!==false,
   prompt_hash:digest(options.systemPrompt??''),tools:options.toolAllowlist??[],skills:options.allowedSkills??[],mcp:(options.mcpEntries??[]).map(e=>e.name)};
  const guard=options.guard;
- const loadDomainState=async()=>({...await domainState(db,role,taskID,options.intentID),...await options.loadDomainState?.()});
+ const loadDomainState=async()=>options.goalsPhase ? {...await options.loadDomainState?.()} : ({...await domainState(db,role,taskID,options.intentID),...await options.loadDomainState?.()});
  let runner!:AgentRunner;
  runner=await AgentRunner.create({...options,signal,loadDomainState,platform:{role,taskID,conversationID,policy:configured.platform_policy},
   onRequestSize:async (size,purpose)=>{

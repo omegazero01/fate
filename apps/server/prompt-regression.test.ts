@@ -141,8 +141,8 @@ describe('lightweight role prompts',()=>{
   await runPlannerRound({db,taskID:task.id,expID:task.exploration_id,goal:'no authorized target',model:source,dataDir:dir,todos,hooks:{},triggersText:'LOCAL',maxTurns:4,onActivity:()=>{}});expect(faux.state.callCount).toBe(1);
  });
  it('does not spend a wrapup turn after Goals commits',async()=>{
-  const {task,faux,source}=await fixture();faux.setResponses([fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'LOCAL deliverable'}]})]),fauxAssistantMessage('saved')]);
-  await runGoalsDecompose({db,taskID:task.id,expID:task.exploration_id,description:'LOCAL deliverable',model:source,dataDir:dir,maxTurns:5,hooks:{}});expect(faux.state.callCount).toBe(1);
+  const {task,faux,source}=await fixture();await db.query('INSERT INTO goals_bootstrap(task_id,goal,description) VALUES($1,$2,$3)',[task.id,task.goal,task.description]);faux.setResponses([fauxAssistantMessage('约束阶段完成'),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:task.goal,source_quote:task.goal}]})])]);
+  await runGoalsDecompose({db,taskID:task.id,expID:task.exploration_id,description:'LOCAL deliverable',model:source,dataDir:dir,maxTurns:5,hooks:{}});expect(faux.state.callCount).toBe(2);
  });
  it('rejects Retester prompt/configuration changes and independent session creation',async()=>{
   const {request,faux}=await fixture();

@@ -1893,3 +1893,13 @@ ALTER TABLE asset_id_aliases ADD CONSTRAINT asset_id_aliases_asset_id_fkey FOREI
 
 DROP TRIGGER IF EXISTS asset_graph_task_visibility ON tasks;
 CREATE TRIGGER asset_graph_task_visibility AFTER UPDATE OF coverage_enabled,deleted_at ON tasks FOR EACH ROW EXECUTE FUNCTION capture_asset_graph_change();
+
+-- Only new task creation opts into isolated Goals; never backfill historical tasks.
+CREATE TABLE IF NOT EXISTS goals_bootstrap (
+ task_id BIGINT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+ policy TEXT NOT NULL DEFAULT 'goal-field-isolation-v1',
+ goal TEXT NOT NULL, description TEXT NOT NULL,
+ phase TEXT NOT NULL DEFAULT 'constraints' CHECK(phase IN ('constraints','objectives','completed')),
+ goal_ids BIGINT[] NOT NULL DEFAULT '{}', fallback BOOLEAN NOT NULL DEFAULT false,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

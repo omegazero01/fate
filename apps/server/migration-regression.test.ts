@@ -41,8 +41,8 @@ afterAll(async()=>{
  await client.connect();await client.query(`DROP DATABASE ${dbName}`);await client.end();
  rmSync(dir,{recursive:true,force:true});
 });
-async function fixture(){
- const t=await db.tasks().createTaskWithOptions('review fixture','',{});
+async function fixture(bootstrap=false){
+ const t=await db.tasks().createTaskWithOptions('review fixture','',{initializeGoals:bootstrap});
  const faux=fauxProvider({provider:'review'+t.id});
  const modelRuntime=await ModelRuntime.create({refreshOnCreate:false});await modelRuntime.registerNativeProvider(faux.provider);
  faux.setResponses(Array.from({length:20},()=>fauxAssistantMessage('fixture complete')));
@@ -97,12 +97,12 @@ describe('migration invariants',()=>{
   expect(response.statusCode).toBe(409);expect((await s.getNode(id))?.state).toBe('paused');
  });
  it('pauses Goals during bootstrap and resumes with a new fenced decomposition and scheduler',async()=>{
-  const {t,e,faux,s}=await fixture();await db.tasks().setExecutionMode(t.exploration_id,'manual');let entered=false;
+  const {t,e,faux,s}=await fixture(true);await db.query("UPDATE tasks SET goal='resumed bootstrap marker' WHERE id=$1",[t.id]);await db.query("UPDATE goals_bootstrap SET goal='resumed bootstrap marker' WHERE task_id=$1",[t.id]);await db.tasks().setExecutionMode(t.exploration_id,'manual');let entered=false;
   faux.setResponses([async(_context,options)=>{entered=true;await new Promise<void>(resolve=>options.signal?.addEventListener('abort',()=>resolve(),{once:true}));return fauxAssistantMessage('',{stopReason:'aborted'});}]);
   const starting=e.run(t.id,{decompose:{description:'LOCAL bootstrap fixture'}});await until(async()=>entered);
   await db.tasks().applyTaskPause(t.id);expect((await e.pause(t.id)).status).toBe('paused');await starting;
   expect((await s.listByKind('goal',20))).toHaveLength(0);
-  faux.setResponses([fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'resumed bootstrap marker'}]})]),fauxAssistantMessage('goals saved')]);
+  faux.setResponses([fauxAssistantMessage('约束阶段完成'),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'resumed bootstrap marker',source_quote:'resumed bootstrap marker'}]})])]);
   await e.admitTask(t.id);
   expect((await s.listByKind('goal',20)).map(n=>n.payload.text)).toContain('resumed bootstrap marker');
   const status=await db.tasks().getTask(t.id);expect(status).toMatchObject({paused:false,queued:false,queue_mode:''});
@@ -327,8 +327,9 @@ describe('migration invariants',()=>{
   expect(response.statusCode).toBe(200);expect((await s.getNode(id))?.state).toBe('stopped');
  });
  it('R19 goal decomposition must receive the explicit task goal',async()=>{
-  const {t,source,faux}=await fixture();await db.query("UPDATE tasks SET goal='explicit-acceptance-marker' WHERE id=$1",[t.id]);
-  let contextText='';faux.setResponses([(context)=>{contextText=JSON.stringify(context);return fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'explicit-acceptance-marker'}]})]);},fauxAssistantMessage('saved')]);
+  const {t,source,faux}=await fixture(true);await db.query("UPDATE tasks SET goal='explicit-acceptance-marker' WHERE id=$1",[t.id]);
+  await db.query("UPDATE goals_bootstrap SET goal='explicit-acceptance-marker' WHERE task_id=$1",[t.id]);
+  let contextText='';faux.setResponses([fauxAssistantMessage('约束阶段完成'),(context)=>{contextText=JSON.stringify(context);return fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'explicit-acceptance-marker',source_quote:'explicit-acceptance-marker'}]})]);},fauxAssistantMessage('saved')]);
   await runGoalsDecompose({db,taskID:t.id,expID:t.exploration_id,model:source,dataDir:dir,description:'background only'});
   expect(contextText).toContain('explicit-acceptance-marker');
  });

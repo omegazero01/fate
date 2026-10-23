@@ -318,10 +318,12 @@ export class ExplorationStore {
         if (modeRes.rows[0]?.mode === EXECUTION_MANUAL) throw new PlannerManualModeError();
       }
       for(const ref of contract.basis){
-        const basis=await tx.query(`SELECT 1 FROM exploration_nodes n WHERE n.id=$2 AND n.content_version=$3 AND n.kind IN ('fact','finding') AND n.state IN ('confirmed','origin')
+        const basis=await tx.query<{kind:string;state:string;content_version:number}>(`SELECT n.kind,n.state,n.content_version FROM exploration_nodes n WHERE n.id=$2
           AND (n.exploration_id=$1 OR n.exploration_id IN (SELECT src.exploration_id FROM tasks current JOIN task_relations r ON r.task_id=current.id JOIN tasks src ON src.id=r.source_task_id WHERE current.exploration_id=$1 AND src.deleted_at IS NULL))
-          AND exploration_node_readable(n.exploration_id,n.id)`,[this.expID,ref.node_id,ref.version]);
-        if(!basis.rowCount)throw new Error(`依据 #${ref.node_id} 已变化或不再授权，请刷新上下文后重新规划`);
+          AND exploration_node_readable(n.exploration_id,n.id)`,[this.expID,ref.node_id]);
+        const source=basis.rows[0];
+        if(source&&!['fact','finding'].includes(source.kind))throw new Error(`依据 #${ref.node_id} 是 ${source.kind}，不能作为派单证据；basis 仅接受 fact/finding，目标用于 prove_goal。初始派单可省略 basis，由宿主连接任务根事实。`);
+        if(!source||Number(source.content_version)!==ref.version||!['confirmed','origin'].includes(source.state))throw new Error(`依据 #${ref.node_id} 已变化或不再授权，请刷新上下文后重新规划`);
       }
       const rows = await tx.query<{ id: string; state:string; payload: Record<string, unknown>; anchors: string }>(
         `SELECT n.id, n.state, n.payload,

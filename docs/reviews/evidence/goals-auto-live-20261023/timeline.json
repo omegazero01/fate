@@ -1,0 +1,79 @@
+{
+  "automatic_task_completed_at": "2026-10-23T02:14:57.047Z",
+  "events": [
+    {
+      "role": "goals",
+      "phase": "constraints",
+      "intent_id": null,
+      "started_at": "2026-10-23T02:14:08.653Z",
+      "finished_at": "2026-10-23T02:14:19.367Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "goals",
+      "phase": "objectives",
+      "intent_id": null,
+      "started_at": "2026-10-23T02:14:19.416Z",
+      "finished_at": "2026-10-23T02:14:21.018Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "planner",
+      "phase": null,
+      "intent_id": null,
+      "started_at": "2026-10-23T02:14:21.741Z",
+      "finished_at": "2026-10-23T02:14:30.241Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "worker",
+      "phase": null,
+      "intent_id": 3,
+      "started_at": "2026-10-23T02:14:26.103Z",
+      "finished_at": "2026-10-23T02:14:35.976Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "planner",
+      "phase": null,
+      "intent_id": null,
+      "started_at": "2026-10-23T02:14:36.436Z",
+      "finished_at": "2026-10-23T02:14:43.523Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "worker",
+      "phase": null,
+      "intent_id": 5,
+      "started_at": "2026-10-23T02:14:41.560Z",
+      "finished_at": "2026-10-23T02:14:50.678Z",
+      "stop_reason": "completed"
+    },
+    {
+      "role": "planner",
+      "phase": null,
+      "intent_id": null,
+      "started_at": "2026-10-23T02:14:48.976Z",
+      "finished_at": "2026-10-23T02:14:57.000Z",
+      "stop_reason": "completed"
+    },
+    {
+      "event": "fact_published",
+      "node_id": 6,
+      "from_intent": 5,
+      "created_at": "2026-10-23T02:14:48.013Z"
+    },
+    {
+      "event": "fact_published",
+      "node_id": 4,
+      "from_intent": 3,
+      "created_at": "2026-10-23T02:14:33.139Z"
+    },
+    {
+      "event": "goal_proof",
+      "activity_id": "87",
+      "created_at": "2026-10-23T02:14:53.904Z",
+      "is_error": false
+    }
+  ]
+}

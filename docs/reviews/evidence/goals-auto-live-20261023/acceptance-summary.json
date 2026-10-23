@@ -1,0 +1,185 @@
+{
+  "status": "passed",
+  "automatic_evidence": "final-acceptance.json:automatic",
+  "tool_evidence": "tool-probes-verified.json",
+  "same_compiled_components": true,
+  "automatic_database": "fate_goals_auto_49654",
+  "automatic_task_id": 1,
+  "task_status": "done",
+  "goal_count": 1,
+  "intent_states": {
+    "5": "done",
+    "3": "done"
+  },
+  "fact_ids": [
+    6,
+    4
+  ],
+  "causality": {
+    "goals_completed_before_planning": true,
+    "dependent_intent_after_worker_exit": true,
+    "fact_published_before_worker_return": true,
+    "published_fact_drives_next_intent": true,
+    "all_facts_anchored": true
+  },
+  "automatic_requests": 19,
+  "automatic_tool_errors": 0,
+  "automatic_peak_workers_sampled": 1,
+  "tool_probe_requests": 13,
+  "tool_probe_errors": 0,
+  "tool_search_initial": [
+    "tool_search"
+  ],
+  "tool_search_final": [
+    "tool_search",
+    "asset_search"
+  ],
+  "execution_tools": [
+    "write",
+    "read",
+    "edit",
+    "bash",
+    "shell_open",
+    "shell_list",
+    "shell_send",
+    "shell_read",
+    "shell_close"
+  ],
+  "accepted_usage": {
+    "input": 41506.0,
+    "output": 8900.0,
+    "cacheRead": 132992.0,
+    "cacheWrite": 0.0,
+    "totalTokens": 183398.0
+  },
+  "all_attempts_requests": 170,
+  "all_attempts": [
+    {
+      "evidence": "attempt-1.json",
+      "status": "failed",
+      "model_requests": 16,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 35189,
+        "output": 5077,
+        "cacheRead": 73728,
+        "cacheWrite": 0,
+        "totalTokens": 113994
+      }
+    },
+    {
+      "evidence": "attempt-2.json",
+      "status": "failed",
+      "model_requests": 35,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 61842,
+        "output": 9011,
+        "cacheRead": 187264,
+        "cacheWrite": 0,
+        "totalTokens": 258117
+      }
+    },
+    {
+      "evidence": "attempt-3.json",
+      "status": "passed",
+      "model_requests": 32,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 46503,
+        "output": 8644,
+        "cacheRead": 159360,
+        "cacheWrite": 0,
+        "totalTokens": 214507
+      }
+    },
+    {
+      "evidence": "final-acceptance.json",
+      "status": "failed",
+      "model_requests": 20,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 36377,
+        "output": 7987,
+        "cacheRead": 112256,
+        "cacheWrite": 0,
+        "totalTokens": 156620
+      }
+    },
+    {
+      "evidence": "final-compiled.json",
+      "status": "failed",
+      "model_requests": 32,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 47375,
+        "output": 8873,
+        "cacheRead": 158976,
+        "cacheWrite": 0,
+        "totalTokens": 215224
+      }
+    },
+    {
+      "evidence": "final-required-tools.json",
+      "status": "failed",
+      "model_requests": 19,
+      "fixture_requests": 2,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 38473,
+        "output": 8737,
+        "cacheRead": 99968,
+        "cacheWrite": 0,
+        "totalTokens": 147178
+      }
+    },
+    {
+      "evidence": "tool-probes-final.json",
+      "status": "failed",
+      "model_requests": 3,
+      "fixture_requests": 0,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 1402,
+        "output": 426,
+        "cacheRead": 1280,
+        "cacheWrite": 0,
+        "totalTokens": 3108
+      }
+    },
+    {
+      "evidence": "tool-probes-verified.json",
+      "status": "passed",
+      "model_requests": 13,
+      "fixture_requests": 0,
+      "external_target_requests": 0,
+      "retained_credentials": 0,
+      "usage": {
+        "input": 5265,
+        "output": 1050,
+        "cacheRead": 20736,
+        "cacheWrite": 0,
+        "totalTokens": 27051
+      }
+    }
+  ],
+  "server_tests": {
+    "passed": 612,
+    "skipped": 1,
+    "files": 64
+  },
+  "typecheck": true,
+  "server_build": true
+}

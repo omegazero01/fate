@@ -1,0 +1,69 @@
+## server-full.log
+ ✓ src/agent/coldgraph.test.ts > cold graph structural invariants > folds cold connected blocks only after six rounds and rescues sibling singletons
+ ✓ src/agent/coldgraph.test.ts > cold graph structural invariants > handles cyclic graphs without recursion
+ ✓ src/http/auth-stream.test.ts > explicit SSE authentication > uses a valid explicit token over an unrelated localhost cookie
+ ✓ src/pi/modelResolver.test.ts > model profiles > uses native openai adapter
+ ✓ src/pi/modelResolver.test.ts > model profiles > uses native anthropic adapter
+ ✓ src/pi/modelResolver.test.ts > model profiles > uses native openai-responses adapter
+
+ Test Files  64 passed (64)
+      Tests  608 passed | 1 skipped (609)
+   Start at  16:33:28
+   Duration  335.91s (transform 1.28s, setup 0ms, collect 35.81s, tests 288.58s, environment 8ms, prepare 2.98s)
+
+
+## summary-regression.log
+ ✓ src/engine/turn-summary.test.ts > old records do not invent steps, duration or exact usage
+ ✓ src/engine/turn-summary.test.ts > audit includes fallback and compaction exactly once without adding visible steps
+ ✓ src/engine/turn-summary.test.ts > an expired executor is interrupted, never completed, without extending its elapsed time forever
+ ✓ src/engine/turn-summary.test.ts > budget terminal metadata cannot be presented as a successful ordinary reply
+ ✓ src/engine/turn-summary.test.ts > normal runner disposal waits for host confirmation rather than flashing interrupted
+ ✓ src/engine/turn-summary.test.ts > a crash after runner disposal cannot leave a turn generating forever
+
+ Test Files  3 passed (3)
+      Tests  49 passed (49)
+   Start at  16:39:34
+   Duration  30.96s (transform 791ms, setup 0ms, collect 3.66s, tests 26.37s, environment 0ms, prepare 238ms)
+
+
+## goals-final.log
+ RUN  v2.1.9 /Users/pphua/Documents/GitHub/fate/apps/server
+
+ ✓ src/agent/goals-isolation.test.ts (16 tests) 9632ms
+   ✓ isolates native messages/tools and persists one sourced goal; committed recovery makes no request 540ms
+   ✓ initialization completes before a seeded Worker can obtain its model 2250ms
+   ✓ SIGKILL after durable constraints restarts without duplicate constraints or committed goal replay 2816ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  09:08:42
+   Duration  14.72s (transform 1.38s, setup 0ms, collect 4.81s, tests 9.63s, environment 0ms, prepare 52ms)
+
+
+## http-catalog-final.log
+{"level":30,"time":1792717795559,"pid":41187,"hostname":"MacBook-Pro-3.local","reqId":"req-6","res":{"statusCode":400},"responseTime":0.23308300000007875,"msg":"request completed"}
+{"level":30,"time":1792717795561,"pid":41187,"hostname":"MacBook-Pro-3.local","reqId":"req-7","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792717795561,"pid":41187,"hostname":"MacBook-Pro-3.local","reqId":"req-7","res":{"statusCode":400},"responseTime":0.2539580000002388,"msg":"request completed"}
+{"level":30,"time":1792717795564,"pid":41187,"hostname":"MacBook-Pro-3.local","reqId":"req-8","req":{"method":"POST","url":"/api/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1792717795605,"pid":41187,"hostname":"MacBook-Pro-3.local","reqId":"req-8","res":{"statusCode":201},"responseTime":40.9704999999999,"msg":"request completed"}
+ ✓ src/http/task-goal-required.test.ts (9 tests) 1416ms
+
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+   Start at  09:09:50
+   Duration  5.37s (transform 567ms, setup 0ms, collect 1.99s, tests 3.07s, environment 0ms, prepare 71ms)
+
+
+## web-tests.log
+✔ repeated pages deduplicate identities but cross-task, turn, bucket and revision never merge (0.991042ms)
+✔ negative and inferred observations do not become confirmed vulnerabilities (0.118209ms)
+✔ record and graph IDs remain distinct even when numbers collide (0.119875ms)
+✔ endpoint display shortens only a valid asset URL and never rewrites fact conclusions (0.143042ms)
+ℹ tests 45
+ℹ suites 0
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1864.344958

@@ -22,6 +22,20 @@ async function fixture(){
  const id=planned.intents[0].intent_id;await s.claimNextWorker('w');
  return {task,s,assets,id,c:runContext(db,task.id,task.exploration_id,'worker',{intentID:id,workerName:'w'})};
 }
+it('distinguishes an authorized goal used as basis from a stale or inaccessible fact, without publishing an intent',async()=>{
+ const {task,s}=await fixture(),planner=runContext(db,task.id,task.exploration_id,'planner');
+ const goal=await s.addGoal({text:'LOCAL expected result'},'user'),before=(await s.listByKind('intent')).length;
+ const submit=(id:number,version=0)=>call(addIntentTool(planner),{summary:'LOCAL next direction',contract:{basis:[{node_id:id,version}]}});
+ await expect(submit(goal)).rejects.toThrow('是 goal，不能作为派单证据');
+ const fact=await s.addNode('fact',{summary:'LOCAL known fact'},0,'confirmed','fixture',[]);
+ await db.query('UPDATE exploration_nodes SET content_version=1 WHERE id=$1',[fact]);
+ await expect(submit(fact)).rejects.toThrow('已变化或不再授权');
+ const other=await db.tasks().createTaskWithOptions('LOCAL unrelated','LOCAL',{executionMode:'managed'});
+ const otherGoal=await db.exploration(other.exploration_id).addGoal({text:'Private goal'},'user');
+ await expect(submit(otherGoal)).rejects.toThrow('已变化或不再授权');
+ expect((await s.listByKind('intent')).length).toBe(before);
+ expect((await submit(fact,1)).submitted).toBe(1);
+});
 it('accepts a direction plus boundary and groups related observations with precise writeback',async()=>{
  const {task,s,assets,id,c}=await fixture();
  const intent=(await s.getNode(id))!;expect(intent.payload.contract).toMatchObject({objective:'探索用户服务的身份边界',acceptance:['探索用户服务的身份边界'],out_of_scope:['不修改数据']});

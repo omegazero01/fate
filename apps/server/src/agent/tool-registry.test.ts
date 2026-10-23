@@ -17,6 +17,8 @@ it('keeps incremental writeback direct and persistent terminal capabilities disc
   for(const tool of ['record_fact','insert_assets','report_finding','http_request','read','bash'])expect(isCoreTool('worker',tool)).toBe(true);
   for(const tool of ['shell_open','shell_send','asset_search','asset_get'])expect(isCoreTool('worker',tool)).toBe(false);
   expect(isCoreTool('planner','steer_work')).toBe(true);
+  expect(isCoreTool('planner','asset_search')).toBe(true);
+  expect(isCoreTool('planner','asset_get')).toBe(false);
   expect(isCoreTool('reporter','report_finding')).toBe(false);
 });
 it('checks live sub-capability bindings without resurrecting retired tools',async()=>{

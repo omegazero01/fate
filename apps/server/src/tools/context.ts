@@ -50,6 +50,7 @@ export interface EngineHooks {
 }
 
 export interface ToolRunContext {
+  goalsPhase?: import('../db/goals-bootstrap.js').GoalsPhase;
   /** Current native transcript, supplied by the host for read receipts, never by tool arguments. */
   sessionEntries?:()=>readonly SessionEntry[];
   /** Actual current human request, bound by the host; never supplied in tool arguments. */

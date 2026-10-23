@@ -1,0 +1,41 @@
+{
+  "version": "fate-goals-isolation-20261023",
+  "completed_at": "2026-10-23T09:18:49.594493+08:00",
+  "backend_pid": 44166,
+  "frontend_pid": 44208,
+  "health": {
+    "status": "ok",
+    "version": "fate-goals-isolation-20261023",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 0
+  },
+  "frontend_proxied_health": {
+    "status": "ok",
+    "version": "fate-goals-isolation-20261023",
+    "runtime": "node/25.1.0",
+    "uptime_seconds": 1
+  },
+  "paused_tasks": [
+    4842,
+    4844,
+    4846,
+    4847
+  ],
+  "task_states_unchanged": true,
+  "all_goal_nodes_fingerprint_before": "6d903ddee1c7f00e45be9584ee5c1e13",
+  "all_goal_nodes_fingerprint_after": "6d903ddee1c7f00e45be9584ee5c1e13",
+  "model_requests_added": 0,
+  "domain_counts_unchanged": true,
+  "active_executors_after": {
+    "workers": 0,
+    "task_leases": 0,
+    "session_leases": 0,
+    "pending_runs": 0,
+    "active_runtimes": 0
+  },
+  "normal_build": true,
+  "static_build": true,
+  "server_typecheck": true,
+  "web_typecheck": true,
+  "production_goals_bootstrap_count": 0
+}

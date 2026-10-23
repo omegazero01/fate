@@ -115,7 +115,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   async function doPreview() {
     try {
       const r = await api.previewAgentPrompt(agentKey, prompt);
-      setPreview(r.error ? "渲染错误：" + r.error : r.rendered);
+      setPreview(r.error ? "渲染错误：" + r.error : r.stages ? r.stages.map(s => `### ${s.phase === "constraints" ? "阶段一：约束与资产" : "阶段二：目标"}\n\n${s.context}\n\n${s.rendered}\n\n**宿主阶段约定**\n\n${s.host_protocol}`).join("\n\n---\n\n") : r.rendered);
     } catch (e) {
       setPreview("预览失败：" + (e as Error).message);
     }
@@ -396,7 +396,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
               <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>渲染预览</DialogTitle>
-                  <DialogDescription>所有 {`{{.Var}}`} 已由后端用示例值替换。</DialogDescription>
+                  <DialogDescription>{agentKey === "goals" ? "Goals 使用两个独立会话：先提取约束与资产，再仅依据目标栏保存目标。描述、历史和读取工具不会进入第二阶段；自定义配置保留，但不能扩大阶段能力。" : <>所有 {`{{.Var}}`} 已由后端用示例值替换。</>}</DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30 p-3">
                   <Markdown text={preview} />

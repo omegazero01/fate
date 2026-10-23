@@ -1,5 +1,5 @@
 import type {ToolLoading} from '../agent/tool-loading.js';
-import {platformMcpExtension,hasDeferredMcp,MCP_RESOURCE_TOOLS} from './platform-mcp.js';
+import {platformMcpExtension,hasDeferredMcp,MCP_RESOURCE_TOOLS,toolDiscoveryInstructions} from './platform-mcp.js';
 import {domainCompactionExtension,type CompactionHealth} from './domain-compaction.js';
 import {validatePlatformRunner,type PlatformPolicy} from './platform-policy.js';
 import {requestSize,systemPromptSize,textSize} from '../agent/prompt-diagnostics.js';
@@ -86,9 +86,15 @@ function closingToolError(name: string, text: string | undefined, closing: Closi
   return closing.active && tools && !tools.includes(name) && text === `Tool ${name} not found`
     ? `${CLOSING_RULE}\n原始工具错误：${text}` : text;
 }
+function toolAvailabilityError(name:string,text:string|undefined,closing:ClosingState,opts:AgentRunnerOptions){
+  const result=closingToolError(name,text,closing,opts.settlementTools);
+  if(result!==text||text!==`Tool ${name} not found`||!opts.toolLoading?.deferred.includes(name))return result;
+  return `工具 ${name} 尚未在当前声明中激活；先用 tool_search(query=${JSON.stringify(name)}) 检索，成功加载后再调用。若已禁用或撤销则停止，不能绕过。\n原始工具错误：${text}`;
+}
 
 /** 归一化后的 activity 事件（对接 Go/norma 的 activity 流） */
 export type RunnerActivity =
+  | {kind:'host_status';text:string;phase?:string}
 	| { kind: 'run_metadata'; runtimeID: string; role: string; mode: string; startedAt: string }
 	| { kind: 'assistant_delta'; text: string; streamID: string; isThinking?: boolean }
 	| { kind: 'assistant_message_end'; text: string; streamID?: string; isThinking?: boolean; final?: boolean; response?: { stop_reason: string; has_tools: boolean; model: string; provider: string; usage: { input: number; output: number; cacheRead: number; cacheWrite: number } } }
@@ -99,6 +105,7 @@ export type RunnerActivity =
 	| { kind: 'queue_update'; steering: readonly string[]; followUp: readonly string[] };
 
 export interface AgentRunnerOptions {
+  goalsPhase?: import('../db/goals-bootstrap.js').GoalsPhase;
   /** Host execution receipts; never wraps model requests or changes pi's tool loop. */
   wrapExecutionTool?: (tool:ToolDefinition)=>ToolDefinition;
   /** Unknown external effects end at the native batch boundary, without a retry loop. */
@@ -252,7 +259,7 @@ export class AgentRunner {
       api.on('message_end', event => {
         const message=event.message;
         if(message.role!=='toolResult'||!message.isError)return;
-        const original=toolResultText(message),text=closingToolError(message.toolName,original,closing,opts.settlementTools);
+        const original=toolResultText(message),text=toolAvailabilityError(message.toolName,original,closing,opts);
         if(text!==original && text)return {message:{...message,content:[{type:'text' as const,text}]}};
       });
       api.on('before_provider_request', async event => {
@@ -387,7 +394,7 @@ export class AgentRunner {
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			systemPrompt: opts.systemPrompt,
+			systemPrompt: opts.systemPrompt ? opts.systemPrompt+toolDiscoveryInstructions(opts) : opts.systemPrompt,
 		});
 		await loader.reload();
 
@@ -474,7 +481,7 @@ export class AgentRunner {
 						this.opts.onActivity?.({ kind: 'assistant_message_end', text: thinking, streamID: this.streamID, isThinking: true });
 					}
 					this.opts.onActivity?.({ kind: 'assistant_message_end', text: assistantText(event.message), streamID: this.streamID,
-            ...(this.domainCompletion.done && event.message.stopReason==='aborted' && !event.message.content.length && !event.message.usage.totalTokens ? {} : {response: {stop_reason:event.message.stopReason,has_tools:event.message.content.some(b=>b.type==='toolCall'),model:event.message.model,provider:event.message.provider,usage:event.message.usage}}) });
+            ...(this.domainCompletion.done && ['aborted','error'].includes(event.message.stopReason) && !event.message.content.length && !event.message.usage.totalTokens ? {} : {response: {stop_reason:event.message.stopReason,has_tools:event.message.content.some(b=>b.type==='toolCall'),model:event.message.model,provider:event.message.provider,usage:event.message.usage}}) });
 					const u = (event.message as { usage?: { input: number; output: number; cacheRead: number; cacheWrite: number } }).usage;
 					if (u) {
 						this.opts.onActivity?.({ kind: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite });
@@ -496,7 +503,7 @@ export class AgentRunner {
 					toolName: event.toolName,
 					isError: event.isError,
 					durationMs: event.durationMs,
-					text: closingToolError(event.toolName,toolResultText(event.result),this.closing,this.opts.settlementTools),
+					text: toolAvailabilityError(event.toolName,toolResultText(event.result),this.closing,this.opts),
 				});
 				break;
 			case 'queue_update':

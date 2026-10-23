@@ -1,0 +1,20 @@
+/** Disposable loopback UI fixture, deterministic native pi model only. */
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {openDatabase} from '../src/db/index.js';
+import {Engine,defaultEngineConfig} from '../src/engine/engine.js';
+import {buildApp} from '../src/http/app.js';
+import {AUTH_PASSWORD_KEY,hashPassword} from '../src/http/auth.js';
+import {fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
+import {ModelRuntime} from '@earendil-works/pi-coding-agent';
+process.env.SERIES_PG_DSN=`postgres://series:series@127.0.0.1:5433/fate_goals_ui_${process.pid}`;
+const dir=mkdtempSync(path.join(tmpdir(),'fate-goals-ui-')),db=await openDatabase();await db.platform().setSetting(AUTH_PASSWORD_KEY,hashPassword('LocalGoalsFixtureOnly'));
+const faux=fauxProvider({provider:'local-goals-ui'}),modelRuntime=await ModelRuntime.create({refreshOnCreate:false});await modelRuntime.registerNativeProvider(faux.provider);
+const engine=new Engine(db,defaultEngineConfig(),async()=>({modelRuntime,model:faux.getModel() as never}),dir);
+const task=await db.tasks().createTaskWithOptions('架构分析、接口梳理、漏洞挖掘仅作背景。\n\n禁止访问外部目标，仅处理本地合成资料。','资产测试覆盖度100%',{name:'Goals 分阶段隔离验收',executionMode:'manual',initializeGoals:true});
+faux.setResponses([fauxAssistantMessage([fauxToolCall('set_constraints',{constraints:[{kind:'deny',text:'禁止访问外部目标，仅处理本地合成资料。'}]})]),fauxAssistantMessage('已保存原文约束'),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:task.goal,source_quote:task.goal}]})])]);
+await engine.run(task.id);await db.tasks().applyTaskPause(task.id);await engine.pause(task.id);
+const app=buildApp({db,engine,jwtKey:'local-goals-ui-only',dataDir:dir,skillsRoot:dir,version:'goals-isolated-ui',startedAt:Date.now()});await app.listen({host:'127.0.0.1',port:18787});
+console.log(JSON.stringify({task_id:task.id,port:18787,database:process.env.SERIES_PG_DSN.split('/').pop()}));
+process.on('SIGTERM',async()=>{await engine.shutdown();await app.close();await db.close();process.exit(0);});

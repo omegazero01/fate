@@ -22,7 +22,23 @@ it('all seven previews use real schemas and never include Retester capabilities'
  for(const [key] of builtinDefinitions(db))expect(toolIdentity(key).implementation_status,key).not.toBe('unsupported');
  console.log('LOADOUT_BUDGET',JSON.stringify(catalog.roles.map(({role,resident,deferred,schema_bytes})=>({role,resident,deferred,schema_bytes}))));
  const w=catalog.roles.find(r=>r.role==='worker')!;expect(w.resident).toHaveLength(11);
- for(const role of ['worker','planner','mainagent']){const r=catalog.roles.find(r=>r.role===role)!;expect(r.schema_bytes.resident/r.schema_bytes.before).toBeLessThanOrEqual(0.7);}
+ const planner=catalog.roles.find(r=>r.role==='planner')!;
+ expect(planner.resident).toContain('asset_search');expect(planner.resident).toContain('asset_get');
+ expect((planner.schemas.add_intent as any).properties.contract.properties.basis.description).toContain('不可引用 goal/intent');
+ // Explicit role requirements (Planner asset reads, Main goal/constraints)
+ // are resident; explicitly budget their Schema
+ // rather than forcing a failed call before every planned lookup.
+ for(const role of ['worker','planner','mainagent']){const r=catalog.roles.find(r=>r.role===role)!;expect(r.schema_bytes.resident/r.schema_bytes.before).toBeLessThanOrEqual(role==='planner'?0.8:role==='mainagent'?0.75:0.7);}
+});
+it('activates explicitly required intent tools within current bindings while unrelated tools remain deferred',async()=>{
+ const ctx=runContext(db,1,1,'worker'),tools=workerTools(ctx);
+ const options={customTools:tools,toolAllowlist:tools.map(t=>t.name),systemPrompt:'LOCAL role',taskContext:'Current intent needs asset_get for its bound asset'};
+ const loaded=await prepareToolLoading(db,'worker',options,false);
+ expect(loaded.toolLoading.initialActive).toContain('asset_get');expect(loaded.toolLoading.referencedActive).toContain('asset_get');expect(loaded.toolLoading.deferred).toContain('asset_search');
+ await db.query("UPDATE tools SET enabled=false WHERE key='asset_get'");
+ try{const revoked=await prepareToolLoading(db,'worker',options,false);expect(revoked.toolAllowlist).not.toContain('asset_get');expect(revoked.toolLoading.initialActive).not.toContain('asset_get');}finally{await db.query("UPDATE tools SET enabled=true WHERE key='asset_get'");}
+ const unbound=await prepareToolLoading(db,'worker',{customTools:[],toolAllowlist:[],systemPrompt:'Call asset_get and shell_open',taskContext:'asset_get'},false);
+ expect(unbound.toolAllowlist).toEqual([]);
 });
 it('disabled search uses direct fallback without re-enabling retired aliases',async()=>{
  await db.query("UPDATE tools SET enabled=false WHERE key='tool_search'");

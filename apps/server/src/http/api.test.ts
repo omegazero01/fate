@@ -146,7 +146,7 @@ describe.skipIf(!haveDB)("M5 HTTP API", () => {
     createdTaskIDs.push(task.id);
     createdExpIDs.push(task.exploration_id);
 
-    // 引擎侧 run() 因 goals 解析器抛错而中止——HTTP 层不感知；任务落库为 running。
+    // Goals 初始化失败会暂停新任务，任务和失败活动仍可查询。
     const detail = await authed("GET", `/api/tasks/${task.id}`);
     expect(detail.statusCode).toBe(200);
     const body = detail.json() as {
@@ -162,13 +162,13 @@ describe.skipIf(!haveDB)("M5 HTTP API", () => {
     expect(list.statusCode).toBe(200);
     expect((list.json() as { tasks: { id: number }[] }).tasks.some((t) => t.id === task.id)).toBe(true);
 
-    // 生命周期：start（无 decompose 的引擎启动成功）→ pause → resume → 删除。
+    // 生命周期：重试初始化仍失败并保持暂停；不能跳过 Goals 启动执行。
     expect((await authed("POST", `/api/tasks/${task.id}/start`)).statusCode).toBe(200);
     const paused = await authed("POST", `/api/tasks/${task.id}/pause`);
-    expect(paused.statusCode).toBe(200);
+    expect(paused.statusCode).toBe(409); // 初始化失败已经暂停。
     const resumed = await authed("POST", `/api/tasks/${task.id}/resume`);
     expect(resumed.statusCode).toBe(200);
-    expect((resumed.json() as { status: string }).status).toBe("running");
+    expect(resumed.json()).toMatchObject({status:"paused",paused:true});
 
     const chat = await authed("POST", `/api/tasks/${task.id}/chat`, { message: "进展如何？" });
     // 无激活 profile：mainChat 报模型缺失（500 + 中文原因），而非挂死/崩溃。

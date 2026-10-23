@@ -239,6 +239,9 @@ describe.skipIf(!haveDB)("批次C：分类与批量控制", () => {
     const miss = await authed("POST", "/api/tasks/category/batch", { task_ids: ["999999999"], category_id: cat.id });
     expect((miss.json() as { items: { ok: boolean; error?: string }[] }).items[0]!.ok).toBe(false);
 
+    // 初始化故意使用失败模型，任务已暂停；重置夹具标志以独立验证批量 pause。
+    expect((await db!.tasks().getTask(Number(task.id)))?.paused).toBe(true);
+    await db!.query("UPDATE tasks SET paused=false WHERE id=$1",[Number(task.id)]);
     // 批量控制：pause → resume。
     const pause = await authed("POST", "/api/tasks/control/batch", { task_ids: [task.id], action: "pause" });
     expect(pause.statusCode).toBe(200);
@@ -252,7 +255,8 @@ describe.skipIf(!haveDB)("批次C：分类与批量控制", () => {
     const resume = await authed("POST", "/api/tasks/control/batch", { task_ids: [task.id], action: "resume" });
     const resumeBody = resume.json() as { items: { ok: boolean; status?: string }[] };
     expect(resumeBody.items[0]!.ok).toBe(true);
-    expect(resumeBody.items[0]!.status).toBe("running");
+    // This suite deliberately has no model: failed Goals initialization must remain paused.
+    expect(resumeBody.items[0]!.status).toBe("paused");
 
     const del = await authed("DELETE", `/api/task-categories/${cat.id}`);
     expect(del.statusCode).toBe(200);

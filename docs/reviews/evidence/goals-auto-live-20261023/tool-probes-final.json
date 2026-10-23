@@ -1,0 +1,300 @@
+{
+  "run_id": "dbce5021-f7eb-4c2d-aee2-fdb47b31b0d7",
+  "database": "fate_goals_auto_50268",
+  "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-8VmOI9",
+  "status": "failed",
+  "started_at": "2026-10-23T02:18:02.013Z",
+  "runtime": "compiled-dist",
+  "component_sha256": {
+    "agent/roles": "57cb5fb25f1a7aff967b2c3880fb3c619984eaa528a6dc9f1a7433a950419b1b",
+    "agent/tool-registry": "a13cdd32c4a4e238f9cf0a868c94407a1003f2ebadd57cc12e4621eb348b10af",
+    "agent/tool-loading": "8debb231286ff90f7bcd1d7b2ffdaae99e31562f02fa7917b310956f1ad98256",
+    "agent/planner-memory": "bbff5daa4a979567071bdd49f541e7170219fe45a9607bc53b650995c2b6d4c7",
+    "db/exploration": "6fd07d345e96cf9743edc819f9798727f4dd5128dddc64b7e1bf76481208434f",
+    "pi/platform-mcp": "612a0cceb14ce4624d50330601eee152a798796fa07ff4ed8e3c47691cd05217",
+    "pi/runner": "c4cc4a234181cce2dc5db6ef136e7b1e45f9197085b8b4cd61af31a50f732f7c"
+  },
+  "requests": [
+    {
+      "number": 1,
+      "at": "2026-10-23T02:18:03.825Z",
+      "role": "worker",
+      "task_id": 1,
+      "bytes": 1964,
+      "tools": [
+        "tool_search"
+      ],
+      "background_present": false,
+      "discovery_guidance_present": true,
+      "status": 200
+    },
+    {
+      "number": 2,
+      "at": "2026-10-23T02:18:05.170Z",
+      "role": "worker",
+      "task_id": 1,
+      "bytes": 3330,
+      "tools": [
+        "tool_search",
+        "asset_search"
+      ],
+      "background_present": false,
+      "discovery_guidance_present": true,
+      "status": 200
+    },
+    {
+      "number": 3,
+      "at": "2026-10-23T02:18:05.836Z",
+      "role": "worker",
+      "task_id": 1,
+      "bytes": 3665,
+      "tools": [
+        "tool_search",
+        "asset_search"
+      ],
+      "background_present": false,
+      "discovery_guidance_present": true,
+      "status": 200
+    }
+  ],
+  "runners": [
+    {
+      "role": "worker",
+      "taskID": 1,
+      "policy": {
+        "version": "domain-v1",
+        "compaction": "native",
+        "toolPolicyVersion": "lean-tools-v1",
+        "builtinLoading": "deferred",
+        "mcpLoading": "deferred"
+      },
+      "session_id": "01a1668d-126f-7379-b5f7-2b252b8cc97c",
+      "initial_tools": [
+        "tool_search"
+      ],
+      "started_at": "2026-10-23T02:18:03.799Z",
+      "result": {
+        "aborted": false,
+        "lastAssistantText": "我按验收流程完成了发现和调用，结果如下：\n\n1. **工具发现**：`tool_search`（query=`asset search`）在下一轮成功加载了唯一工具 `asset_search`。\n2. **资产摘要调用**：以 `dsl=type==service` 调用 `asset_search` 一次，返回错误：`未知 DSL 字段: type`。\n\n按验收要求，空结果或报错都是实际结果，因此不再执行其他操作（不重试、不更换字段，也不分页列举）。结论：本轮本地工具发现流程正常，但该资产检索的 DSL 字段 `type` 当前不被支持。",
+        "stopReason": "completed"
+      },
+      "final_tools": [
+        "tool_search",
+        "asset_search"
+      ],
+      "finished_at": "2026-10-23T02:18:08.255Z"
+    }
+  ],
+  "fixture_requests": [],
+  "observations": [],
+  "external_target_requests": 0,
+  "prompt_versions": [
+    {
+      "role": "goals",
+      "source": "builtin",
+      "version": "direction-writeback-v1"
+    },
+    {
+      "role": "planner",
+      "source": "builtin",
+      "version": "direction-writeback-v1"
+    },
+    {
+      "role": "worker",
+      "source": "custom",
+      "version": "stored:dd2d5f04cef40651761a0762787465e80130f21379c701226f5bd6603116ce3c"
+    }
+  ],
+  "budgets": [
+    {
+      "key": "worker",
+      "max_turns": 0,
+      "run_seconds": 1200,
+      "wrapup_max_turns": 0
+    },
+    {
+      "key": "goals",
+      "max_turns": 0,
+      "run_seconds": 1200,
+      "wrapup_max_turns": 0
+    },
+    {
+      "key": "planner",
+      "max_turns": 12,
+      "run_seconds": 300,
+      "wrapup_max_turns": 0
+    }
+  ],
+  "fixture_configuration": "Only HTTP execution enabled in automatic fixture; native file/command/PTY tools verified separately with local sandbox guards. Runtime prompts, model chain and native loops are unchanged.",
+  "api_base": "http://127.0.0.1:64321",
+  "discovery_probe": {
+    "task_id": 1,
+    "initial_tools": [
+      "tool_search"
+    ],
+    "result": {
+      "aborted": false,
+      "lastAssistantText": "我按验收流程完成了发现和调用，结果如下：\n\n1. **工具发现**：`tool_search`（query=`asset search`）在下一轮成功加载了唯一工具 `asset_search`。\n2. **资产摘要调用**：以 `dsl=type==service` 调用 `asset_search` 一次，返回错误：`未知 DSL 字段: type`。\n\n按验收要求，空结果或报错都是实际结果，因此不再执行其他操作（不重试、不更换字段，也不分页列举）。结论：本轮本地工具发现流程正常，但该资产检索的 DSL 字段 `type` 当前不被支持。",
+      "stopReason": "completed"
+    },
+    "final_tools": [
+      "tool_search",
+      "asset_search"
+    ],
+    "activities": [
+      {
+        "kind": "tool_start",
+        "toolCallId": "call_00_9LYHqvIagx0lbRCVsdEq0520",
+        "toolName": "tool_search",
+        "args": {
+          "query": "asset search"
+        }
+      },
+      {
+        "kind": "tool_end",
+        "toolCallId": "call_00_9LYHqvIagx0lbRCVsdEq0520",
+        "toolName": "tool_search",
+        "isError": false,
+        "durationMs": 3,
+        "text": "Loaded 1 tool. They are available from your next call:\n- asset_search: 按 dsl 检索资产摘要；空 dsl 分页列出，untested=true 查询未测资产。使用 next_offset 续读，详情用 asset_get。来源任务只读。"
+      },
+      {
+        "kind": "tool_start",
+        "toolCallId": "call_00_ET_wbrtAPEfDhoMH5IWlMin4800",
+        "toolName": "asset_search",
+        "args": {
+          "dsl": "type==service"
+        }
+      },
+      {
+        "kind": "tool_end",
+        "toolCallId": "call_00_ET_wbrtAPEfDhoMH5IWlMin4800",
+        "toolName": "asset_search",
+        "isError": true,
+        "durationMs": 2,
+        "text": "{\"error\":\"未知 DSL 字段: type\"}"
+      }
+    ]
+  },
+  "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(discoveryEvents.some(a=>a.kind==='tool_end'&&a.toolName==='asset_search'&&!a.isError))\n",
+  "audit": [
+    {
+      "id": "1",
+      "task_id": "1",
+      "role": "worker",
+      "purpose": "conversation",
+      "status": "completed",
+      "error": "",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 641,
+        "output": 87,
+        "cacheRead": 0,
+        "reasoning": 48,
+        "cacheWrite": 0,
+        "totalTokens": 728
+      },
+      "runtime_id": "d1581d33-d491-4e96-ab4c-1777f234e098"
+    },
+    {
+      "id": "2",
+      "task_id": "1",
+      "role": "worker",
+      "purpose": "conversation",
+      "status": "completed",
+      "error": "",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 605,
+        "output": 41,
+        "cacheRead": 384,
+        "reasoning": 0,
+        "cacheWrite": 0,
+        "totalTokens": 1030
+      },
+      "runtime_id": "d1581d33-d491-4e96-ab4c-1777f234e098"
+    },
+    {
+      "id": "3",
+      "task_id": "1",
+      "role": "worker",
+      "purpose": "conversation",
+      "status": "completed",
+      "error": "",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 156,
+        "output": 298,
+        "cacheRead": 896,
+        "reasoning": 159,
+        "cacheWrite": 0,
+        "totalTokens": 1350
+      },
+      "runtime_id": "d1581d33-d491-4e96-ab4c-1777f234e098"
+    }
+  ],
+  "activities": [],
+  "nodes": [
+    {
+      "id": "1",
+      "exploration_id": "1",
+      "kind": "fact",
+      "payload": {
+        "goal": "确认本地工具真实执行结果",
+        "summary": "任务起点：LOCAL file/command/PTY fixture；目标：确认本地工具真实执行结果",
+        "description": "LOCAL file/command/PTY fixture"
+      },
+      "priority": 0,
+      "state": "origin",
+      "origin": "system",
+      "owner": null,
+      "blocked_reason": null,
+      "created_at": "2026-10-23T02:18:03.581Z",
+      "updated_at": "2026-10-23T02:18:03.581Z",
+      "completed_at": null,
+      "content_version": 0,
+      "cold_since_round": null,
+      "queue_position": "0",
+      "tool_call_id": null
+    }
+  ],
+  "traffic": [],
+  "tool_errors": [],
+  "tool_probe_errors": [],
+  "discovery_probe_errors": [
+    {
+      "kind": "tool_end",
+      "toolCallId": "call_00_ET_wbrtAPEfDhoMH5IWlMin4800",
+      "toolName": "asset_search",
+      "isError": true,
+      "durationMs": 2,
+      "text": "{\"error\":\"未知 DSL 字段: type\"}"
+    }
+  ],
+  "usage": {
+    "input": 1402,
+    "output": 426,
+    "cacheRead": 1280,
+    "cacheWrite": 0,
+    "totalTokens": 3108
+  },
+  "finished_at": "2026-10-23T02:18:09.773Z"
+}

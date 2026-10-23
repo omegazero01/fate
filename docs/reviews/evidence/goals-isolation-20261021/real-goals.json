@@ -1,0 +1,905 @@
+{
+  "passed": true,
+  "database": "fate_goals_real_36994",
+  "requests": [
+    {
+      "case": 1,
+      "phase": "constraints",
+      "bytes": 4903,
+      "tools": [
+        "set_constraints",
+        "register_user_target"
+      ],
+      "description_present": true
+    },
+    {
+      "case": 1,
+      "phase": "constraints",
+      "bytes": 6693,
+      "tools": [
+        "set_constraints",
+        "register_user_target"
+      ],
+      "description_present": true
+    },
+    {
+      "case": 1,
+      "phase": "objectives",
+      "bytes": 3936,
+      "tools": [
+        "set_goals"
+      ],
+      "description_present": false
+    },
+    {
+      "case": 2,
+      "phase": "constraints",
+      "bytes": 4929,
+      "tools": [
+        "set_constraints",
+        "register_user_target"
+      ],
+      "description_present": true
+    },
+    {
+      "case": 2,
+      "phase": "constraints",
+      "bytes": 9333,
+      "tools": [
+        "set_constraints",
+        "register_user_target"
+      ],
+      "description_present": true
+    },
+    {
+      "case": 2,
+      "phase": "objectives",
+      "bytes": 3962,
+      "tools": [
+        "set_goals"
+      ],
+      "description_present": false
+    }
+  ],
+  "cases": [
+    {
+      "task_id": 1,
+      "input": {
+        "goal": "资产测试覆盖度100%",
+        "description": "BACKGROUND_ONLY_MARKER：架构分析、接口梳理、漏洞挖掘、漏洞报告仅为背景，不要求作为独立交付物。\n\n禁止访问外部测试目标；仅处理本地合成资料，无需网络探测。"
+      },
+      "result": {
+        "aborted": false,
+        "stopReason": "completed",
+        "usage": {
+          "input": 2200,
+          "output": 476,
+          "cacheRead": 1920,
+          "cacheWrite": 0
+        }
+      },
+      "goals": [
+        {
+          "id": 2,
+          "content_version": 0,
+          "kind": "goal",
+          "payload": {
+            "text": "资产测试覆盖度达到100%",
+            "source": {
+              "field": "goal",
+              "quote": "资产测试覆盖度100%",
+              "version": "goal-field-isolation-v1",
+              "fallback": false,
+              "source_hash": "9927aec376afb7406861ad59cf68b0712dddcf672f31e084721bd6f23da344bf"
+            }
+          },
+          "priority": 0,
+          "state": "open",
+          "origin": "goals",
+          "created_at": "2026-10-21T08:25:40.291Z"
+        }
+      ],
+      "state": {
+        "phase": "completed",
+        "fallback": false
+      },
+      "runtimes": [
+        {
+          "mcp": [],
+          "model": {
+            "name": "DeepSeek-Flash",
+            "model": "deepseek-flash",
+            "format": "openai",
+            "source": "agent_binding",
+            "available": true,
+            "profile_id": 453
+          },
+          "tools": [
+            "set_constraints",
+            "register_user_target"
+          ],
+          "skills": [],
+          "max_turns": 6,
+          "streaming": true,
+          "compaction": {
+            "failed": 0,
+            "requests": 0,
+            "completed": 0
+          },
+          "goals_phase": "constraints",
+          "model_route": {
+            "id": "task-1-goals",
+            "provider": "series-router"
+          },
+          "prompt_hash": "edd1732dbae8a69eca4ecd0dea487860db93e9bf3484c55ff8c00ae0fa6a1b42",
+          "active_tools": [
+            "set_constraints",
+            "register_user_target"
+          ],
+          "tool_loading": {
+            "version": "lean-tools-v1",
+            "deferred": [],
+            "compatibility": [],
+            "initialActive": [
+              "set_constraints",
+              "register_user_target"
+            ]
+          },
+          "prompt_source": "builtin",
+          "request_count": 2,
+          "context_layout": "legacy",
+          "prompt_version": "direction-writeback-v1",
+          "max_duration_ms": 120000,
+          "platform_policy": {
+            "version": "domain-v1",
+            "compaction": "native",
+            "mcpLoading": "deferred",
+            "builtinLoading": "deferred",
+            "toolPolicyVersion": "lean-tools-v1"
+          },
+          "wrapup_max_turns": 1,
+          "last_request_size": {
+            "chars": 4043,
+            "sha256": "b29905f0ab543f2fdfa72edfc2417fd131b173b9fa2b2fa2db867322f85d2950",
+            "messages": {
+              "chars": 2786,
+              "utf8_bytes": 4970,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1657
+            },
+            "utf8_bytes": 6711,
+            "tool_schemas": {
+              "chars": 1080,
+              "sha256": "3be40af6f69e3b02f0da290af5875375019d9d66e83c37018c0333678cc52267",
+              "utf8_bytes": 1564,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 522
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 2237
+          },
+          "first_request_size": {
+            "chars": 2595,
+            "sha256": "6e7bf88ae5a12d0a9cb98f39eefe55d66498512f5d095f3692b060cdba3d4435",
+            "messages": {
+              "chars": 1338,
+              "utf8_bytes": 3180,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1060
+            },
+            "utf8_bytes": 4921,
+            "tool_schemas": {
+              "chars": 1080,
+              "sha256": "3be40af6f69e3b02f0da290af5875375019d9d66e83c37018c0333678cc52267",
+              "utf8_bytes": 1564,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 522
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1641
+          },
+          "prompt_diagnostics": {
+            "system": {
+              "chars": 1107,
+              "utf8_bytes": 2761,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 921
+            },
+            "role_body": {
+              "chars": 421,
+              "source": "resolved_role",
+              "utf8_bytes": 1081,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 361
+            },
+            "sdk_context": {
+              "chars": 73,
+              "utf8_bytes": 73,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 25
+            },
+            "skill_index": {
+              "chars": 0,
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            },
+            "task_context": {
+              "chars": 3,
+              "utf8_bytes": 3,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1
+            },
+            "tool_schemas": {
+              "chars": 1018,
+              "utf8_bytes": 1502,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 501
+            },
+            "host_protocol": {
+              "chars": 610,
+              "source": "host",
+              "utf8_bytes": 1604,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 535
+            },
+            "context_layout": "legacy",
+            "host_task_context": {
+              "chars": 0,
+              "source": "host_request_tail",
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            }
+          },
+          "collaboration_policy": "blackboard-v1",
+          "last_request_purpose": "conversation",
+          "compaction_request_count": 0
+        },
+        {
+          "mcp": [],
+          "model": {
+            "name": "DeepSeek-Flash",
+            "model": "deepseek-flash",
+            "format": "openai",
+            "source": "agent_binding",
+            "available": true,
+            "profile_id": 453
+          },
+          "tools": [
+            "set_goals"
+          ],
+          "skills": [],
+          "max_turns": 6,
+          "streaming": true,
+          "compaction": {
+            "failed": 0,
+            "requests": 0,
+            "completed": 0
+          },
+          "goals_phase": "objectives",
+          "model_route": {
+            "id": "task-1-goals",
+            "provider": "series-router"
+          },
+          "prompt_hash": "1ceeede089e5b3715a6a721f1e80ec46cd51839391a2caae26fc86e3c6004512",
+          "active_tools": [
+            "set_goals"
+          ],
+          "tool_loading": {
+            "version": "lean-tools-v1",
+            "deferred": [],
+            "compatibility": [],
+            "initialActive": [
+              "set_goals"
+            ]
+          },
+          "prompt_source": "builtin",
+          "request_count": 1,
+          "context_layout": "legacy",
+          "prompt_version": "direction-writeback-v1",
+          "max_duration_ms": 120000,
+          "platform_policy": {
+            "version": "domain-v1",
+            "compaction": "native",
+            "mcpLoading": "deferred",
+            "builtinLoading": "deferred",
+            "toolPolicyVersion": "lean-tools-v1"
+          },
+          "wrapup_max_turns": 1,
+          "last_request_size": {
+            "chars": 1994,
+            "sha256": "3b4f16b025cb35b6e22a86ef90e636b02242ffb3b89b6b52c02c707a0cd60945",
+            "messages": {
+              "chars": 1285,
+              "utf8_bytes": 3039,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1013
+            },
+            "utf8_bytes": 3954,
+            "tool_schemas": {
+              "chars": 532,
+              "sha256": "ee4b120d51796c7df27a44913e182d71570166ac46b261034ba09ca00da70854",
+              "utf8_bytes": 738,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 246
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1318
+          },
+          "first_request_size": {
+            "chars": 1994,
+            "sha256": "3b4f16b025cb35b6e22a86ef90e636b02242ffb3b89b6b52c02c707a0cd60945",
+            "messages": {
+              "chars": 1285,
+              "utf8_bytes": 3039,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1013
+            },
+            "utf8_bytes": 3954,
+            "tool_schemas": {
+              "chars": 532,
+              "sha256": "ee4b120d51796c7df27a44913e182d71570166ac46b261034ba09ca00da70854",
+              "utf8_bytes": 738,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 246
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1318
+          },
+          "prompt_diagnostics": {
+            "system": {
+              "chars": 1166,
+              "utf8_bytes": 2892,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 964
+            },
+            "role_body": {
+              "chars": 421,
+              "source": "resolved_role",
+              "utf8_bytes": 1081,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 361
+            },
+            "sdk_context": {
+              "chars": 72,
+              "utf8_bytes": 72,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 24
+            },
+            "skill_index": {
+              "chars": 0,
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            },
+            "task_context": {
+              "chars": 3,
+              "utf8_bytes": 3,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1
+            },
+            "tool_schemas": {
+              "chars": 501,
+              "utf8_bytes": 707,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 236
+            },
+            "host_protocol": {
+              "chars": 670,
+              "source": "host",
+              "utf8_bytes": 1736,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 579
+            },
+            "context_layout": "legacy",
+            "host_task_context": {
+              "chars": 0,
+              "source": "host_request_tail",
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            }
+          },
+          "collaboration_policy": "blackboard-v1",
+          "last_request_purpose": "conversation",
+          "compaction_request_count": 0
+        }
+      ]
+    },
+    {
+      "task_id": 2,
+      "input": {
+        "goal": "交付资产覆盖清单；交付修复建议清单",
+        "description": "BACKGROUND_ONLY_MARKER：架构分析、接口梳理、漏洞挖掘、漏洞报告仅为背景，不要求作为独立交付物。\n\n禁止访问外部测试目标；仅处理本地合成资料，无需网络探测。"
+      },
+      "result": {
+        "aborted": false,
+        "stopReason": "completed",
+        "usage": {
+          "input": 1741,
+          "output": 1139,
+          "cacheRead": 2944,
+          "cacheWrite": 0
+        }
+      },
+      "goals": [
+        {
+          "id": 5,
+          "content_version": 0,
+          "kind": "goal",
+          "payload": {
+            "text": "交付修复建议清单",
+            "source": {
+              "field": "goal",
+              "quote": "交付资产覆盖清单；交付修复建议清单",
+              "version": "goal-field-isolation-v1",
+              "fallback": false,
+              "source_hash": "c1d4bae5d2ff565f66361ae810f9aadf62cacd918f309c193e7baf83d57ddcde"
+            }
+          },
+          "priority": 0,
+          "state": "open",
+          "origin": "goals",
+          "created_at": "2026-10-21T08:25:47.775Z"
+        },
+        {
+          "id": 4,
+          "content_version": 0,
+          "kind": "goal",
+          "payload": {
+            "text": "交付资产覆盖清单",
+            "source": {
+              "field": "goal",
+              "quote": "交付资产覆盖清单；交付修复建议清单",
+              "version": "goal-field-isolation-v1",
+              "fallback": false,
+              "source_hash": "c1d4bae5d2ff565f66361ae810f9aadf62cacd918f309c193e7baf83d57ddcde"
+            }
+          },
+          "priority": 0,
+          "state": "open",
+          "origin": "goals",
+          "created_at": "2026-10-21T08:25:47.775Z"
+        }
+      ],
+      "state": {
+        "phase": "completed",
+        "fallback": false
+      },
+      "runtimes": [
+        {
+          "mcp": [],
+          "model": {
+            "name": "DeepSeek-Flash",
+            "model": "deepseek-flash",
+            "format": "openai",
+            "source": "agent_binding",
+            "available": true,
+            "profile_id": 453
+          },
+          "tools": [
+            "set_constraints",
+            "register_user_target"
+          ],
+          "skills": [],
+          "max_turns": 6,
+          "streaming": true,
+          "compaction": {
+            "failed": 0,
+            "requests": 0,
+            "completed": 0
+          },
+          "goals_phase": "constraints",
+          "model_route": {
+            "id": "task-2-goals",
+            "provider": "series-router"
+          },
+          "prompt_hash": "edd1732dbae8a69eca4ecd0dea487860db93e9bf3484c55ff8c00ae0fa6a1b42",
+          "active_tools": [
+            "set_constraints",
+            "register_user_target"
+          ],
+          "tool_loading": {
+            "version": "lean-tools-v1",
+            "deferred": [],
+            "compatibility": [],
+            "initialActive": [
+              "set_constraints",
+              "register_user_target"
+            ]
+          },
+          "prompt_source": "builtin",
+          "request_count": 2,
+          "context_layout": "legacy",
+          "prompt_version": "direction-writeback-v1",
+          "max_duration_ms": 120000,
+          "platform_policy": {
+            "version": "domain-v1",
+            "compaction": "native",
+            "mcpLoading": "deferred",
+            "builtinLoading": "deferred",
+            "toolPolicyVersion": "lean-tools-v1"
+          },
+          "wrapup_max_turns": 1,
+          "last_request_size": {
+            "chars": 6221,
+            "sha256": "e59e4d6af61626e68ebe3c5d26c09334a0e098d215123b34d43dde6c95d86bba",
+            "messages": {
+              "chars": 4964,
+              "utf8_bytes": 7610,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 2537
+            },
+            "utf8_bytes": 9351,
+            "tool_schemas": {
+              "chars": 1080,
+              "sha256": "3be40af6f69e3b02f0da290af5875375019d9d66e83c37018c0333678cc52267",
+              "utf8_bytes": 1564,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 522
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 3117
+          },
+          "first_request_size": {
+            "chars": 2601,
+            "sha256": "686ac5225d81c68621e46b0e5b41934a9c4c43a9bd46cd52be29f344fc099eab",
+            "messages": {
+              "chars": 1344,
+              "utf8_bytes": 3206,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1069
+            },
+            "utf8_bytes": 4947,
+            "tool_schemas": {
+              "chars": 1080,
+              "sha256": "3be40af6f69e3b02f0da290af5875375019d9d66e83c37018c0333678cc52267",
+              "utf8_bytes": 1564,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 522
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1649
+          },
+          "prompt_diagnostics": {
+            "system": {
+              "chars": 1107,
+              "utf8_bytes": 2761,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 921
+            },
+            "role_body": {
+              "chars": 421,
+              "source": "resolved_role",
+              "utf8_bytes": 1081,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 361
+            },
+            "sdk_context": {
+              "chars": 73,
+              "utf8_bytes": 73,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 25
+            },
+            "skill_index": {
+              "chars": 0,
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            },
+            "task_context": {
+              "chars": 3,
+              "utf8_bytes": 3,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1
+            },
+            "tool_schemas": {
+              "chars": 1018,
+              "utf8_bytes": 1502,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 501
+            },
+            "host_protocol": {
+              "chars": 610,
+              "source": "host",
+              "utf8_bytes": 1604,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 535
+            },
+            "context_layout": "legacy",
+            "host_task_context": {
+              "chars": 0,
+              "source": "host_request_tail",
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            }
+          },
+          "collaboration_policy": "blackboard-v1",
+          "last_request_purpose": "conversation",
+          "compaction_request_count": 0
+        },
+        {
+          "mcp": [],
+          "model": {
+            "name": "DeepSeek-Flash",
+            "model": "deepseek-flash",
+            "format": "openai",
+            "source": "agent_binding",
+            "available": true,
+            "profile_id": 453
+          },
+          "tools": [
+            "set_goals"
+          ],
+          "skills": [],
+          "max_turns": 6,
+          "streaming": true,
+          "compaction": {
+            "failed": 0,
+            "requests": 0,
+            "completed": 0
+          },
+          "goals_phase": "objectives",
+          "model_route": {
+            "id": "task-2-goals",
+            "provider": "series-router"
+          },
+          "prompt_hash": "1ceeede089e5b3715a6a721f1e80ec46cd51839391a2caae26fc86e3c6004512",
+          "active_tools": [
+            "set_goals"
+          ],
+          "tool_loading": {
+            "version": "lean-tools-v1",
+            "deferred": [],
+            "compatibility": [],
+            "initialActive": [
+              "set_goals"
+            ]
+          },
+          "prompt_source": "builtin",
+          "request_count": 1,
+          "context_layout": "legacy",
+          "prompt_version": "direction-writeback-v1",
+          "max_duration_ms": 120000,
+          "platform_policy": {
+            "version": "domain-v1",
+            "compaction": "native",
+            "mcpLoading": "deferred",
+            "builtinLoading": "deferred",
+            "toolPolicyVersion": "lean-tools-v1"
+          },
+          "wrapup_max_turns": 1,
+          "last_request_size": {
+            "chars": 2000,
+            "sha256": "8adf938e194254fd515c94c1461e77bb45de09500aa30c409764842223019e6a",
+            "messages": {
+              "chars": 1291,
+              "utf8_bytes": 3065,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1022
+            },
+            "utf8_bytes": 3980,
+            "tool_schemas": {
+              "chars": 532,
+              "sha256": "ee4b120d51796c7df27a44913e182d71570166ac46b261034ba09ca00da70854",
+              "utf8_bytes": 738,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 246
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1327
+          },
+          "first_request_size": {
+            "chars": 2000,
+            "sha256": "8adf938e194254fd515c94c1461e77bb45de09500aa30c409764842223019e6a",
+            "messages": {
+              "chars": 1291,
+              "utf8_bytes": 3065,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1022
+            },
+            "utf8_bytes": 3980,
+            "tool_schemas": {
+              "chars": 532,
+              "sha256": "ee4b120d51796c7df27a44913e182d71570166ac46b261034ba09ca00da70854",
+              "utf8_bytes": 738,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 246
+            },
+            "estimate_method": "utf8_bytes_div_3_heuristic",
+            "estimated_tokens": 1327
+          },
+          "prompt_diagnostics": {
+            "system": {
+              "chars": 1166,
+              "utf8_bytes": 2892,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 964
+            },
+            "role_body": {
+              "chars": 421,
+              "source": "resolved_role",
+              "utf8_bytes": 1081,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 361
+            },
+            "sdk_context": {
+              "chars": 72,
+              "utf8_bytes": 72,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 24
+            },
+            "skill_index": {
+              "chars": 0,
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            },
+            "task_context": {
+              "chars": 3,
+              "utf8_bytes": 3,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 1
+            },
+            "tool_schemas": {
+              "chars": 501,
+              "utf8_bytes": 707,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 236
+            },
+            "host_protocol": {
+              "chars": 670,
+              "source": "host",
+              "utf8_bytes": 1736,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 579
+            },
+            "context_layout": "legacy",
+            "host_task_context": {
+              "chars": 0,
+              "source": "host_request_tail",
+              "utf8_bytes": 0,
+              "estimate_method": "utf8_bytes_div_3_heuristic",
+              "estimated_tokens": 0
+            }
+          },
+          "collaboration_policy": "blackboard-v1",
+          "last_request_purpose": "conversation",
+          "compaction_request_count": 0
+        }
+      ]
+    }
+  ],
+  "audit": [
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 1326,
+        "output": 335,
+        "cacheRead": 0,
+        "reasoning": 244,
+        "cacheWrite": 0,
+        "totalTokens": 1661
+      },
+      "runtime_id": "0cd20510-bbf8-4510-a15a-ca3d6947fd77"
+    },
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 152,
+        "output": 53,
+        "cacheRead": 1536,
+        "reasoning": 6,
+        "cacheWrite": 0,
+        "totalTokens": 1741
+      },
+      "runtime_id": "0cd20510-bbf8-4510-a15a-ca3d6947fd77"
+    },
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 722,
+        "output": 88,
+        "cacheRead": 384,
+        "reasoning": 22,
+        "cacheWrite": 0,
+        "totalTokens": 1194
+      },
+      "runtime_id": "1589eda1-25ef-48cf-97bd-7f45e0165459"
+    },
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 946,
+        "output": 885,
+        "cacheRead": 384,
+        "reasoning": 669,
+        "cacheWrite": 0,
+        "totalTokens": 2215
+      },
+      "runtime_id": "7bb1ed92-1401-4ab3-9878-2ba10a1f855d"
+    },
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 198,
+        "output": 97,
+        "cacheRead": 2048,
+        "reasoning": 19,
+        "cacheWrite": 0,
+        "totalTokens": 2343
+      },
+      "runtime_id": "7bb1ed92-1401-4ab3-9878-2ba10a1f855d"
+    },
+    {
+      "role": "goals",
+      "purpose": "conversation",
+      "status": "completed",
+      "usage": {
+        "cost": {
+          "input": 0,
+          "total": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "input": 597,
+        "output": 157,
+        "cacheRead": 512,
+        "reasoning": 65,
+        "cacheWrite": 0,
+        "totalTokens": 1266
+      },
+      "runtime_id": "f8f94bd6-3183-46fd-adbe-17922d4f8732"
+    }
+  ],
+  "target_requests": 0,
+  "finished_at": "2026-10-21T08:25:47.808Z"
+}

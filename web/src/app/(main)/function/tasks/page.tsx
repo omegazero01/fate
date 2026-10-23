@@ -3502,7 +3502,7 @@ function CreateTaskSheet({
               <FieldDescription>可选，单个分类；用于任务列表筛选和归档，不影响 Agent 执行。</FieldDescription>
             </Field>
             <div className="grid gap-2">
-              <Label htmlFor="description">描述</Label>
+              <Label htmlFor="description">描述与操作约束</Label>
               <Textarea
                 id="description"
                 className="min-h-32"
@@ -3510,6 +3510,7 @@ function CreateTaskSheet({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+              <FieldDescription>填写测试对象、背景和明确的操作限制；描述不拆解为验收目标，背景由 Planner 使用。</FieldDescription>
               {/* 上传文件(可多选):暂存到 drafts/,把绝对路径追加进上方描述,worker 据此 Read/Bash 打开。 */}
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -3537,14 +3538,17 @@ function CreateTaskSheet({
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="goal">目标</Label>
+              <Label htmlFor="goal">目标（必填）</Label>
               <Textarea
                 id="goal"
                 className="min-h-32"
                 placeholder="要达成什么，例如：拿下后台管理权限、获取服务器权限"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
+                required
+                aria-describedby="goal-help"
               />
+              <FieldDescription id="goal-help">仅此栏用于目标拆解。填写最终要达成的结果，例如“资产测试覆盖度 100%”；不要重复背景或执行步骤。</FieldDescription>
             </div>
             <Field>
               <FieldLabel htmlFor="source-tasks">关联任务</FieldLabel>
@@ -3633,7 +3637,7 @@ function CreateTaskSheet({
                     直接下发首个意图（描述+目标）
                   </label>
                   <p className="text-muted-foreground text-xs">
-                    开启后创建即把「描述+目标」作为一条意图下发，worker 免等首轮规划直接开跑，跑完再由 planner
+                    开启后先完成约束提取和目标保存，再把「描述+目标」作为首条意图交给 Worker，跑完再由 Planner
                     接手判定/补充。CTF 等常一个 work 直接解决的场景推荐开启；关闭则走标准的先规划再执行。
                   </p>
                 </div>

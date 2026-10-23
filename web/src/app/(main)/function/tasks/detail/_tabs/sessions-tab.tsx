@@ -230,7 +230,7 @@ function fmtDuration(ms: number): string {
 
 const roleMeta = {
   mainagent: { label: "主 Agent", icon: UserIcon },
-  planner: { label: "规划 Planner", icon: BrainIcon },
+  planner: { label: "目标与规划", icon: BrainIcon },
   worker: { label: "Workers", icon: RadioIcon },
   system: { label: "系统审计", icon: HistoryIcon },
 } as const;
@@ -264,7 +264,7 @@ const PLANNER_ID = "s-planner";
 const PLANNER_SESSION: Session = {
   id: PLANNER_ID,
   role: "planner",
-  title: "规划 Planner · 态势研判",
+  title: "目标与规划 · Goals / Planner",
   status: "running",
   live: true,
   last_activity: "",

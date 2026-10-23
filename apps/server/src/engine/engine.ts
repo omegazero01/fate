@@ -1,3 +1,4 @@
+import {goalsBootstrap} from '../db/goals-bootstrap.js';
 import {blackboardRevision,markWorkerReleased,recoverWorkerSettlements} from '../db/worker-drafts.js';
 import {LiveStreamWriter,runnerActivityMetadata} from './live-stream.js';
 import {recoverExpiredRuntimes} from './runtime-config.js';
@@ -185,7 +186,7 @@ export class Engine {
     let persisted = await this.db.tasks().getTask(taskID);
     if(persisted?.status==='created'){await this.db.transaction(tx=>this.coordinator.admit(tx,taskID,!!opts.decompose));persisted=await this.db.tasks().getTask(taskID);}
     if (!persisted || persisted.paused || persisted.queued || ['done','failed','timeout'].includes(persisted.status)) return;
-    if(!opts.decompose && persisted.queue_mode==='bootstrap')opts={decompose:{description:persisted.description}};
+    if(!opts.decompose && (persisted.queue_mode==='bootstrap'||['constraints','objectives'].includes((await goalsBootstrap(this.db,taskID))?.phase??'')))opts={decompose:{description:persisted.description}};
     if (rt.started && !rt.stopped) { this.notify(taskID); return; }
     if (rt.stopped) await Promise.allSettled(rt.loops);
     rt.lease = await this.coordinator.acquire(taskID);
@@ -215,7 +216,7 @@ export class Engine {
       rt.plannerAbort = new AbortController();
       await (async () => {
       const model = await this.modelFor(rt, "goals");
-      if(!model)return;
+      if(!model){if(await goalsBootstrap(this.db,taskID))throw new Error("未配置 Goals 模型");return;}
       const turn=this.beginActivityTurn(rt,{worker:"goals"});
       return runGoalsDecompose({
         db: this.db, taskID, expID: rt.expID, model, dataDir: this.dataDir,
@@ -223,15 +224,19 @@ export class Engine {
       }).then(result=>{this.emitActivity(taskID,{worker:'goals',kind:'result',metadata:{...turn.metadata,event_type:'lifecycle',status:result.aborted?'stopped':'completed'},summary:result.aborted?'目标分解已停止':'目标分解完成'});return result;})
       .catch(error=>{this.emitActivity(taskID,{worker:'goals',kind:'result',metadata:{...turn.metadata,event_type:'lifecycle',status:'failed'},isError:true,summary:String(error)});throw error;})
       .finally(()=>turn.finish());
-      })().catch((err) => {
+      })().catch(async (err) => {
         this.emitActivity(taskID, { kind: "result", worker: "system", summary: `目标分解失败：${err instanceof Error ? err.message : String(err)}` });
+        if(await goalsBootstrap(this.db,taskID)){
+          if(!rt.stopped&&!rt.plannerAbort?.signal.aborted)await this.db.tasks().applyTaskPause(taskID);
+          rt.paused=true;
+        }
       });
       if(rt.stopped||rt.paused||rt.plannerAbort?.signal.aborted){rt.started=false;rt.stopped=true;stopLeaseWatchdog();if(rt.lease)await this.coordinator.release(taskID,rt.lease);return;}
       // ARTEX 同款兜底：分解失败/空产出时规则拆分——goal 节点必须存在，
       // 否则 goalless 判定会把任务立即误判为「frontier 已抽干」而结束。
       const s = this.db.exploration(rt.expID);
       const goalCount = (await s.listByKind("goal", 5)).length;
-      if (goalCount === 0) {
+      if (goalCount === 0 && !(await goalsBootstrap(this.db,taskID))) {
         const fallbackGoal = await s.addGoal({ text: (await this.db.tasks().getTask(taskID))?.goal ?? opts.decompose.description }, "system");
         const origin = await s.originFactID();
         if (origin > 0) await s.link(origin, "spawns", fallbackGoal);
@@ -1125,6 +1130,9 @@ export class Engine {
       case "assistant_delta":
         writer?.push(a);
         this.bus.emit("delta", { taskID: rt.taskID, expID: rt.expID, worker: meta.worker, nodeID: meta.intentID, mainSeg: meta.mainSeg, text: a.text, streamID: a.streamID, isThinking: a.isThinking });
+        break;
+      case "host_status":
+        this.emitActivity(rt.taskID,{nodeID:meta.intentID??null,worker:meta.worker,mainSeg:meta.mainSeg,kind:"status",summary:a.text,metadata:{turn_id:meta.turnID,...runnerActivityMetadata(a)}});
         break;
       case "settled":
       case "run_metadata":

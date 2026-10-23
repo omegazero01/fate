@@ -28,7 +28,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   kill_work: '终止指定运行意图；先确认当前进度和原因，以返回状态确认结果。',
   steer_work: '给所属运行中 Worker 追加纠偏，PI 在工具回合边界交付；不扩大授权。',
   todo_write: '保存跨轮依赖待办；有依赖的步骤仅在前置满足后下发。',
-  set_goals: '保存任务的最终可验收目标，不把探索步骤当作目标；遵循用户明确要求。',
+  set_goals: '仅保存目标栏要求的最终结果，不从描述扩写、不把探索步骤当作目标。新任务 Goals 阶段须逐字提供 source_quote；Main 追加保持原有接口。成功返回即已保存。',
   set_constraints: CONSTRAINT_TOOL_DESCRIPTION,
   register_user_target: '登记用户明确授权的目标边界；不得从发现结果推断授权。',
   update_finding_report: '以读取的 evidence_version 保存报告；版本冲突先重读证据，成功返回才算保存。',

@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
-import {ModelRuntime} from '@earendil-works/pi-coding-agent';
+import {ModelRuntime,defineTool} from '@earendil-works/pi-coding-agent';
 import {AgentRunner,type AgentRunnerOptions} from './runner.js';
 
 const cleanups:Array<()=>Promise<void>>=[];
@@ -41,6 +41,37 @@ async function fixture(transport:'stdio'|'http'|'sse',count=1,failList=false,res
   return {faux,options,calls,cwd};
 }
 describe('native deferred MCP',()=>{
+  it('custom role prompts explain discovery before a native deferred call, including after recovery',async()=>{
+    const f=await fixture('http');f.options.mcpEntries=[];
+    const tool=(name:string)=>defineTool({name,label:name,description:'LOCAL '+name,parameters:{type:'object',properties:{}} as never,
+      async execute(){return {content:[{type:'text',text:'LOCAL asset listing'}],details:undefined};}});
+    f.options.customTools=[tool('context_get'),{...tool('asset_search'),exposure:'deferred'}];f.options.toolAllowlist=['context_get','asset_search'];
+    f.options.toolLoading={version:'lean-tools-v1',initialActive:['context_get'],deferred:['asset_search'],compatibility:[]};
+    f.options.systemPrompt='Custom Planner: use asset_search to inspect asset summaries.';
+    f.options.resumeSessionPath=path.join(f.cwd,'deferred-role.jsonl');f.options.inMemory=false;
+    const errors:string[]=[];f.options.onActivity=a=>{if(a.kind==='tool_end'&&a.isError)errors.push(a.text??'');};
+    f.faux.setResponses([ctx=>{
+      expect(JSON.stringify(ctx.messages)).toContain('<tool_loading>');expect(JSON.stringify(ctx.messages)).toContain('不直接试调用');
+      expect(runner.activeToolNames).not.toContain('asset_search');return fauxAssistantMessage([fauxToolCall('tool_search',{query:'asset_search'})]);
+    },()=>{expect(runner.activeToolNames).toContain('asset_search');return fauxAssistantMessage([fauxToolCall('asset_search',{})]);},fauxAssistantMessage('saved')]);
+    let runner=await AgentRunner.create(f.options);const id=runner.sessionId;
+    try{await runner.prompt('LOCAL assets');expect(errors).toEqual([]);}finally{await runner.dispose();}
+    // Recovery must not turn a withdrawn registration into a callable tool.
+    f.options.toolAllowlist=['context_get'];f.options.customTools=[tool('context_get')];f.options.toolLoading={version:'lean-tools-v1',initialActive:['context_get'],deferred:[],compatibility:[]};
+    f.faux.setResponses([ctx=>{expect(JSON.stringify(ctx.messages)).toContain('LOCAL assets');expect(runner.activeToolNames).not.toContain('asset_search');return fauxAssistantMessage('withdrawn');}]);
+    runner=await AgentRunner.create(f.options);try{expect(runner.sessionId).toBe(id);await runner.prompt('LOCAL resume');}finally{await runner.dispose();}
+  });
+  it('keeps premature deferred calls as errors and supplies native discovery recovery instead of claiming an implementation is missing',async()=>{
+    const f=await fixture('http');f.options.mcpEntries=[];
+    f.options.toolAllowlist=['asset_search'];f.options.toolLoading={version:'lean-tools-v1',initialActive:[],deferred:['asset_search'],compatibility:[]};
+    let executed=0;f.options.customTools=[{...defineTool({name:'asset_search',label:'asset_search',description:'LOCAL asset query',parameters:{type:'object',properties:{}} as never,
+      async execute(){executed++;return {content:[{type:'text',text:'LOCAL listed'}],details:undefined};}}),exposure:'deferred'}];
+    const errors:string[]=[];f.options.onActivity=a=>{if(a.kind==='tool_end'&&a.isError)errors.push(a.text??'');};
+    f.faux.setResponses([fauxAssistantMessage([fauxToolCall('asset_search',{})]),ctx=>{
+      expect(JSON.stringify(ctx.messages)).toContain('尚未在当前声明中激活');return fauxAssistantMessage([fauxToolCall('tool_search',{query:'asset_search'})]);
+    },fauxAssistantMessage([fauxToolCall('asset_search',{})]),fauxAssistantMessage('done')]);
+    const runner=await AgentRunner.create(f.options);try{await runner.prompt('LOCAL');expect(executed).toBe(1);expect(errors).toHaveLength(1);expect(errors[0]).toContain('原始工具错误：Tool asset_search not found');}finally{await runner.dispose();}
+  });
   it('does not misreport a resource-only server as unavailable',async()=>{
     const f=await fixture('http',1,false,true);
     f.faux.setResponses([fauxAssistantMessage([fauxToolCall('tool_search',{query:'list resources'})]),ctx=>{const text=JSON.stringify(ctx.messages);expect(text).not.toContain('MCP 发现未完成');expect(text).toContain('list_mcp_resources');return fauxAssistantMessage('done');}]);

@@ -69,9 +69,9 @@ describe.skipIf(!haveDB)("seedBuiltins", () => {
     const keys = (await platform.listAgents()).filter((a) => a.builtin).map((a) => a.key).sort();
     expect(keys).toEqual(["auto", "goals", "mainagent", "pentest", "planner", "worker"]);
 
-    // 变量目录：goals 1 / planner 2 / mainagent 3 / worker 2 = 8 条
+    // 变量目录：Goals 的 Goal 与背景分离，2 / planner 2 / mainagent 3 / worker 2 = 9 条。
     expect(snap1.agents).toBe(6);
-    expect(snap1.goalsVars).toBe(8);
+    expect(snap1.goalsVars).toBe(9);
     expect(snap1.mcp).toBeGreaterThanOrEqual(4); // ScopeSentry(schema 播) + playwright/web_search/chrome-devtools
     const mcpNames = (await platform.listMCP()).map((m) => m.name);
     for (const n of ["playwright", "web_search", "chrome-devtools", "ScopeSentry"]) expect(mcpNames).toContain(n);
@@ -85,6 +85,7 @@ describe.skipIf(!haveDB)("seedBuiltins", () => {
     const goals = await platform.getAgentByKey("goals");
     expect(goals!.interactiveShell).toBe(false);
     expect(goals!.runSeconds).toBe(1200);
+    expect((await platform.promptVars(goals!.id)).map(v=>v.name).sort()).toEqual(['EngagementDescription','Goal']);
     const plannerVars = await platform.promptVars((await platform.getAgentByKey("planner"))!.id);
     expect(plannerVars.map((v) => v.name)).toEqual(["AssetSummary", "Goal"]);
   });

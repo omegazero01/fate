@@ -72,6 +72,8 @@ export interface Task {
 
 /** 必须与任务/探索行同事务提交的创建期数据（AssetIDs/CompanyIDs 见文件头说明）。 */
 export interface TaskCreateOptions {
+  /** Host creation entrypoints enroll new tasks; low-level graph imports remain inert. */
+  initializeGoals?: boolean;
   assetIDs?: number[];
   companyIDs?: number[];
   seedFirstIntent?: boolean;
@@ -242,6 +244,7 @@ export class TaskStore {
       );
       const row = ins.rows[0]!;
       const taskID = Number(row.id);
+      if(opts.initializeGoals)await tx.query("INSERT INTO goals_bootstrap(task_id,goal,description) VALUES($1,$2,$3)",[taskID,goal,description]);
       await insertTaskRelations(tx, taskID, sourceTaskIDs);
       await insertTaskLLMProfiles(tx, taskID, llmProfileIDs);
       const scoped = new Database(this.db.pool, client);

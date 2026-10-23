@@ -60,7 +60,8 @@ it.each(ACTIVE_ROLES)('%s actual entrypoint matches preview and required tools e
  const base={db,taskID:f.task.id,expID:f.task.exploration_id,goal:f.task.goal,model:f.model,dataDir:dir,hooks:{},onActivity:(a:unknown)=>activities.push(a)};
  let conversationID:number|undefined;
  if(role==='goals'){
-  f.faux.setResponses([fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'LOCAL deliverable'}]})])]);
+  await db.query('INSERT INTO goals_bootstrap(task_id,goal,description) VALUES($1,$2,$3)',[f.task.id,f.task.goal,f.task.description]);
+  f.faux.setResponses([fauxAssistantMessage('约束阶段完成'),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:f.task.goal,source_quote:f.task.goal}]})])]);
   expect(await runGoalsDecompose({...base,description:'LOCAL synthetic fixture'})).toMatchObject({stopReason:'completed'});
   expect((await f.s.listByKind('goal')).length).toBe(1);
  }else if(role==='worker'){
@@ -101,7 +102,8 @@ it.each(ACTIVE_ROLES)('%s actual entrypoint matches preview and required tools e
   conversationID=await runConversation(role,f);
  }
  const effective=(await db.query(`SELECT effective FROM runtime_role_configs WHERE role=$1 AND ${conversationID?'conversation_id':'task_id'}=$2 ORDER BY started_at DESC LIMIT 1`,[role,conversationID??f.task.id])).rows[0].effective;
- const preview=await previewRoleTools(db,role);
+ const catalog=await previewRoleTools(db,role);
+ const preview=role==='goals'?catalog.stages!.find(s=>s.phase===effective.goals_phase)!:catalog;
  // effective.tools records the allowed set; initial active_tools is the first-request loadout.
  expect([...effective.tool_loading.initialActive].filter((n:string)=>n!=='mcp__*').sort()).toEqual(preview.resident.filter(n=>n!=='tool_search').sort());
  expect([...effective.tool_loading.deferred].sort()).toEqual([...preview.deferred].sort());

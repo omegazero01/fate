@@ -22,7 +22,7 @@ const supported = new Set([...NATIVE_TOOLS,...DOMAIN_TOOL_NAMES,...Object.keys(T
 const common = ['context_search','context_get'];
 const core:Record<string,string[]>={
   worker:[...common,'http_request','insert_assets','record_fact','report_finding'],
-  planner:[...common,'graph_overview','add_intent','prove_goal','todo_write','kill_work','steer_work'],
+  planner:[...common,'graph_overview','asset_search','add_intent','prove_goal','todo_write','kill_work','steer_work'],
   mainagent:[...common,'http_request','insert_assets','record_fact','report_finding','add_intent','dispatch_intents','steer_work'],
   goals:[...common,'set_goals','set_constraints','register_user_target'],
   auto:[...common,'list_tasks','get_task','spawn_task','pause_task','resume_task'],

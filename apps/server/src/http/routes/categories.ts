@@ -150,7 +150,8 @@ export function registerCategoryRoutes(app: FastifyInstance): void {
         if (res.rows.length === 0) return { ok: false, error: "任务不存在" };
         // 引擎未装载该任务时 resume 内部会先 run（重新装载），与 tasks.ts 的单任务语义一致。
         await engineNoop(app.engine.resume(id));
-        return { ok: true, status: res.rows[0]!.status };
+        const after=await app.db.tasks().getTask(id);
+        return { ok: true, status: after?.paused?"paused":after?.queued?"queued":after?.status,queued:after?.queued===true };
       }
       // stop / finish：停引擎 + 手动收官（全部目标已证明 → done，否则 failed）。
       const task = await app.db.tasks().getTask(id);
