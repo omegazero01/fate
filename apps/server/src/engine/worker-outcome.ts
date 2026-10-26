@@ -4,7 +4,7 @@ import type {Node} from '../db/exploration.js';
 export type WorkerStopReason = 'completed'|'partial'|'blocked'|'missing_result'|'invalid_result'
   |'turn_limit'|'duration_limit'|'task_timeout'|'planner_terminated'|'main_terminated'|'user_cancelled'
   |'task_paused'|'intent_paused'|'task_completed'|'task_ended'|'service_shutdown'|'executor_stopped'
-  |'lease_lost'|'executor_recovered'|'model_connection_error'|'model_error'|'aborted'|'operation_uncertain';
+  |'lease_lost'|'executor_recovered'|'model_connection_error'|'model_error'|'aborted'|'operation_uncertain'|'basis_changed'|'basis_unavailable';
 
 const labels:Record<WorkerStopReason,string> = {
   completed:'当前意图执行结束',partial:'已提交部分结果',blocked:'已提交阻塞结果',missing_result:'会话结束但未提交可验收结果',invalid_result:'结果验收失败',
@@ -14,6 +14,8 @@ const labels:Record<WorkerStopReason,string> = {
   service_shutdown:'服务关闭',executor_stopped:'执行器已停止',lease_lost:'执行租约失效',executor_recovered:'原执行器不可用，由新租约恢复',
   model_connection_error:'模型连接失败',model_error:'模型或会话执行失败',aborted:'会话被中断（未提供原因）',
   operation_uncertain:'存在未核对的工具执行结果，已停止自动重放',
+  basis_changed:'当前意图依据已变化，已停止新探测并结束收尾，待 Planner 重新评估',
+  basis_unavailable:'当前意图依据已撤销或不可读，已停止新探测并结束收尾，待 Planner 重新评估',
 };
 
 export function failureReason(message:string):WorkerStopReason {
@@ -34,7 +36,11 @@ export async function workerStopReceipt(db:Database,expID:number,node:Node,reaso
   const operations=(await db.query(`SELECT id,tool_name,status FROM worker_operations WHERE intent_id=$1
     AND status IN ('running','uncertain') ORDER BY id LIMIT 20`,[node.id])).rows.map(r=>({ref:`operation:${r.id}`,tool:r.tool_name,status:r.status}));
   const error=detail.replace(/(?:Bearer\s+|\bsk-)[\w.-]+/gi,'[redacted]').slice(0,2000);
-  const recovery=reason==='completed'?'':String(result?.remaining||('先读取当前意图、最新已保存观察及工具结果，核对未完成条件，不重复已完成操作。'+(progress?.next_step?' 较早检查点（可能已完成）：'+progress.next_step:progress?.blocker?' 阻塞：'+progress.blocker:''))).slice(0,2000);
+  const changedBasis=reason==='basis_changed'||reason==='basis_unavailable';
+  const basis=(node.payload.contract as {basis?:{node_id:number}[]}|undefined)?.basis??[];
+  const recovery=reason==='completed'?'':changedBasis
+    ?`由 Planner 重新读取当前意图、依据 ${basis.map(b=>`node:${b.node_id}`).join(', ')||'引用'} 和已保存事实，核对最新版本及剩余条件后重新评估；Worker 不自行恢复探测。`
+    :String(result?.remaining||('先读取当前意图、最新已保存观察及工具结果，核对未完成条件，不重复已完成操作。'+(progress?.next_step?' 较早检查点（可能已完成）：'+progress.next_step:progress?.blocker?' 阻塞：'+progress.blocker:''))).slice(0,2000);
   return {version:1,attempt_id:attemptID,reason,summary:labels[reason]+(error?`：${error}`:''),
     recorded_at:new Date().toISOString(),progress_at:progress?.updated_at??null,
     fact_refs:refs.rows.map(r=>({node_id:Number(r.id),version:Number(r.content_version)})),

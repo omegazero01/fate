@@ -62,10 +62,10 @@ export async function contextNeeds(ctx:ToolRunContext,args:{intent_id?:number;li
   const entries=ctx.sessionEntries?.()??[];
   const coverage=plannerReadCoverage(entries);
   const continuations=contextContinuations(entries);
-  const basis=intents.flatMap(n=>(Array.isArray(n.basis)?n.basis as {node_id:number;version:number}[]:[]).map(r=>({...r,intent_id:Number(n.id)})));
+  const basis=intents.flatMap(n=>(Array.isArray(n.basis)?n.basis as {node_id:number;version:number;report_revision?:number}[]:[]).map(r=>({...r,intent_id:Number(n.id)})));
   const requestedIDs=[...new Set([...basis.map(b=>b.node_id),...[...coverage,...continuations].filter(c=>c.ref.startsWith('node:')).map(c=>Number(c.ref.slice(5)))])];
   const visible=requestedIDs.length?(await ctx.db.query(`WITH ${TASK_GRAPH_CTE}
-    SELECT id,kind,state,content_version,left(COALESCE(payload->>'summary',payload->>'text',''),160) summary
+    SELECT id,kind,state,content_version,report_revision,left(COALESCE(payload->>'summary',payload->>'text',''),160) summary
     FROM visible WHERE id=ANY($2::bigint[])`,[ctx.taskID,requestedIDs])).rows:[];
   const byID=new Map(visible.map(n=>[Number(n.id),n]));
   const needs:ContextNeed[]=[];
@@ -78,9 +78,10 @@ export async function contextNeeds(ctx:ToolRunContext,args:{intent_id?:number;li
     const read=coverage.filter(r=>r.ref===`node:${b.node_id}`&&r.version===version);
     // A summary delivery never establishes that evidence was read.
     const delivered=read.some(r=>r.view==='detail'&&!r.field&&r.fully_delivered);
-    if(!n||version!==b.version||!delivered)needs.push({
-      ref:`node:${b.node_id}`,priority:!n?100:version!==b.version?95:80,
-      reason:!n?'dependency_unavailable':version!==b.version?'dependency_changed':'dependency_detail_unread',
+    const changed=n&&Number(n.content_version)-Number(n.report_revision)!==b.version-(b.report_revision??0);
+    if(!n||changed||!delivered)needs.push({
+      ref:`node:${b.node_id}`,priority:!n?100:changed?95:80,
+      reason:!n?'dependency_unavailable':changed?'dependency_changed':'dependency_detail_unread',
       version,expected_version:b.version,intent_id:b.intent_id,...(n?{summary:String(n.summary)}:{}),
       read:n?nodeRead(b.node_id,version):{tool:'context_search',args:{intent_id:b.intent_id,types:['fact','finding']}},
     });

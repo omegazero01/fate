@@ -42,6 +42,20 @@ export async function migrateOperationJournal(db:Database){
   );`);
 }
 type Row={id:string;execution_id:string;tool_name:string;fingerprint:string;status:string;result:unknown;is_error:boolean|null;intent_id:string;[key:string]:unknown};
+const RESULT_ENCODING='fate.operation-result.json-string.v1';
+function encodedResult(value:unknown):value is {encoding:typeof RESULT_ENCODING;json:string}{
+  return !!value&&typeof value==='object'&&Object.keys(value).length===2
+    &&(value as Record<string,unknown>).encoding===RESULT_ENCODING&&typeof (value as Record<string,unknown>).json==='string';
+}
+/** PostgreSQL JSONB rejects NUL and lone surrogates, even though native tool results may contain them.
+ * Preserve the complete serialized value as a JSON string when needed: never strip bytes or rerun a tool.
+ * Legacy plain JSONB receipts remain readable. Escape-looking literal text can safely use the same envelope. */
+function serializeResult(value:unknown):string {
+  const raw=JSON.stringify(value)??'null';
+  return /\\u(?:0000|d[89a-f][0-9a-f]{2})/i.test(raw)||encodedResult(value)
+    ?JSON.stringify({encoding:RESULT_ENCODING,json:raw}):raw;
+}
+const deserializeResult=(value:unknown):unknown=>encodedResult(value)?JSON.parse(value.json):value;
 export class OperationUncertainError extends Error {
   constructor(public operationID:number){super(`operation:${operationID} 的实际执行结果未知；不自动重放。先读取操作记录、保存已有事实并结束本意图，待核对后恢复。`);}
 }
@@ -79,16 +93,16 @@ export class WorkerOperationJournal {
       const own=(await db.query<Row>('SELECT * FROM worker_operations WHERE execution_id=$1 AND tool_call_id=$2',[this.executionID,callID])).rows[0];
       if(own){
         if(own.fingerprint!==fingerprint)throw new Error('同一工具调用 ID 的参数已变化');
-        if(own.status==='returned')return {id:Number(own.id),replay:own.result};
+        if(own.status==='returned')return {id:Number(own.id),replay:deserializeResult(own.result)};
         this.recoveryBlocked=true;throw new OperationUncertainError(Number(own.id));
       }
       // Only cross-execution equivalence is reused; repeated reads/polls within a live run remain possible.
       const old=(await db.query<Row>(`SELECT * FROM worker_operations WHERE intent_id=$1 AND fingerprint=$2 AND execution_id<>$3 ORDER BY id DESC LIMIT 1`,[this.ctx.intentID,fingerprint,this.executionID])).rows[0];
       if(old?.status==='returned'||old?.status==='confirmed'){
-        const replay=old.status==='returned'?old.result:{content:[{type:'text',text:JSON.stringify({operation_ref:`operation:${old.id}`,status:'operator_confirmed',note:'操作已由人工核对完成；原工具返回未记录，不补造输出。'})}]};
+        const replay=old.status==='returned'?deserializeResult(old.result):{content:[{type:'text',text:JSON.stringify({operation_ref:`operation:${old.id}`,status:'operator_confirmed',note:'操作已由人工核对完成；原工具返回未记录，不补造输出。'})}]};
         const alias=await db.query(`INSERT INTO worker_operations(task_id,intent_id,execution_id,tool_call_id,tool_name,fingerprint,status,result,is_error,previous_id,replayed,finished_at)
           VALUES($1,$2,$3,$4,$5,$6,'returned',$7::jsonb,$8,$9,true,now()) RETURNING id`,
-          [this.ctx.taskID,this.ctx.intentID,this.executionID,callID,tool,fingerprint,JSON.stringify(replay),old.is_error??false,old.id]);
+          [this.ctx.taskID,this.ctx.intentID,this.executionID,callID,tool,fingerprint,serializeResult(replay),old.is_error??false,old.id]);
         return {id:Number(alias.rows[0]!.id),replay};
       }
       // Any unresolved external effect in this intent must be reconciled before more effectful operations.
@@ -106,7 +120,7 @@ export class WorkerOperationJournal {
       const terminal=terminalResult(result);
       const r=await db.query(`UPDATE worker_operations SET status='returned',result=$3::jsonb,is_error=$4,finished_at=now(),
         volatile=(tool_name IN ('shell_open','shell_send') AND $5),terminal_id=$6
-        WHERE id=$1 AND execution_id=$2 AND status='running' RETURNING id`,[id,this.executionID,JSON.stringify(result),isError,terminal.running!==false&&terminal.closed!==true,terminal.session_id??null]);
+        WHERE id=$1 AND execution_id=$2 AND status='running' RETURNING id`,[id,this.executionID,serializeResult(result),isError,terminal.running!==false&&terminal.closed!==true,terminal.session_id??null]);
       if(!r.rowCount)throw new Error('操作记录已失效，不能确认结果');
       if(terminal.session_id&&(terminal.running===false||terminal.closed===true))
         await db.query('UPDATE worker_operations SET volatile=false WHERE intent_id=$1 AND terminal_id=$2 AND status=$3',[this.ctx.intentID,terminal.session_id,'returned']);
@@ -144,7 +158,7 @@ export async function readOperations(ctx:ToolRunContext,args:{intent_id?:number;
         WHERE n.id=worker_operations.intent_id AND t.id=$1 AND t.deleted_at IS NULL AND exploration_node_readable(n.exploration_id,n.id))
       ORDER BY id LIMIT $5`,
     [ctx.taskID,intentID??null,args.id??null,after,limit+1])).rows;
-  const items=rows.slice(0,limit).map(r=>({...r,ref:`operation:${r.id}`,id:Number(r.id),intent_id:Number(r.intent_id)}));
+  const items=rows.slice(0,limit).map(r=>({...r,...(args.id?{result:deserializeResult(r.result)}:{}),ref:`operation:${r.id}`,id:Number(r.id),intent_id:Number(r.intent_id)}));
   return {items,next_cursor:rows.length>limit?items.at(-1)!.id:null,
     note:'工具返回与事实发布是不同状态；操作记录不会自动创建事实。uncertain 必须核对后才能继续，不能根据摘要猜测成功。'};
 }

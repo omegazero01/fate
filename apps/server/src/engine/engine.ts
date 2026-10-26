@@ -681,6 +681,9 @@ export class Engine {
           summary=accepted.summary+(accepted.remaining?`\n恢复位置：${accepted.remaining}`:'');
         } catch(error) {terminal='blocked';reason='invalid_result';summary=`结果验收失败：${error instanceof Error?error.message:String(error)}`;}
       }
+      if(result?.settlementReason&&!cause&&!externallyStopped&&!alreadyCommitted){
+        terminal='blocked';reason=result.settlementReason;acceptedResult=false;
+      }
       if(!cause&&!externallyStopped&&(await db.query("SELECT 1 FROM worker_operations WHERE intent_id=$1 AND status IN ('running','uncertain') LIMIT 1",[intent.id])).rowCount){
         terminal='blocked';reason='operation_uncertain';acceptedResult=false;
         summary='工具执行结果尚未核对，当前意图未确认完成；已保存的事实仍然保留。';

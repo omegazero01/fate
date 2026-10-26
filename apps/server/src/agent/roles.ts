@@ -12,7 +12,7 @@ export { applyToolBindings, disabledBuiltinTools } from './tool-bindings.js';
 import { CONTEXT_LAYOUT_VERSION } from './prompt-context.js';
 import {plannerSessionFile,validatePlannerSession,lockPlannerSession,selectPlannerDelivery,plannerCurrentState,plannerInvalidations,PLANNER_READING_RULES,PLANNER_COMPACTION_RULES} from './planner-memory.js';
 import {createTrackedRunner} from '../engine/runtime-config.js';
-import {normalizeContract} from './intent-contract.js';
+import {normalizeContract,basisVersion} from './intent-contract.js';
 import {workerLaunchContext} from '../tools/context-read.js';
 import {randomUUID} from 'node:crypto';
 import {resolveGraphNode} from '../db/graph_view.js';
@@ -152,6 +152,7 @@ export interface WorkerRunResult {
   aborted: boolean;
   stopReason?: "completed" | "aborted" | "budget";
   budgetReason?: 'turn_limit' | 'duration_limit';
+  settlementReason?: import('../pi/runner.js').GuardSettlementReason;
   failure?: string;
   lastAssistantText: string | undefined;
   usage: RunUsage;
@@ -308,12 +309,14 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
         if (d?.block) return d;
       }
       // 当前意图的依据版本仍须有效。
-      if (GUARD_SKIP_TOOLS.has(g.toolName)) return undefined;
+      if (GUARD_SKIP_TOOLS.has(g.toolName)||WORKER_SETTLEMENT_TOOLS.includes(g.toolName)) return undefined;
       for(const ref of contract.basis){
         try{
           const source=await resolveGraphNode(db,taskID,expID,ref.node_id);
-          if(source.node.content_version!==ref.version)return {block:true,reason:'当前意图依据已变化，停止新探测，写回已有观察并总结未完成原因，交 Planner 重新评估'};
-        }catch{return {block:true,reason:'当前意图依据不再授权，停止访问相关资源并总结阻塞原因，交 Planner 重新评估'};}
+          if(!['fact','finding'].includes(source.node.kind)||!['confirmed','origin'].includes(source.node.state))
+            return {block:true,settle:'basis_unavailable',reason:`当前意图依据 #${ref.node_id} 已撤销或不再有效，停止新探测，写回已有观察并总结阻塞原因，交 Planner 重新评估。本次调用在执行前被拒绝，未启动命令或发送新请求。`};
+          if(basisVersion({version:source.node.content_version??0,report_revision:source.node.report_revision})!==basisVersion(ref))return {block:true,settle:'basis_changed',reason:`当前意图依据 #${ref.node_id} 已变化（v${ref.version} → v${source.node.content_version}），停止新探测，写回已有观察并总结未完成原因，交 Planner 重新评估。本次调用在执行前被拒绝，未启动命令或发送新请求。`};
+        }catch{return {block:true,settle:'basis_unavailable',reason:`当前意图依据 #${ref.node_id} 不再可读，停止访问相关资源并总结阻塞原因，交 Planner 重新评估。本次调用在执行前被拒绝，未启动命令或发送新请求。`};}
       }
     },
     onActivity: (a) => counter.wrapped(a, { intentID: intent.id, worker: workerName }),
@@ -326,7 +329,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
   } catch (error) {
     // Preserve already-metered usage and domain writes on provider/compaction failures.
     return {aborted:input.signal?.aborted===true,stopReason:input.signal?.aborted?'aborted':undefined,
-      lastAssistantText:undefined,failure:error instanceof Error?error.message:String(error),usage:counter.usage()};
+      settlementReason:runner.settlementReason,lastAssistantText:undefined,failure:error instanceof Error?error.message:String(error),usage:counter.usage()};
   } finally { await runner.dispose(); }
 }
 

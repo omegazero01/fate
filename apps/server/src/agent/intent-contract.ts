@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export interface EvidenceRef { node_id: number; version: number; }
+export interface EvidenceRef { node_id: number; version: number; report_revision?: number; }
+/** Reading versions include report prose; execution validity excludes only report-only revisions. */
+export const basisVersion=(ref:{version:number;report_revision?:number})=>ref.version-(ref.report_revision??0);
 export interface WorkIdentity { resource: string; question_key: string; method_class: string; identity: string; }
 export interface IntentContract {
   version: 1;
@@ -38,7 +40,8 @@ export function normalizeContract(value: unknown, summary: string): IntentContra
   if (!Array.isArray(basis) || basis.length > 20) throw new Error('basis 最多 20 个事实引用');
   const refs = basis.map((r: EvidenceRef) => {
     if (!r || !Number.isSafeInteger(r.node_id) || r.node_id <= 0 || !Number.isSafeInteger(r.version) || r.version < 0) throw new Error('basis 需要有效 node_id 和 version');
-    return { node_id: r.node_id, version: r.version };
+    if(r.report_revision!==undefined&&(!Number.isSafeInteger(r.report_revision)||r.report_revision<0))throw new Error('report_revision 无效');
+    return { node_id: r.node_id, version: r.version,...(r.report_revision!==undefined?{report_revision:r.report_revision}:{}) };
   });
   let work: WorkIdentity | undefined;
   if (c.work !== undefined) {

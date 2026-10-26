@@ -206,6 +206,9 @@ ALTER TABLE exploration_nodes ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
 -- digest body (summary/state/confidence); cold_since_round stamps the planner round
 -- a node most recently went from "has a live downstream branch" to none (NULL = hot).
 ALTER TABLE exploration_nodes ADD COLUMN IF NOT EXISTS content_version  INT    NOT NULL DEFAULT 0;
+-- Report-only revisions invalidate paged reads, but not the underlying execution basis.
+-- Existing revisions are retained; no historical version or running contract is rewritten.
+ALTER TABLE exploration_nodes ADD COLUMN IF NOT EXISTS report_revision INT NOT NULL DEFAULT 0;
 ALTER TABLE exploration_nodes ADD COLUMN IF NOT EXISTS cold_since_round BIGINT;
 -- ck_node_kind: existing installs predate the 'digest' kind — recreate to allow it.
 DO $$
@@ -1699,7 +1702,11 @@ CREATE TRIGGER context_assets_event AFTER INSERT OR DELETE ON task_asset_links F
 
 CREATE OR REPLACE FUNCTION version_finding_context() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
- UPDATE exploration_nodes SET content_version=content_version+1 WHERE id=NEW.node_id;
+ UPDATE exploration_nodes SET content_version=content_version+1,
+   report_revision=report_revision+CASE WHEN NEW.evidence IS NOT DISTINCT FROM OLD.evidence
+     AND NEW.status IS NOT DISTINCT FROM OLD.status AND NEW.summary IS NOT DISTINCT FROM OLD.summary
+     AND NEW.name IS NOT DISTINCT FROM OLD.name AND NEW.severity IS NOT DISTINCT FROM OLD.severity
+     THEN 1 ELSE 0 END WHERE id=NEW.node_id;
  RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS finding_context_version ON findings;

@@ -51,7 +51,10 @@ export type PiThinkingLevel = Extract<AgentSessionEvent, { type: 'thinking_level
 export interface ToolGuardDecision {
 	block: boolean;
 	reason?: string;
+  /** A durable prerequisite changed: restrict tools and allow only a bounded writeback phase. */
+  settle?: GuardSettlementReason;
 }
+export type GuardSettlementReason = 'basis_changed' | 'basis_unavailable';
 
 /** 一次工具调用的门控上下文 */
 export interface ToolGuardContext {
@@ -78,8 +81,9 @@ export interface WrapupContext {
 }
 export type WrapupBudget = (context: WrapupContext) => WrapupDecision | undefined | Promise<WrapupDecision | undefined>;
 
-type ClosingState = { active: boolean; reason?: WrapupContext['reason'] };
-const CLOSING_RULE = '已进入收尾阶段，停止新探索。bash、外部请求、MCP 等探索工具已停用，不要重试或排查工具环境。仅读取已有证据、整理并提交本角色的最终结果；未完成的条件如实标记，不能继续探测来补齐。';
+type ClosingState = { active: boolean; reason?: WrapupContext['reason'];
+  control?: {reason:GuardSettlementReason;prompt:string;limit:number;announced:boolean} };
+const CLOSING_RULE = '已进入收尾阶段，停止新探索。bash、外部请求、MCP 等探索工具已停用，不要重试或排查工具环境。被宿主拒绝的调用未执行，不能当作目标响应或实测证据。仅读取已有证据、整理并提交本角色的最终结果；未完成的条件如实标记，不能继续探测来补齐。';
 function closingToolError(name: string, text: string | undefined, closing: ClosingState, tools?: readonly string[]) {
   // pi resolves inactive tools before tool_call. Preserve the real failure but
   // explain deliberate host deactivation in both the transcript and activity UI.
@@ -187,6 +191,7 @@ export interface RunResult {
 	lastAssistantText: string | undefined;
 	stopReason?: "completed" | "aborted" | "budget";
 	budgetReason?: "turn_limit" | "duration_limit";
+  settlementReason?: GuardSettlementReason;
 }
 
 /**
@@ -234,6 +239,10 @@ export class AgentRunner {
       remainingRequests: opts.maxTurns ? Math.max(0, opts.maxTurns + (opts.wrapup ? (opts.maxWrapupTurns ?? 1) : 0) - turns - compactionHealth.requests) : undefined,
     });
     const closingPrompt = (prompt: string) => opts.settlementTools ? `${CLOSING_RULE}\n${prompt}` : prompt;
+    const requestLimit=()=>Math.min(
+      opts.maxTurns?opts.maxTurns+(opts.wrapup?(opts.maxWrapupTurns??1):0):Infinity,
+      closing.control?.limit??Infinity,
+    );
     let enterClosing = () => {closing.active=true;};
     if(opts.platform) validatePlatformRunner(opts.platform.role,opts,opts.platform.taskID);
     const diagnosticsExtension: ExtensionFactory = api => {
@@ -252,7 +261,8 @@ export class AgentRunner {
           // This projection does not grow the persisted conversation each turn.
           messages.push({role:'custom',customType:'execution_budget',display:false,timestamp:Date.now(),content:
             '【本次执行预算，以此为准】'+(budget.remainingRequests===undefined?'配置为不限模型请求轮数；时间限制、暂停和授权仍生效。':`已用 ${budget.usedRequests} 次，剩余最多 ${budget.remainingRequests} 次模型请求（含收尾和压缩）；工具失败后的重试也占用轮数。`)+
-            (closing.active ? CLOSING_RULE : '当前仍在执行阶段；完成本意图即可提交，不必用满预算。')});
+            (closing.active ? CLOSING_RULE : '当前仍在执行阶段；完成本意图即可提交，不必用满预算。')+
+            (closing.control?`\n【宿主收尾，以此为准】${closing.control.prompt}；剩余最多 ${Math.max(0,requestLimit()-turns-compactionHealth.requests)} 次请求（含压缩）。写回已有观察并总结，不重试探测。`:'' )});
         }
         return {messages};
       });
@@ -303,7 +313,15 @@ export class AgentRunner {
 							toolName: event.toolName,
 							args: event.input as Record<string, unknown>,
 						});
-						if (decision?.block) return { block: true, reason: decision.reason ?? 'blocked by server guard', terminate: false };
+						if (decision?.block) {
+              if(decision.settle&&!closing.control){
+                closing.control={reason:decision.settle,prompt:decision.reason??'意图依据不可用，停止新探测并保存已有观察',
+                  limit:turns+compactionHealth.requests+1+Math.max(1,opts.maxWrapupTurns??2),announced:false};
+                enterClosing();
+                opts.onActivity?.({kind:'host_status',phase:'closing',text:`宿主已切换为收尾：${closing.control.prompt}；仅保留读取与写回，最多 ${Math.max(1,opts.maxWrapupTurns??2)} 次收尾请求。`});
+              }
+              return { block: true, reason: decision.reason ?? 'blocked by server guard', terminate: false };
+            }
             return undefined;
 					});
 				}
@@ -312,7 +330,7 @@ export class AgentRunner {
 		const wrapupExtension: ExtensionFactory | undefined = opts.wrapup
 			? (pi) => {
 					pi.on('agent_before_settle', async (event): Promise<AgentBeforeSettleEventResult | undefined> => {
-						if (event.outcome !== 'completed' || (opts.maxTurns && turns >= opts.maxTurns)) return undefined;
+						if (closing.control || event.outcome !== 'completed' || (opts.maxTurns && turns >= opts.maxTurns)) return undefined;
 						const maxTurns = opts.maxWrapupTurns ?? 1;
 						if (this_wrapupUsed(opts) >= maxTurns) return undefined;
 						const decision = await opts.wrapup?.(wrapupContext('settled'));
@@ -339,14 +357,27 @@ export class AgentRunner {
 		const budgetExtension: ExtensionFactory = (pi) => {
       enterClosing=()=>{closing.active=true;if(opts.settlementTools)pi.setActiveTools(pi.getActiveTools().filter(name=>opts.settlementTools!.includes(name)));};
       pi.on('turn_start',(_event,context)=>{
-        const limit=opts.maxTurns?opts.maxTurns+(opts.wrapup?(opts.maxWrapupTurns??1):0):Infinity;
-        if(turns+compactionHealth.requests>=limit){closing.reason='turn_limit';context.abort();}
+        if(turns+compactionHealth.requests>=requestLimit()){
+          if(!closing.control)closing.reason='turn_limit';context.abort();
+        }
       });
 			pi.on('turn_end', async (_event, context) => {
 				turns++;
         if(opts.stopOnRecoveryBlock?.()){context.abort();return;}
         if(await opts.stopWhen?.()){domainCompletion.done=true;context.abort();return;}
         if(closing.active)enterClosing();
+        if(closing.control){
+          if(turns+compactionHealth.requests>=requestLimit()){
+            if(_event.message.role==='assistant'&&_event.message.content.some(b=>b.type==='toolCall'))context.abort();
+            return;
+          }
+          if(!closing.control.announced){
+            closing.control.announced=true;
+            return {continue:true,entries:[{type:'custom_message' as const,customType:'server_prerequisite_changed',
+              content:closingPrompt(closing.control.prompt),display:true}]};
+          }
+          return;
+        }
 				if (!opts.maxTurns) return;
         // A natural final response needs no extra budget-closing model turn.
         if (_event.message.role === 'assistant' && !_event.message.content.some(block => block.type === 'toolCall')) return;
@@ -372,7 +403,7 @@ export class AgentRunner {
 
 
 		const compactionHealth:CompactionHealth={requests:0,completed:0,failed:0};
-    const compactionExtension=opts.platform?domainCompactionExtension(opts,compactionHealth,()=>opts.maxTurns?opts.maxTurns+(opts.wrapup?(opts.maxWrapupTurns??1):0)-turns-compactionHealth.requests:Infinity):undefined;
+    const compactionExtension=opts.platform?domainCompactionExtension(opts,compactionHealth,()=>requestLimit()-turns-compactionHealth.requests):undefined;
 		const loader = new DefaultResourceLoader({
 			cwd: opts.cwd,
 			agentDir: opts.agentDir,
@@ -510,8 +541,8 @@ export class AgentRunner {
 				this.opts.onActivity?.({ kind: 'queue_update', steering: event.steering, followUp: event.followUp });
 				break;
 			case 'agent_settled':
-				this.opts.onActivity?.({ kind: 'settled', aborted: this.domainCompletion.done?false:event.aborted, stopReason:this.domainCompletion.done?'completed':this.budgetExceeded||this.closing.reason==='turn_limit'||this.closing.reason==='duration_limit'?'budget':event.aborted?'aborted':'completed' });
-				this.settled({ aborted: this.domainCompletion.done?false:event.aborted, lastAssistantText: this.session.getLastAssistantText(), stopReason: this.domainCompletion.done?"completed":this.budgetExceeded || this.closing.reason==='turn_limit' || this.closing.reason==='duration_limit' ? "budget" : event.aborted ? "aborted" : "completed", budgetReason:this.domainCompletion.done?undefined:this.budgetReason??(this.closing.reason==='settled'?undefined:this.closing.reason) });
+				this.opts.onActivity?.({ kind: 'settled', aborted: this.domainCompletion.done?false:event.aborted, stopReason:this.domainCompletion.done?'completed':this.closing.control?.reason??(this.budgetExceeded||this.closing.reason==='turn_limit'||this.closing.reason==='duration_limit'?'budget':event.aborted?'aborted':'completed') });
+				this.settled({ aborted: this.domainCompletion.done?false:event.aborted, lastAssistantText: this.session.getLastAssistantText(), stopReason: this.domainCompletion.done?"completed":this.budgetExceeded || this.closing.reason==='turn_limit' || this.closing.reason==='duration_limit' ? "budget" : event.aborted ? "aborted" : "completed", budgetReason:this.domainCompletion.done?undefined:this.budgetReason??(this.closing.reason==='settled'?undefined:this.closing.reason),settlementReason:this.domainCompletion.done?undefined:this.closing.control?.reason });
 				this.resetSettled();
 				break;
 			default:
@@ -628,6 +659,7 @@ export class AgentRunner {
   get compactionDiagnostics(){const {requests,completed,failed}=this.compactionHealth;return {requests,completed,failed};}
 
   get activeToolNames(){return this.session.getActiveToolNames();}
+  get settlementReason(){return this.closing.control?.reason;}
 
   get promptDiagnostics() {
     const names = new Set(this.session.getActiveToolNames());

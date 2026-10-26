@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fork} from 'node:child_process';
 import {fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
-import {ModelRuntime,defineTool} from '@earendil-works/pi-coding-agent';
+import {ModelRuntime,defineTool,createBashToolDefinition} from '@earendil-works/pi-coding-agent';
 import {openDatabase,type Database} from './index.js';
 import {WorkerOperationJournal,readOperations,resolveOperation,operationFingerprint} from './operation-journal.js';
 import {runContext} from '../tools/context.js';
@@ -44,6 +44,46 @@ it('reuses returned results across executions, but allows live repeated observat
   expect((await next.begin('http_request','c',{url:'LOCAL'})).replay).toEqual(output);
   await expect(next.begin('http_request','c',{url:'OTHER'})).rejects.toThrow('参数已变化');
   await expect(x.journal.begin('http_request','old',{url:'OTHER'})).rejects.toThrow('代次');
+});
+it('preserves NUL, lone surrogates, literal escapes and Unicode in receipts and recovery without replay',async()=>{
+  const x=await fixture();
+  const result={content:[{type:'text',text:'PK\x03\x04\x00 中文 😀 lone:\ud800 low:\udfff literal:\\u0000'}],details:{'key\x00':'value\x00'}};
+  const a=await x.journal.begin('bash','binary',{command:'LOCAL binary'});
+  await x.journal.finish(a.id,result,false);
+  expect((await x.journal.begin('bash','binary',{command:'LOCAL binary'})).replay).toEqual(result);
+  expect((await readOperations(x.ctx,{id:a.id})).items[0]).toMatchObject({status:'returned',result,is_error:false});
+  const next=new WorkerOperationJournal(x.ctx);await next.start();
+  const alias=await next.begin('bash','recovered',{command:'LOCAL binary'});
+  expect(alias.replay).toEqual(result);
+  expect((await next.begin('bash','recovered',{command:'LOCAL binary'})).replay).toEqual(result);
+  expect((await readOperations(x.ctx,{id:alias.id})).items[0]).toMatchObject({status:'returned',replayed:true,result});
+  const recalled=await contextGetTool(x.ctx).execute('read',{items:[{ref:`operation:${alias.id}`,view:'output',field:'/result/content/0/text'}]},undefined,undefined,{} as never);
+  expect(JSON.stringify(recalled)).toContain('\\u0000');
+  expect(JSON.stringify(recalled)).not.toContain('fate.operation-result.json-string.v1');
+  expect(next.recoveryBlocked).toBe(false);
+});
+it('journals actual native bash binary output and resumes without rerunning the command',async()=>{
+  const x=await fixture(),file=path.join(dir,`binary-${x.id}`);
+  const command=`printf 'once\\n' >> '${file}'; printf 'PK\\003\\004\\000LOCAL-binary\\n'`;
+  const native=createBashToolDefinition(dir,{exposeSessionEnvironment:false});
+  let effects=0;
+  const tool={...native,execute:async(...args:Parameters<typeof native.execute>)=>{effects++;return native.execute(...args);}};
+  const f=fauxProvider(),runtime=await ModelRuntime.create({refreshOnCreate:false});await runtime.registerNativeProvider(f.provider);
+  for(let attempt=0;attempt<2;attempt++){
+    const journal=attempt?new WorkerOperationJournal(x.ctx):x.journal;if(attempt)await journal.start();
+    f.setResponses([fauxAssistantMessage([fauxToolCall('bash',{command})]),context=>{
+      expect(JSON.stringify(context.messages)).toContain('\\u0000');
+      expect(JSON.stringify(context.messages)).toContain('LOCAL-binary');
+      return fauxAssistantMessage('LOCAL result available; writeback can continue');
+    }]);
+    const runner=await AgentRunner.create({cwd:dir,agentDir:path.join(dir,'agent'),inMemory:true,systemPrompt:'LOCAL synthetic worker',
+      modelRuntime:runtime,model:f.getModel() as never,toolAllowlist:['bash'],customTools:[tool],
+      wrapExecutionTool:journalTools(journal,x.ctx,new Set(['bash'])),stopOnRecoveryBlock:()=>journal.recoveryBlocked});
+    try{expect((await runner.prompt('LOCAL binary result')).aborted).toBe(false);}finally{await runner.dispose();}
+    expect(journal.recoveryBlocked).toBe(false);
+  }
+  expect(effects).toBe(1);expect(readFileSync(file,'utf8')).toBe('once\n');
+  expect((await readOperations(x.ctx)).items.every(r=>r.status==='returned')).toBe(true);
 });
 it('blocks all new external operations after an unconfirmed effect, while graph reads remain available',async()=>{
   const x=await fixture();await x.journal.begin('bash','a',{command:'LOCAL effect'});

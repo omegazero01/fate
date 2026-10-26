@@ -3,7 +3,7 @@ import pg from 'pg';
 import {mkdtempSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
+import {fauxProvider,fauxAssistantMessage,fauxToolCall,getCurrentTools} from '@earendil-works/pi-ai';
 import {ModelRuntime} from '@earendil-works/pi-coding-agent';
 import {openDatabase,type Database} from '../db/index.js';
 import {Engine,defaultEngineConfig,type AbortCause} from './engine.js';
@@ -51,6 +51,37 @@ it('gives PI and Bash the same absolute working directory when dataDir is relati
   const results=(await db.query("SELECT detail,is_error FROM activity WHERE node_id=$1 AND kind='tool_result' AND tool='bash'",[f.id])).rows;
   expect(results).toHaveLength(1);expect(results[0]!.is_error).toBe(false);expect(results[0]!.detail).toContain(cwd);
   expect((await f.s.listByKind('fact')).filter(n=>n.state==='confirmed')).toHaveLength(0);await f.e.stop(f.task.id);
+});
+
+it.each(['summary','revoked'])('closes a Worker on %s basis changes, saves observations and bounds native retries even with unlimited turns',async change=>{
+  const f=await fixture(0),sentinel=path.join(dir,`stale-basis-${f.id}`);
+  const basis=await f.s.addNode('fact',{summary:'LOCAL original basis'},0,'confirmed','fixture',[]);
+  await db.query("UPDATE exploration_nodes SET payload=payload||jsonb_build_object('contract',$2::jsonb) WHERE id=$1",[f.id,JSON.stringify({version:1,objective:'LOCAL mandate',acceptance:['LOCAL result'],basis:[{node_id:basis,version:0}],out_of_scope:[]})]);
+  const probe=()=>fauxAssistantMessage([fauxToolCall('bash',{command:`touch '${sentinel}'`})]);
+  f.faux.setResponses([
+    async()=>{
+      if(change==='summary')await db.query("UPDATE exploration_nodes SET payload=payload||'{\"summary\":\"LOCAL corrected basis\"}'::jsonb WHERE id=$1",[basis]);
+      else await db.query("UPDATE exploration_nodes SET state='dismissed' WHERE id=$1",[basis]);
+      return probe();
+    },
+    context=>{
+      const tools=getCurrentTools(context.messages);
+      expect(tools.some(t=>t.name==='bash'||t.name==='http_request')).toBe(false);
+      expect(tools.some(t=>t.name==='record_fact')).toBe(true);
+      return fauxAssistantMessage([fauxToolCall('record_fact',{summary:'LOCAL saved before replanning',evidence:'LOCAL known observation, no external request',confidence:'high'}),fauxToolCall('bash',{command:`touch '${sentinel}'`})]);
+    },
+    probe(),
+    ()=>{throw new Error('Worker must not request a third settlement response');},
+  ]);
+  await f.e.run(f.task.id);await until(async()=>!!(await f.s.getNode(f.id))?.payload.execution_stop);
+  const node=(await f.s.getNode(f.id))!;
+  expect(node.state).toBe('blocked');
+  expect(node.payload.execution_stop,JSON.stringify(node.payload.execution_stop)).toMatchObject({reason:change==='summary'?'basis_changed':'basis_unavailable',accepted_result:false});
+  expect((await f.s.listByKind('fact')).some(n=>n.payload.from_intent===f.id&&n.payload.summary==='LOCAL saved before replanning')).toBe(true);
+  expect(existsSync(sentinel)).toBe(false);expect(f.faux.state.callCount).toBe(3);
+  expect((await db.query('SELECT 1 FROM worker_operations WHERE intent_id=$1',[f.id])).rowCount).toBe(0);
+  expect((await db.query("SELECT count(*) FROM activity WHERE node_id=$1 AND kind='status' AND summary LIKE '%收尾%'",[f.id])).rows[0]?.count).toBe('1');
+  await f.e.stop(f.task.id);
 });
 
 it('delivers native PI steering while preserving incremental writes and final summary',async()=>{

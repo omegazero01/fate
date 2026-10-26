@@ -75,6 +75,7 @@ export function jsonbClean(b: string): string {
 
 export interface Node {
   content_version?: number;
+  report_revision?: number;
   id: number;
   kind: string;
   payload: Record<string, unknown>;
@@ -129,7 +130,7 @@ const INTENT_DISPATCH_PREDICATE =
   `(SELECT 1 FROM tasks dispatch_task WHERE dispatch_task.exploration_id=exploration_nodes.exploration_id ` +
   `AND dispatch_task.deleted_at IS NULL AND dispatch_task.execution_mode='manual'))`;
 
-const NODE_COLS = `id, kind, payload, priority, state, COALESCE(origin,'') AS origin, COALESCE(owner,'') AS owner, COALESCE(blocked_reason,'') AS blocked_reason, created_at, content_version`;
+const NODE_COLS = `id, kind, payload, priority, state, COALESCE(origin,'') AS origin, COALESCE(owner,'') AS owner, COALESCE(blocked_reason,'') AS blocked_reason, created_at, content_version, report_revision`;
 
 // ─── 队列事务（worker_queue.go beginQueue：探索级 advisory xact lock）────────
 
@@ -202,6 +203,7 @@ export class ExplorationStore {
     return {
       id: Number(row["id"]),
       content_version: Number(row['content_version']??0),
+      ...(Number(row.report_revision)>0?{report_revision:Number(row.report_revision)}:{}),
       kind: String(row["kind"]),
       payload: (row["payload"] as Record<string, unknown>) ?? {},
       priority: Number(row["priority"] ?? 0),
@@ -318,12 +320,15 @@ export class ExplorationStore {
         if (modeRes.rows[0]?.mode === EXECUTION_MANUAL) throw new PlannerManualModeError();
       }
       for(const ref of contract.basis){
-        const basis=await tx.query<{kind:string;state:string;content_version:number}>(`SELECT n.kind,n.state,n.content_version FROM exploration_nodes n WHERE n.id=$2
+        const basis=await tx.query<{kind:string;state:string;content_version:number;report_revision:number}>(`SELECT n.kind,n.state,n.content_version,n.report_revision FROM exploration_nodes n WHERE n.id=$2
           AND (n.exploration_id=$1 OR n.exploration_id IN (SELECT src.exploration_id FROM tasks current JOIN task_relations r ON r.task_id=current.id JOIN tasks src ON src.id=r.source_task_id WHERE current.exploration_id=$1 AND src.deleted_at IS NULL))
           AND exploration_node_readable(n.exploration_id,n.id)`,[this.expID,ref.node_id]);
         const source=basis.rows[0];
         if(source&&!['fact','finding'].includes(source.kind))throw new Error(`依据 #${ref.node_id} 是 ${source.kind}，不能作为派单证据；basis 仅接受 fact/finding，目标用于 prove_goal。初始派单可省略 basis，由宿主连接任务根事实。`);
         if(!source||Number(source.content_version)!==ref.version||!['confirmed','origin'].includes(source.state))throw new Error(`依据 #${ref.node_id} 已变化或不再授权，请刷新上下文后重新规划`);
+        // Host-issued snapshot only. Caller-supplied counters cannot waive a stale read.
+        if(Number(source.report_revision)>0)ref.report_revision=Number(source.report_revision);
+        else delete ref.report_revision;
       }
       const rows = await tx.query<{ id: string; state:string; payload: Record<string, unknown>; anchors: string }>(
         `SELECT n.id, n.state, n.payload,
@@ -358,8 +363,8 @@ export class ExplorationStore {
             const reason=payload.retry_reason;
             if(typeof reason!=='string'||!reason.trim())throw new Error('重试必须说明原因');
             if(payload.retry_kind==='transient_failure' && ['blocked','exhausted','stopped'].includes(row.state))break;
-            const oldBasis=(existing.contract as {basis?:{node_id:number;version:number}[]}|undefined)?.basis??[];
-            if(payload.retry_kind==='new_evidence' && contract.basis.some(ref=>!oldBasis.some(old=>old.node_id===ref.node_id&&old.version===ref.version)))break;
+            const oldBasis=(existing.contract as {basis?:{node_id:number;version:number;report_revision?:number}[]}|undefined)?.basis??[];
+            if(payload.retry_kind==='new_evidence' && contract.basis.some(ref=>!oldBasis.some(old=>old.node_id===ref.node_id&&old.version-(old.report_revision??0)===ref.version-(ref.report_revision??0))))break;
             throw new Error('重试需可恢复故障或新的有效事实依据');
           }
           await tx.commit();
@@ -697,7 +702,7 @@ export class ExplorationStore {
           // A resumed attempt continues its original session against current
           // evidence. Version changes do not strand it, but deleted/revoked or
           // no-longer-confirmed evidence still requires fresh planning.
-          if(!(await tx.query("SELECT 1 FROM exploration_nodes n WHERE n.id=$1 AND ($4::boolean OR n.content_version=$2) AND n.kind IN ('fact','finding') AND n.state IN ('confirmed','origin') AND exploration_node_readable(n.exploration_id,n.id) AND (n.exploration_id=$3 OR n.exploration_id IN (SELECT src.exploration_id FROM tasks current JOIN task_relations r ON r.task_id=current.id JOIN tasks src ON src.id=r.source_task_id WHERE current.exploration_id=$3 AND src.deleted_at IS NULL))",[ref.node_id,ref.version,this.expID,n.payload.resume_requested===true])).rowCount){stale=true;break;}
+          if(!(await tx.query("SELECT 1 FROM exploration_nodes n WHERE n.id=$1 AND ($4::boolean OR n.content_version-n.report_revision=$2-$5::int) AND n.kind IN ('fact','finding') AND n.state IN ('confirmed','origin') AND exploration_node_readable(n.exploration_id,n.id) AND (n.exploration_id=$3 OR n.exploration_id IN (SELECT src.exploration_id FROM tasks current JOIN task_relations r ON r.task_id=current.id JOIN tasks src ON src.id=r.source_task_id WHERE current.exploration_id=$3 AND src.deleted_at IS NULL))",[ref.node_id,ref.version,this.expID,n.payload.resume_requested===true,ref.report_revision??0])).rowCount){stale=true;break;}
         }
         if(stale){await tx.query("UPDATE exploration_nodes SET payload=payload||'{\"needs_replanning\":true}'::jsonb WHERE id=$1",[n.id]);continue;}
         if(q.executionMode!==EXECUTION_MANUAL&&n.origin==='planner'&&n.payload.resume_requested!==true&&n.payload.dispatch_source!=='mainagent'){
