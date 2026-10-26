@@ -1,3 +1,4 @@
+import {CANONICAL_USAGE_CTE,aggregateUsage} from '../db/usage-ledger.js';
 import type {Database} from '../db/index.js';
 import {activityDTO,type StreamScope} from './live-stream.js';
 
@@ -26,7 +27,9 @@ export function projectTurn(rows:Row[],attempts:Row[],runtime?:Row) {
  const models=attempts.length?attempts.map(a=>a.model):responseRows.map(r=>r.metadata.response).filter(r=>r.provider!=='series-router').map(r=>r.model);
  const modelSequence=models.filter((m,i)=>m&&m!==models[i-1]);
  const nativeUsage=responseRows.map(r=>r.metadata.response.usage).filter(Boolean);
- const usageRows=attempts.length?attempts.map(a=>a.usage??{}):nativeUsage;
+ const covered=new Set(attempts.map(a=>a.runtime_id).filter(Boolean));
+ const fallback=attempts.some(a=>a.runtime_id)?rows.filter(r=>r.metadata?.response&&r.metadata.stream_id&&!covered.has(rows.findLast(x=>x.id<=r.id&&x.metadata?.event_type==='turn_start')?.metadata.runtime_id)):[];
+ const usageRows=attempts.length?[...attempts.map(a=>a.usage??{}),...fallback.map(r=>r.metadata.response.usage).filter(Boolean)]:nativeUsage;
  const usageKnown=usageRows.length>0&&usageRows.some(u=>Object.keys(u).some(k=>['input','output','cacheRead','cacheWrite'].includes(k)));
  const sum=(kind:string)=>usageRows.reduce((n,u)=>n+(Number(u[kind])||0),0);
  const auditKnown=attempts.length>0;
@@ -37,12 +40,12 @@ export function projectTurn(rows:Row[],attempts:Row[],runtime?:Row) {
   status,started_at:startedAt,finished_at:iso(terminal?.created_at??(expired?runtime?.finished_at??runtime?.expires_at:null)),
   queue_ms:startedAt&&requested?Math.max(0,Date.parse(startedAt)-new Date(requested.created_at).getTime()):null,
   mode:start?.metadata.mode??null,steps:start?responseRows.length:null,tool_calls:start?tools.size:null,failed_tool_calls:start?errors.size:null,
-  models:modelSequence,usage:usageKnown?{input:sum('input'),output:sum('output'),cache_read:sum('cacheRead'),cache_write:sum('cacheWrite'),
-   total:usageRows.reduce((n,u)=>n+tokenTotal(u),0),incomplete:attempts.some(a=>a.status==='running'||a.usage?.unavailable||!Object.keys(a.usage??{}).length||['failed','aborted'].includes(a.status)&&tokenTotal(a.usage)===0),
+  models:modelSequence,usage:usageKnown?{input:sum('input')+sum('cacheRead')+sum('cacheWrite'),uncached_input:sum('input'),output:sum('output'),cache_read:sum('cacheRead'),cache_write:sum('cacheWrite'),
+   total:usageRows.reduce((n,u)=>n+tokenTotal(u),0),incomplete:attempts.some(a=>a.status==='running'||a.quality&&!['complete','not_sent'].includes(a.quality)||a.usage?.unavailable||!Object.keys(a.usage??{}).length||['failed','aborted'].includes(String(a.status))&&tokenTotal(a.usage)===0),
    source:auditKnown?'provider_audit':'native_response',compaction_requests:auditKnown?attempts.filter(a=>a.purpose==='compaction').length:null,
    compaction_tokens:auditKnown?attempts.filter(a=>a.purpose==='compaction').reduce((n,a)=>n+tokenTotal(a.usage),0):null,
-   failed_requests:auditKnown?attempts.filter(a=>['failed','aborted'].includes(a.status)).length:null,
-   failed_request_tokens:auditKnown?attempts.filter(a=>['failed','aborted'].includes(a.status)).reduce((n,a)=>n+tokenTotal(a.usage),0):null}:null,
+   failed_requests:auditKnown?attempts.filter(a=>['failed','aborted'].includes(String(a.status))).length:null,
+   failed_request_tokens:auditKnown?attempts.filter(a=>['failed','aborted'].includes(String(a.status))).reduce((n,a)=>n+tokenTotal(a.usage),0):null}:null,
   final_activity:final?activityDTO(final):null,
   writebacks:first.node_id&&(start?.metadata.role==='worker'||String(first.worker).startsWith('work#'))
     ?{version:1,intent_id:String(first.node_id),available:!!terminal||status==='interrupted'}:undefined,
@@ -58,13 +61,22 @@ export async function readTurnSummaries(db:Database,scope:StreamScope,id:number,
   ${scope==='task'?'AND exploration_activity_readable($1,node_id,metadata)':''} ORDER BY id`,[id,ids])).rows;
  const runtimeIDs=rows.filter(r=>r.metadata?.event_type==='turn_start').map(r=>r.metadata.runtime_id).filter(Boolean);
  const runtimes=runtimeIDs.length?(await db.query("SELECT id,role,finished_at,expires_at,effective->>'stop_reason' AS stop_reason FROM runtime_role_configs WHERE id=ANY($1::text[])",[runtimeIDs])).rows:[];
- const attempts=runtimeIDs.length?(await db.query('SELECT runtime_id,model,purpose,status,usage,finished_at FROM llm_request_attempts WHERE runtime_id=ANY($1::text[]) ORDER BY id',[runtimeIDs])).rows:[];
+ const attempts=runtimeIDs.length?(await db.query(`WITH ${CANONICAL_USAGE_CTE} SELECT * FROM canonical WHERE runtime_id=ANY($1::text[]) ORDER BY created_at,request_id`,[runtimeIDs])).rows:[];
  const groups=new Map<string,Row[]>();
  for(const row of rows){const key=String(row.metadata.turn_id);const group=groups.get(key)??[];group.push(row);groups.set(key,group);}
- return [...groups.values()].map(group=>{
-  // A recovered conversation keeps its request/turn identity but gets a new
-  // fenced runtime. Include every attempt, use only the latest runtime's liveness.
-  const runtimeIDs=group.filter(r=>r.metadata?.event_type==='turn_start').map(r=>r.metadata.runtime_id);
-  return projectTurn(group,attempts.filter(a=>runtimeIDs.includes(a.runtime_id)),runtimes.find(r=>r.id===runtimeIDs.at(-1)));
- });
+ return Promise.all([...groups.values()].map(async group=>{
+  const groupRuntimes=group.filter(r=>r.metadata?.event_type==='turn_start').map(r=>r.metadata.runtime_id);
+  const turnID=String(group[0]!.metadata.turn_id);
+  const projection=projectTurn(group,attempts.filter(a=>groupRuntimes.includes(a.runtime_id)),runtimes.find(r=>r.id===groupRuntimes.at(-1)));
+  const taskID=scope==='task'?Number((await db.query('SELECT id FROM tasks WHERE exploration_id=$1',[id])).rows[0]?.id):undefined;
+  const [usage]=await aggregateUsage(db,{taskID,conversationID:scope==='conversation'?id:undefined,turnID});
+  if(usage&&Number(usage.calls)+Number(usage.legacy_records)>0){
+   const turnAttempts=attempts.filter(a=>groupRuntimes.includes(a.runtime_id));
+   const total=(a:Row)=>tokenTotal(a.usage??{});
+   projection.usage={input:usage.input_tokens,uncached_input:usage.uncached_input_tokens,output:usage.output_tokens,cache_read:usage.cache_read_tokens,cache_write:usage.cache_write_tokens,
+    total:usage.input_tokens+usage.output_tokens,incomplete:!usage.usage_complete,source:'usage_ledger',compaction_requests:usage.compaction_calls,
+    compaction_tokens:turnAttempts.filter(a=>a.purpose==='compaction').reduce((n,a)=>n+total(a),0),failed_requests:usage.failed_calls,failed_request_tokens:turnAttempts.filter(a=>['failed','aborted'].includes(String(a.status))).reduce((n,a)=>n+total(a),0)};
+  }
+  return projection;
+ }));
 }

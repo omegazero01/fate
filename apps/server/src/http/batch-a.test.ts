@@ -448,8 +448,8 @@ describe.skipIf(!haveDB)("批次A：活动与 token 数据面", () => {
     expect(body.workers.map((w) => w.worker).sort()).toEqual(["mainagent", "planner", "work#1"]);
     const main = body.workers.find((w) => w.worker === "mainagent")!;
     expect(main).toMatchObject({ input_tokens: 100, output_tokens: 10, cache_read_tokens: 1, cache_write_tokens: 2 });
-    expect(body.sessions.map((s) => s.session).sort()).toEqual(["intent:" + String(intentID), "main", "plan"]);
-    expect(body.total).toEqual({ input_tokens: 600, output_tokens: 60, cache_read_tokens: 6, cache_write_tokens: 12 });
+    expect(body.sessions.map((s) => s.session).sort()).toEqual(["intent:" + String(intentID), "main:0", "plan"]);
+    expect(body.total).toMatchObject({ input_tokens: 600, output_tokens: 60, cache_read_tokens: 6, cache_write_tokens: 12,usage_complete:false,calls_complete:false });
   });
 });
 

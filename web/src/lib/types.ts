@@ -818,7 +818,7 @@ export interface DailyTokenBucket {
 }
 
 // Per-worker token usage (GET /api/exploration/tokens).
-export interface TokenUsage {
+export interface TokenUsage extends UsageQuality {
   worker: string;
   input_tokens: number;
   output_tokens: number;
@@ -826,7 +826,7 @@ export interface TokenUsage {
   cache_write_tokens: number;
 }
 
-export interface SessionTokenUsage {
+export interface SessionTokenUsage extends UsageQuality {
   session: string;
   input_tokens: number;
   output_tokens: number;
@@ -850,7 +850,10 @@ export interface BatchCategoryItem {
 }
 
 // Whole-task (all agents) token aggregate.
-export interface TokenTotal {
+export interface UsageQuality {
+  time_unknown_records?:number; tasks?:number; history_gap_requests?:number; version?:string; input_semantics?:"inclusive_cache"|"unknown"; usage_complete?:boolean; input_complete?:boolean; calls_complete?:boolean; unknown_usage_calls?:number; uncached_input_tokens?:number; calls?:number|null;
+}
+export interface TokenTotal extends UsageQuality {
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -858,7 +861,8 @@ export interface TokenTotal {
 }
 
 // Global per-profile token spend from the llm_usage ledger (GET /api/tokens/usage).
-export interface ProfileUsage {
+export interface ProfileUsage extends UsageQuality {
+  profile_id:number|null;
   profile_name: string;
   calls: number;
   tasks: number;
@@ -868,8 +872,10 @@ export interface ProfileUsage {
   cache_write_tokens: number;
 }
 
-// One (profile, UTC day) token bucket for the dashboard's daily chart (new source).
-export interface ProfileDayUsage {
+// One (profile, Asia/Shanghai day) token bucket for the dashboard's daily chart (new source).
+export interface ProfileDayUsage extends UsageQuality {
+  profile_id:number|null;
+  cache_write_tokens:number;
   profile_name: string;
   date: string; // YYYY-MM-DD
   input_tokens: number;
@@ -879,16 +885,17 @@ export interface ProfileDayUsage {
 
 // Response of GET /api/tokens/usage — the dashboard's "new" (llm_usage) token view.
 export interface UsageStats {
+  version?:string; timezone?:string; total:TokenTotal;
   by_profile: ProfileUsage[];
   daily: ProfileDayUsage[];
 }
 
 // Per-model token usage for one task (GET /api/llm/records/by-model), from the
 // always-on llm_usage metering ledger. calls = number of LLM calls on this model.
-export interface ModelTokenStat {
+export interface ModelTokenStat extends UsageQuality {
   model: string;
   calls: number | null;
-  source?: "request_audit" | "legacy_results";
+  source?: "request_audit" | "legacy_results" | "usage_ledger";
   input_semantics?: "inclusive_cache" | "unknown";
   uncached_input_tokens?: number;
   compaction_calls?: number;

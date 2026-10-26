@@ -164,7 +164,7 @@ export class ConversationService {
    if(attachment.images.length&&!model.model.input.includes('image'))throw new Error('模型未启用图片输入');
    const prompt=await systemRolePrompt(this.db,role);
    const taskContext=task?`\n\n【当前绑定任务】\n任务 #${taskID}：${task.description}\n用户目标：${task.goal}`:'';
-   runner=await createTrackedRunner(this.db,taskID,role,{...model,...resources,cwd,agentDir:path.join(this.dataDir,'pi-agent'),resumeSessionPath:path.join(cwd,'session.jsonl'),signal:controller.signal,
+   runner=await createTrackedRunner(this.db,taskID,role,{turnID,...model,...resources,cwd,agentDir:path.join(this.dataDir,'pi-agent'),resumeSessionPath:path.join(cwd,'session.jsonl'),signal:controller.signal,
     stopWhen:role==='reporter'?async()=>reportSaved&&pendingReports.size===0:undefined,
     loadDomainState:async()=>({conversation_id:id,...(role==='reporter'?{pending_report_ids:[...pendingReports],read_tool:'get_finding',save_tool:'update_finding_report'}:{})}),
     ...agentBudgets(config,{maxTurns:30,maxDurationMs:1200_000}),maxWrapupTurns:config.wrapupMaxTurns||2,

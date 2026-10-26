@@ -1,0 +1,8 @@
+ ✓ migration-regression.test.ts (45 tests) 29486ms
+ ✓ src/engine/blackboard.test.ts (26 tests) 15211ms
+ ✓ src/engine/artex-flow.test.ts (17 tests) 11274ms
+ ✓ src/http/overview.test.ts (6 tests) 1610ms
+ Test Files  4 passed (4)
+      Tests  94 passed (94)
+   Start at  16:39:08
+   Duration  61.94s (transform 600ms, setup 0ms, collect 3.71s, tests 57.58s, environment 0ms, prepare 153ms)

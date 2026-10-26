@@ -1,0 +1,66 @@
+ ✓ migration-regression.test.ts (45 tests) 34001ms
+ ✓ src/http/batch-c.test.ts (12 tests) 2617ms
+ ✓ src/engine/blackboard.test.ts (26 tests) 15622ms
+ ✓ context-coordination.test.ts (30 tests) 23699ms
+ ✓ src/http/batch-a.test.ts (14 tests | 1 skipped) 5957ms
+ ✓ src/db/assets.test.ts (25 tests) 898ms
+ ✓ src/agent/planner-memory.test.ts (19 tests) 8135ms
+ ✓ src/engine/worker-lifecycle.test.ts (20 tests) 45172ms
+ ✓ src/engine/artex-flow.test.ts (17 tests) 11884ms
+ ✓ src/http/api.test.ts (9 tests) 4730ms
+ ✓ src/db/operation-journal.test.ts (14 tests) 2874ms
+ ✓ src/db/asset-graph.test.ts (13 tests) 3018ms
+ ✓ src/db/tasks.test.ts (13 tests) 785ms
+ ✓ src/http/workspace-ui.test.ts (14 tests) 1883ms
+ ✓ src/tools/context-pages.test.ts (14 tests) 3675ms
+ ❯ src/agent/goals-isolation.test.ts (16 tests | 1 failed) 4789ms
+ ✓ src/pi/usage-meter.test.ts (11 tests) 3579ms
+ ✓ src/http/chat-stream.test.ts (9 tests) 6921ms
+ ✓ src/tools/tools.test.ts (9 tests) 1304ms
+ ✓ src/pi/runner.test.ts (14 tests) 1211ms
+ ✓ src/egress/gateway.test.ts (15 tests) 23ms
+ ✓ src/db/approval-removal.test.ts (5 tests) 2604ms
+ ✓ src/agent/seven-role-loadout.test.ts (17 tests) 3765ms
+ ✓ src/engine/engine.test.ts (2 tests) 5180ms
+ ✓ src/pi/platform-mcp.test.ts (9 tests) 252ms
+ ✓ platform-adaptation.test.ts (6 tests) 2089ms
+ ❯ src/agent/direction-flow.test.ts (7 tests | 1 failed) 2087ms
+ ✓ src/http/batch-b.test.ts (3 tests) 1149ms
+ ✓ src/http/worker-writebacks.test.ts (8 tests) 2011ms
+ ✓ src/db/platform.test.ts (5 tests) 713ms
+ ✓ context-prefix.test.ts (5 tests) 2940ms
+ ✓ src/engine/terminal.test.ts (9 tests) 16466ms
+ ✓ src/agent/context-needs.test.ts (8 tests) 2471ms
+ ✓ src/agent/work-identity.test.ts (10 tests) 2352ms
+ ✓ src/engine/regression.test.ts (6 tests) 5448ms
+ ✓ src/pi/domain-compaction.test.ts (18 tests) 201ms
+ ✓ src/engine/triggers.test.ts (9 tests) 5108ms
+ ❯ src/tools/constraint-grounding.test.ts (6 tests | 1 failed) 1946ms
+ ✓ src/db/usage-ledger.test.ts (8 tests) 1512ms
+ ✓ src/agent/tool-catalog.test.ts (4 tests) 1601ms
+ ✓ src/http/overview.test.ts (6 tests) 2030ms
+ ✓ src/http/usage-acceptance.test.ts (2 tests) 1781ms
+ ✓ src/db/exploration.core.test.ts (6 tests) 723ms
+ ✓ src/pi/internal-discovery.test.ts (6 tests) 105ms
+ ✓ src/pi/providerFromProfile.test.ts (6 tests) 197ms
+ ✓ src/http/retester-retirement.test.ts (3 tests) 1668ms
+ ✓ src/http/model-token-usage.test.ts (4 tests) 1822ms
+ ✓ src/db/finding-context-version.test.ts (7 tests) 1574ms
+ ✓ src/tools/context-evidence.test.ts (3 tests) 1572ms
+ ✓ src/engine/turn-summary.test.ts (10 tests) 3ms
+ ✓ src/engine/blackboard-crash.test.ts (2 tests) 14696ms
+ ✓ src/pi/mcpTransport.test.ts (3 tests) 154ms
+ ✓ src/agent/tool-description-policy.test.ts (11 tests) 5ms
+ ✓ src/db/constraint-correction.test.ts (2 tests) 1378ms
+ ✓ src/http/task-goal-required.test.ts (9 tests) 1406ms
+ ✓ src/agent/constraint-policy.test.ts (5 tests) 5ms
+ ✓ src/tools/custom.test.ts (4 tests) 95ms
+ ✓ src/pi/terminal.test.ts (2 tests) 544ms
+ ✓ src/agent/tool-registry.test.ts (3 tests) 6ms
+ ✓ src/pi/platform-policy.test.ts (10 tests) 7ms
+ ✓ src/agent/coldgraph.test.ts (3 tests) 2ms
+ ✓ src/pi/modelResolver.test.ts (3 tests) 51ms
+ Test Files  4 failed | 64 passed (68)
+      Tests  3 failed | 615 passed | 1 skipped (619)
+   Start at  16:44:09
+   Duration  322.25s (transform 1.29s, setup 0ms, collect 31.60s, tests 279.43s, environment 8ms, prepare 2.60s)

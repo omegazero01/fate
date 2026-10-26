@@ -1,0 +1,8 @@
+ ✓ prompt-regression.test.ts (29 tests) 6957ms
+ ✓ src/agent/goals-isolation.test.ts (16 tests) 11787ms
+ ✓ src/agent/direction-flow.test.ts (7 tests) 4706ms
+ ✓ src/tools/constraint-grounding.test.ts (6 tests) 2829ms
+ Test Files  4 passed (4)
+      Tests  58 passed (58)
+   Start at  16:50:30
+   Duration  31.77s (transform 697ms, setup 0ms, collect 4.66s, tests 26.28s, environment 0ms, prepare 238ms)

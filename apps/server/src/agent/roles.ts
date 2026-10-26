@@ -107,6 +107,7 @@ const WORKER_SETTLEMENT_TOOLS = [
 ];
 
 export interface WorkerRunInput {
+  turnID?:string;
   signal?: AbortSignal;
   db: Database;
   taskID: number;
@@ -267,6 +268,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
   const journal=new WorkerOperationJournal(ctx);
   await journal.start();
   const runner = await createTrackedRunner(db,taskID,"worker",{
+    turnID:input.turnID,
     wrapExecutionTool:journalTools(journal,ctx,new Set(['bash','write','edit','http_request','shell_open','shell_send',...execution.tools.map(t=>t.name)])),
     stopOnRecoveryBlock:()=>journal.recoveryBlocked,
     contextLayout: CONTEXT_LAYOUT_VERSION,
@@ -405,6 +407,7 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
   let sessionEntries:()=>readonly import('@earendil-works/pi-coding-agent').SessionEntry[]=()=>[];
   let finalActivity:Extract<RunnerActivity,{kind:'assistant_message_end'}>|undefined;
   const runner = await createTrackedRunner(db,taskID,"planner",{
+    turnID:input.planningRoundID,
     contextLayout: CONTEXT_LAYOUT_VERSION,
     cwd: workDir,
     extensionFactories:input.terminalOnly?[]:execution.extensions,
@@ -479,6 +482,7 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
 }
 
 export interface MainChatInput {
+  turnID?:string;
   egressAddr?:string;egressScope?:string;extraGuard?:ToolGuard;
   images?: import("../evidence/attachments.js").ChatImage[];
   signal?: AbortSignal;
@@ -512,6 +516,7 @@ export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult
   const execution=await executionTools(ctx,workDir,input);
   tools.push(...execution.tools);
   const runner = await createTrackedRunner(db,taskID,"mainagent",{
+    turnID:input.turnID,mainSegment:input.segment??0,
     stopWhen:async()=>receipts.length>0,
     guard:roleExecutionGuard(ctx,input.extraGuard),
     extensionFactories:execution.extensions,
@@ -558,6 +563,7 @@ export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult
 }
 
 export interface GoalsRunInput {
+  turnID?:string;
   hooks?: EngineHooks;
   onActivity?: (activity: RunnerActivity, meta: {worker:string})=>void;
   signal?: AbortSignal;
@@ -588,6 +594,7 @@ async function runLegacyGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunR
   let turns = 0;
   let goalsSaved = false;
   const runner = await createTrackedRunner(db,taskID,"goals",{
+    turnID:input.turnID,
     stopWhen:async()=>goalsSaved,
     cwd: workDir,
     agentDir: path.join(dataDir, "pi-agent"),
@@ -637,6 +644,7 @@ async function runIsolatedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
   const errors=new Set<string>();
   input.onActivity?.({kind:'host_status',phase,text:phase==='constraints'?'阶段一：提取原文约束与目标资产':'阶段二：仅拆解目标栏'}, {worker:'goals'});
   const runner=await createTrackedRunner(db,taskID,'goals',{
+   turnID:input.turnID,
    ...model,cwd,agentDir:path.join(dataDir,'pi-agent'),inMemory:true,goalsPhase:phase,
    systemPrompt:await systemRolePrompt(db,'goals',goalsStageVariables(state.goal,state.description,phase),false,hostProtocol('goals')+'\n'+GOALS_STAGE_PROTOCOL[phase]),
    customTools:tools,toolAllowlist:tools.map(t=>t.name),signal:input.signal,

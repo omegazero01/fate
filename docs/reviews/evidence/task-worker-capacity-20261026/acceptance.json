@@ -1,0 +1,52 @@
+{
+  "source_commit": "3c7376df",
+  "integration_focused": {
+    "passed": 94,
+    "files": 4
+  },
+  "frontend_regression": {
+    "passed": 47
+  },
+  "frozen_full": {
+    "passed": 647,
+    "skipped": 1,
+    "files": 68,
+    "method": "64 test files passed in full run; four fixture-dependent files were rerun after restoring omitted tracked test-fixtures; 58 passed in rerun; no source changes"
+  },
+  "browser": {
+    "environment": "synthetic database, no scheduler/model/target execution",
+    "task_a": {
+      "running": 2,
+      "limit": 3,
+      "available": 1
+    },
+    "task_b": {
+      "running": 3,
+      "limit": 3,
+      "available": 0
+    },
+    "mobile_width": 390,
+    "mobile_document_width": 390,
+    "themes": [
+      "light",
+      "dark"
+    ]
+  },
+  "production": {
+    "workers_preserved": 10,
+    "restarted_by_this_thread": false,
+    "deployment_owner_thread": "说明项目运行方法",
+    "pending": "merged performance acceptance and coordinated restart"
+  },
+  "limitations": [
+    "settings/http-auth returns preexisting 404; unchanged by this repair",
+    "SSE was replaced with a local fixture response for capacity UI checks; streaming not revalidated"
+  ],
+  "checks": {
+    "server_types": "passed",
+    "web_types": "passed",
+    "server_build": "passed",
+    "web_normal_build": "passed",
+    "web_static_build": "passed using webpack in isolated checkout (external dependency symlinks rejected by Turbopack)"
+  }
+}

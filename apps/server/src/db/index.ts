@@ -15,12 +15,14 @@ import { PlatformStore, seedBuiltins } from "./platform.js";
 import { prepareToolOutputAccessMigration } from "../evidence/tool-outputs.js";
 import {migrateOperationJournal} from './operation-journal.js';
 import {retireRetester} from './retire-retester.js';
+import {backfillUsageLedger} from './usage-ledger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 以本目录为 schema 与兼容迁移的唯一数据源。
 const schemaSQL = readFileSync(path.join(__dirname, "sql", "schema.sql"), "utf8");
 const retirementSQL = readFileSync(path.join(__dirname, 'sql', 'retire-approvals.sql'), 'utf8');
+const usageSQL=readFileSync(path.join(__dirname,'sql','usage-ledger.sql'),'utf8');
 
 const SCHEMA_MIGRATION_LOCK_KEY = 7337741001;
 const DEADLOCK_RETRY_DELAYS_MS = [100, 250, 500, 1000];
@@ -156,7 +158,7 @@ export async function openDatabase(): Promise<Database> {
     try {
       await prepareToolOutputAccessMigration(client);
       // 无参数的 query 走简单查询协议，支持单次执行整份多语句 schema。
-      const ddl = retirementSQL + "\n" + schemaSQL;
+      const ddl = retirementSQL + "\n" + schemaSQL+'\n'+usageSQL;
       for (let attempt = 0; ; attempt++) {
         try {
           await client.query(ddl);
@@ -171,6 +173,7 @@ export async function openDatabase(): Promise<Database> {
       // 内置种子（agents/规则/MCP/技能可见性）在迁移锁内执行，与 Go 同构。
       await seedBuiltins(db);
       await retireRetester(db);
+      await backfillUsageLedger(db);
     } finally {
       await client.query("SELECT pg_advisory_unlock($1)", [SCHEMA_MIGRATION_LOCK_KEY]).catch(() => undefined);
     }

@@ -7,14 +7,14 @@ import path from 'node:path';
 import {fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
 import {ModelRuntime,defineTool} from '@earendil-works/pi-coding-agent';
 import {AgentRunner} from '../pi/runner.js';
-import {openDatabase,type Database} from '../db/index.js';
+import {openDatabase,Database} from '../db/index.js';
 import {runContext} from '../tools/context.js';
 import {recordFactTool} from '../tools/graph.js';
 import {reportFindingTool} from '../tools/findings.js';
 import {contextGetTool,searchContext} from '../tools/context-read.js';
 import {Engine,defaultEngineConfig} from './engine.js';
 import {makeModelResolver} from '../pi/modelResolver.js';
-import {Coordinator} from './coordinator.js';
+import {Coordinator,executionSnapshot} from './coordinator.js';
 import {addIntentTool} from '../tools/intents.js';
 import {markWorkerReleased,recoverWorkerSettlements} from '../db/worker-drafts.js';
 import {plannerTools,mainTools,workerTools} from '../tools/index.js';
@@ -110,12 +110,14 @@ it('ends on the final summary without a completion tool or extra model request',
  expect((await db.query('SELECT 1 FROM engine_worker_slots WHERE task_id=$1',[f.task.id])).rowCount).toBe(0);await e.stop(f.task.id);
 });
 
-it('shares actual execution capacity across instances without limiting planning submissions',async()=>{
+it('isolates execution capacity between task owners without limiting planning submissions',async()=>{
  await db.platform().setSetting('workers','3');const f=await fixture(false),other=await fixture(false);
  await db.query("UPDATE tasks SET status='running',execution_mode='managed' WHERE id=ANY($1::bigint[])",[[f.task.id,other.task.id]]);
  const a=new Coordinator(db,3),b=new Coordinator(db,3),ta=(await a.acquire(f.task.id))!,tb=(await b.acquire(other.task.id))!;
  try{
   for(let i=0;i<3;i++)expect(await a.workerSlot(f.task.id,ta)).toBeTruthy();
+  for(let i=0;i<3;i++)expect(await b.workerSlot(other.task.id,tb)).toBeTruthy();
+  expect(await a.workerSlot(f.task.id,ta)).toBeUndefined();
   expect(await b.workerSlot(other.task.id,tb)).toBeUndefined();
   const intents=Array.from({length:4},(_,i)=>({summary:`LOCAL question ${i}`}));
   expect((await call(addIntentTool(runContext(db,f.task.id,f.task.exploration_id,'planner')),{intents})).submitted).toBe(4);
@@ -173,14 +175,80 @@ it('recovers a legacy committed-but-unreleased result without a model or duplica
  expect((await f.s.getNode(f.id))?.payload.execution_stop).toMatchObject({accepted_result:true,reason:'completed'});
 });
 
-it.each([1,2,3])('counts actual Worker executions within global quota %i',async limit=>{
+it.each([1,2,3])('enforces an independent per-task quota of %i across concurrent reservations',async limit=>{
  await db.platform().setSetting('workers',String(limit));const f=await fixture(false),other=await fixture(false);
  const a=new Coordinator(db,3),b=new Coordinator(db,3),ta=(await a.acquire(f.task.id))!,tb=(await b.acquire(other.task.id))!;
  try{
   await db.query("UPDATE tasks SET status='running' WHERE id=ANY($1::bigint[])",[[f.task.id,other.task.id]]);
-  for(let i=0;i<limit;i++)expect(await a.workerSlot(f.task.id,ta)).toBeTruthy();
-  expect(await b.workerSlot(other.task.id,tb)).toBeUndefined();
+  const as:string[]=[],bs:string[]=[];
+  // Nonblocking lock contention may defer a reservation; retry without releasing any winners.
+  await until(async()=>{
+   const [first,second]=await Promise.all([
+    Promise.all(Array.from({length:limit+2},()=>a.workerSlot(f.task.id,ta))),
+    Promise.all(Array.from({length:limit+2},()=>b.workerSlot(other.task.id,tb))),
+   ]);
+   as.push(...first.filter((v):v is string=>!!v));bs.push(...second.filter((v):v is string=>!!v));
+   expect(as.length).toBeLessThanOrEqual(limit);expect(bs.length).toBeLessThanOrEqual(limit);
+   return as.length===limit&&bs.length===limit;
+  });
+  expect(await executionSnapshot(db,f.task.id)).toMatchObject({limit_scope:'task',limit,task_active:limit,global_active:limit*2,available:0});
+  await a.releaseSlot(as.find(Boolean)!);
+  expect((await executionSnapshot(db,f.task.id)).available).toBe(1);
+  expect((await executionSnapshot(db,other.task.id)).available).toBe(0);
+  expect(await a.workerSlot(f.task.id,ta)).toBeTruthy();
  }finally{await a.release(f.task.id,ta);await b.release(other.task.id,tb);}
+});
+
+it('applies lower limits on the next claim, counts manual and exiting Workers, and ignores planning slots',async()=>{
+ await db.platform().setSetting('workers','3');const f=await fixture(false),a=new Coordinator(db,3),token=(await a.acquire(f.task.id))!;
+ await db.query("UPDATE tasks SET status='running' WHERE id=$1",[f.task.id]);
+ try{
+  const manual=(await db.transaction(tx=>a.reserveWorkerSlot(tx,f.task.id,token,true,f.id)))!;
+  const second=(await a.workerSlot(f.task.id,token))!,third=(await a.workerSlot(f.task.id,token))!;
+  await db.query("UPDATE exploration_nodes SET payload=payload||'{\"execution_result\":{}}'::jsonb WHERE id=$1",[f.id]);
+  await db.platform().setSetting('workers','1');
+  expect(await executionSnapshot(db,f.task.id)).toMatchObject({limit:1,task_active:3,exiting:1,available:0});
+  expect(await a.workerSlot(f.task.id,token)).toBeUndefined();
+  await a.releaseSlot(second);await a.releaseSlot(third);
+  expect(await a.workerSlot(f.task.id,token)).toBeUndefined(); // A committed manual Worker still owns its slot until exit.
+  await a.releaseSlot(manual);
+  await db.query("INSERT INTO engine_worker_slots(id,task_id,token,phase) VALUES($1,$2,$3,'planning'),($4,$2,$3,'ready')",[randomUUID(),f.task.id,token,randomUUID()]);
+  expect((await executionSnapshot(db,f.task.id)).available).toBe(1);
+  expect(await a.workerSlot(f.task.id,token)).toBeTruthy();
+  expect(await a.workerSlot(f.task.id,token)).toBeUndefined();
+ }finally{await a.release(f.task.id,token);}
+});
+
+it('fences old task owners and leaves paused, queued and finished tasks without reservations',async()=>{
+ await db.platform().setSetting('workers','1');const f=await fixture(false),a=new Coordinator(db,1),b=new Coordinator(db,1),token=(await a.acquire(f.task.id))!;
+ await db.query("UPDATE tasks SET status='running' WHERE id=$1",[f.task.id]);
+ expect(await a.workerSlot(f.task.id,token)).toBeTruthy();
+ await db.query("UPDATE engine_task_leases SET expires_at=now()-interval '1 second' WHERE task_id=$1",[f.task.id]);
+ const replacement=(await b.acquire(f.task.id))!;
+ try{
+  await expect(a.workerSlot(f.task.id,token)).rejects.toThrow('租约');
+  expect((await executionSnapshot(db,f.task.id)).available).toBe(1);
+  const slot=(await b.workerSlot(f.task.id,replacement))!;expect(slot).toBeTruthy();await b.releaseSlot(slot);
+  for(const [status,paused,queued] of [['running',true,false],['running',false,true],['done',false,false]]){
+   await db.query('UPDATE tasks SET status=$2,paused=$3,queued=$4 WHERE id=$1',[f.task.id,status,paused,queued]);
+   expect(await b.workerSlot(f.task.id,replacement)).toBeUndefined();
+  }
+ }finally{await b.release(f.task.id,replacement);}
+});
+
+it('reserves capacity without borrowing another connection while holding the transaction lock',async()=>{
+ await db.platform().setSetting('workers','2');const f=await fixture(false),other=await fixture(false);
+ await db.query("UPDATE tasks SET status='running' WHERE id=ANY($1::bigint[])",[[f.task.id,other.task.id]]);
+ // A saturated pool previously deadlocked: the lock owner borrowed another connection for settings.
+ const pool=new pg.Pool({connectionString:process.env.SERIES_PG_DSN,max:1,connectionTimeoutMillis:1000});
+ const small=new Database(pool),a=new Coordinator(small,2),b=new Coordinator(small,2);
+ const ta=(await a.acquire(f.task.id))!,tb=(await b.acquire(other.task.id))!;
+ try{
+  const requests=await Promise.all(Array.from({length:3},()=>Promise.all([a.workerSlot(f.task.id,ta),b.workerSlot(other.task.id,tb)])));
+  expect(requests.flat().filter(Boolean)).toHaveLength(4);
+  expect((await executionSnapshot(small,f.task.id)).task_active).toBe(2);
+  expect((await executionSnapshot(small,other.task.id)).task_active).toBe(2);
+ }finally{await a.release(f.task.id,ta);await b.release(other.task.id,tb);await small.close();}
 });
 
 it('keeps a submitted intent executable after unrelated graph changes',async()=>{

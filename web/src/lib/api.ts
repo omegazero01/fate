@@ -308,7 +308,7 @@ export const api = {
       intent_ids,
     }),
   workerQueue: (taskId: string) =>
-    get<{ items: TaskNode[]; version: number; manual: boolean; scheduling?: {limit:number;global_active:number;task_active:number;exiting:number;ready:number;planning:number;available:number}; execution_mode?: "managed" | "manual" }>(
+    get<{ items: TaskNode[]; version: number; manual: boolean; scheduling?: {limit_scope?:"task";limit:number;global_active:number;task_active:number;exiting:number;ready:number;planning:number;available:number}; execution_mode?: "managed" | "manual" }>(
       `/tasks/${taskId}/worker-queue`,
     ),
   moveWorker: (taskId: string, id: string, beforeId: string | null, version: number) =>
@@ -693,8 +693,7 @@ export const api = {
   tokenDaily: (days = 30) => get<DailyTokenBucket[]>(`/tokens/daily?days=${days}`).then(arr),
   conversationTokens: () =>
     get<ConvTokenSummary[]>("/tokens/conversations")
-      .then(arr)
-      .catch(() => [] as ConvTokenSummary[]),
+      .then(arr),
   explorationGraph: (task?: string) => get<{ nodes: TaskNode[]; edges: Edge[] }>(`/exploration/graph${tq(task)}`),
   // 播报板:服务端按创建顺序分页的探索节点(默认最新在前)。
   explorationNodes: (task: string, query: ExplorationNodeQuery = {}, signal?: AbortSignal) => {

@@ -7,15 +7,15 @@ export async function executionSnapshot(db:Database,taskID:number) {
     JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token AND l.expires_at>clock_timestamp()
     LEFT JOIN exploration_nodes n ON n.id=s.intent_id`)).rows;
   const own=rows.filter(r=>Number(r.task_id)===taskID);
-  return {policy:'blackboard-v1',limit,global_active:rows.filter(r=>r.phase==='running'&&!r.manual).length,
+  return {policy:'blackboard-v1',limit_scope:'task' as const,limit,global_active:rows.filter(r=>r.phase==='running').length,
     task_active:own.filter(r=>r.phase==='running').length,exiting:own.filter(r=>r.phase==='running'&&r.committed).length,
     ready:own.filter(r=>r.phase==='ready').length,planning:own.filter(r=>r.phase==='planning').length,
-    available:Math.max(0,limit-rows.filter(r=>!r.manual).length)};
+    available:Math.max(0,limit-own.filter(r=>r.phase==='running').length)};
 }
 export class Coordinator {
   readonly owner=randomUUID();
   constructor(private db:Database,private defaultWorkers:number){}
-  async workers(){const value=await this.db.platform().getSetting('workers');return Math.min(128,Math.max(1,Number(value)||this.defaultWorkers));}
+  async workers(db=this.db){const value=await db.platform().getSetting('workers');return Math.min(128,Math.max(1,Number(value)||this.defaultWorkers));}
   /** Caller holds the global admission lock before task/node locks. */
   async admit(tx:Database,taskID:number,bootstrap=false){
     await tx.query('SELECT pg_advisory_xact_lock($1)',[ADMISSION_LOCK]);
@@ -67,20 +67,25 @@ export class Coordinator {
     if(!r.rowCount)throw new Error('任务执行租约已失效');
   }
   async release(taskID:number,token:string){await this.db.query('DELETE FROM engine_worker_slots WHERE task_id=$1 AND token=$2',[taskID,token]);await this.db.query('DELETE FROM engine_task_leases WHERE task_id=$1 AND owner=$2 AND token=$3',[taskID,this.owner,token]);}
-  /** Only actual executions consume capacity. Planning never reserves slots. */
+  /** Serialize reservations across instances, including explicit resumes. Acquire before graph locks. */
+  async lockWorkerCapacity(tx:Database){await tx.query('SELECT pg_advisory_xact_lock($1)',[WORKER_LOCK]);}
+  /** Only this task's actual executions consume its capacity. Planning never reserves slots. */
   async workerSlot(taskID:number,token:string){
-    return this.db.transaction(async tx=>{
-      await tx.query('SELECT pg_advisory_xact_lock($1)',[WORKER_LOCK]);
-      await this.assert(taskID,token,tx);
-      const task=await tx.tasks().getTask(taskID);
-      if(!task||task.status!=='running'||task.paused||task.queued)return undefined;
-      await tx.query(`DELETE FROM engine_worker_slots s WHERE NOT EXISTS(SELECT 1 FROM engine_task_leases l WHERE l.task_id=s.task_id AND l.token=s.token AND l.expires_at>now())`);
-      const active=Number((await tx.query("SELECT count(*) n FROM engine_worker_slots WHERE phase='running' AND NOT manual")).rows[0]?.n);
-      if(active>=await this.workers())return undefined;
-      const id=randomUUID();
-      await tx.query("INSERT INTO engine_worker_slots(id,task_id,token,phase) VALUES($1,$2,$3,'running')",[id,taskID,token]);
-      return id;
-    });
+    return this.db.transaction(tx=>this.reserveWorkerSlot(tx,taskID,token));
+  }
+  /** Also used in the manual-resume transaction so state and occupancy commit together. */
+  async reserveWorkerSlot(tx:Database,taskID:number,token:string,manual=false,intentID?:number){
+    await this.lockWorkerCapacity(tx);
+    await this.assert(taskID,token,tx);
+    const task=await tx.tasks().getTask(taskID);
+    if(!task||task.status!=='running'||task.paused||task.queued)return undefined;
+    await tx.query(`DELETE FROM engine_worker_slots s WHERE NOT EXISTS(SELECT 1 FROM engine_task_leases l WHERE l.task_id=s.task_id AND l.token=s.token AND l.expires_at>now())`);
+    const active=Number((await tx.query("SELECT count(*) n FROM engine_worker_slots WHERE task_id=$1 AND phase='running'",[taskID])).rows[0]?.n);
+    if(active>=await this.workers(tx))return undefined;
+    const id=randomUUID();
+    await tx.query("INSERT INTO engine_worker_slots(id,task_id,token,phase,manual,intent_id) VALUES($1,$2,$3,'running',$4,$5)",[id,taskID,token,manual,intentID??null]);
+    return id;
   }
   async releaseSlot(id:string){await this.db.query('DELETE FROM engine_worker_slots WHERE id=$1',[id]);}
+
 }

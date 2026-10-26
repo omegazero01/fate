@@ -866,7 +866,7 @@ export default function LLMPage() {
         <div>
           <PageHeading title={<>LLM</>}/>
           <p className="text-muted-foreground text-sm">
-            全 Agent 共享的格式 / 模型 / 限速配置。点击卡片编辑，星标为当前激活配置。
+            全 Agent 共享的格式 / 模型 / 限速配置。连接测试也计入用量；删除配置或清除调用明细后，脱敏累计计量仍保留。
           </p>
         </div>
         <div className="flex items-center gap-2">

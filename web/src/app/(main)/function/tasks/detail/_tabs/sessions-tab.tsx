@@ -1544,33 +1544,11 @@ export function SessionsTab({
     return null;
   }, [activity]);
 
-  // Persisted result totals come from the backend's full activity history. Only
-  // the latest unfinished usage frame is added client-side, so partial history
-  // pages cannot undercount completed runs or double-count the active one.
-  const tokenForSession = React.useCallback(
-    (key: string): TokenTotal => {
-      const saved = sessionTokens[key];
-      const total: TokenTotal = {
-        input_tokens: saved?.input_tokens ?? 0,
-        output_tokens: saved?.output_tokens ?? 0,
-        cache_read_tokens: saved?.cache_read_tokens ?? 0,
-        cache_write_tokens: saved?.cache_write_tokens ?? 0,
-      };
-      const items = store[key]?.items ?? [];
-      for (let index = items.length - 1; index >= 0; index--) {
-        const item = items[index];
-        if (item.kind === "result") break;
-        if (item.kind !== "usage") continue;
-        total.input_tokens += item.input_tokens ?? 0;
-        total.output_tokens += item.output_tokens ?? 0;
-        total.cache_read_tokens += item.cache_read_tokens ?? 0;
-        total.cache_write_tokens += item.cache_write_tokens ?? 0;
-        break;
-      }
-      return total;
-    },
-    [sessionTokens, store],
-  );
+  // Ledger snapshots already include completed requests from a live execution.
+  // Never add the cumulative native usage frame on top of a server snapshot.
+  const tokenForSession = React.useCallback((key:string):TokenTotal=>sessionTokens[key]??{
+    input_tokens:0,output_tokens:0,cache_read_tokens:0,cache_write_tokens:0,usage_complete:false,
+  },[sessionTokens]);
 
   const activeTokens = tokenForSession(activeKey);
   const tokenTotal = {
@@ -1579,9 +1557,7 @@ export function SessionsTab({
     cr: activeTokens.cache_read_tokens,
     any:
       activeTokens.input_tokens +
-        activeTokens.output_tokens +
-        activeTokens.cache_read_tokens +
-        activeTokens.cache_write_tokens >
+        activeTokens.output_tokens >
       0,
   };
 
@@ -1834,7 +1810,7 @@ export function SessionsTab({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  输入 {taskTokens.input_tokens.toLocaleString()} · 输出 {taskTokens.output_tokens.toLocaleString()} ·
+                  {taskTokens.usage_complete===false?"已记录输入":"输入总量"} {taskTokens.input_tokens.toLocaleString()} · 输出 {taskTokens.output_tokens.toLocaleString()} ·
                   缓存读取 {taskTokens.cache_read_tokens.toLocaleString()} · 缓存写入{" "}
                   {taskTokens.cache_write_tokens.toLocaleString()}
                 </TooltipContent>
@@ -2119,7 +2095,7 @@ export function SessionsTab({
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      输入 {activeTokens.input_tokens.toLocaleString()} · 输出{" "}
+                      {activeTokens.usage_complete===false?"已记录输入":"输入总量"} {activeTokens.input_tokens.toLocaleString()} · 输出{" "}
                       {activeTokens.output_tokens.toLocaleString()} · 缓存读取{" "}
                       {activeTokens.cache_read_tokens.toLocaleString()} · 缓存写入{" "}
                       {activeTokens.cache_write_tokens.toLocaleString()}

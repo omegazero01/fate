@@ -17,9 +17,9 @@ export function modelTokenTotals(models: ModelTokenStat[]) {
     input: total.input + m.input_tokens, output: total.output + m.output_tokens,
     uncached: total.uncached + (m.uncached_input_tokens ?? 0),
     cacheRead: total.cacheRead + m.cache_read_tokens, cacheWrite: total.cacheWrite + m.cache_write_tokens,
-    calls: total.calls + (m.calls ?? 0), knownCalls: total.knownCalls && m.source === 'request_audit' && typeof m.calls === 'number',
-    knownInput: total.knownInput && m.input_semantics === 'inclusive_cache',
+    calls: total.calls + (m.calls ?? 0), knownCalls: total.knownCalls && m.calls_complete !== false && typeof m.calls === 'number' && (m.source === 'request_audit'||m.source==='usage_ledger'),
+    knownInput: total.knownInput && m.input_semantics === 'inclusive_cache' && m.input_complete !== false,
     compactions: total.compactions + (m.compaction_calls ?? 0), failures: total.failures + (m.failed_calls ?? 0),
-    pending: total.pending + (m.pending_calls ?? 0), unknown: total.unknown + (m.unknown_usage_calls ?? 0),
-  }), {input:0,output:0,uncached:0,cacheRead:0,cacheWrite:0,calls:0,knownCalls:true,knownInput:true,compactions:0,failures:0,pending:0,unknown:0});
+    pending: total.pending + (m.pending_calls ?? 0), unknown: total.unknown + (m.unknown_usage_calls ?? 0),historyGaps:total.historyGaps+(m.history_gap_requests??0),
+  }), {input:0,output:0,uncached:0,cacheRead:0,cacheWrite:0,calls:0,knownCalls:true,knownInput:true,compactions:0,failures:0,pending:0,unknown:0,historyGaps:0});
 }

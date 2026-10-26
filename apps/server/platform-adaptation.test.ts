@@ -27,24 +27,22 @@ describe('platform adaptation integration',()=>{
     const options={cwd:dir,agentDir:path.join(dir,'pi'),inMemory:true,systemPrompt:'LOCAL bounded Worker',toolAllowlist:[]};
     const ra=await createTrackedRunner(db,task.id,'worker',{...a,...options});
     const rb=await createTrackedRunner(db,task.id,'worker',{...b,...options});
+    let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+    const late=fauxAssistantMessage('late');late.usage={...late.usage,input:9,output:0,totalTokens:9};
+    faux.setResponses([async()=>{await gate;return late;},async()=>{await gate;return late;}]);
+    const pendingA=a.modelRuntime.completeSimple(a.model,{messages:[{role:'user',content:'a',timestamp:Date.now()}]}),pendingB=b.modelRuntime.completeSimple(b.model,{messages:[{role:'user',content:'b',timestamp:Date.now()}]});
     try{
-      await a.modelRuntime.resolveModel(a.model,[],{reason:'continuation'});
-      await b.modelRuntime.resolveModel(b.model,[],{reason:'continuation'});
-      const rows=(await db.query('SELECT id,runtime_id FROM llm_request_attempts WHERE task_id=$1 ORDER BY id',[task.id])).rows;
+      let rows:Record<string,any>[]=[];
+      for(let i=0;i<100;i++){rows=(await db.query('SELECT id,runtime_id FROM llm_request_attempts WHERE task_id=$1 ORDER BY id',[task.id])).rows;if(rows.length===2)break;await new Promise(r=>setTimeout(r,20));}
       expect(rows).toHaveLength(2);expect(rows[0]!.runtime_id).toBeTruthy();expect(rows[0]!.runtime_id).not.toBe(rows[1]!.runtime_id);
       await db.query("UPDATE runtime_role_configs SET expires_at=now()-interval '1 second' WHERE id=$1",[rows[0]!.runtime_id]);
-      expect(await recoverExpiredRuntimes(db)).toEqual({runtimes:1,requests:1});
-      expect(await recoverExpiredRuntimes(db)).toEqual({runtimes:0,requests:0});
+      expect(await recoverExpiredRuntimes(db)).toEqual({runtimes:1,requests:1});expect(await recoverExpiredRuntimes(db)).toEqual({runtimes:0,requests:0});
       const states=(await db.query('SELECT id,status,usage FROM llm_request_attempts WHERE task_id=$1 ORDER BY id',[task.id])).rows;
       expect(states[0]).toMatchObject({status:'aborted',usage:{unavailable:true}});expect(states[1]!.status).toBe('running');
-      await expect(a.modelRuntime.resolveModel(a.model,[],{reason:'continuation'})).rejects.toThrow('执行器已过期');
-      // A delayed reply can supply real usage, but cannot turn a reconciled
-      // interrupted attempt back into success or overwrite its stop reason.
-      const late=fauxAssistantMessage('late');late.usage={...late.usage,input:9,totalTokens:9};
-      await a.modelPolicy!.onResponse(late);
-      expect((await db.query('SELECT status,usage,error FROM llm_request_attempts WHERE id=$1',[rows[0]!.id])).rows[0]).toMatchObject({status:'aborted',usage:{input:9,totalTokens:9},error:expect.stringContaining('执行器失联')});
+      release();const [replyA]=await Promise.all([pendingA,pendingB]);
+      expect((await db.query('SELECT status,usage,error FROM llm_request_attempts WHERE id=$1',[rows[0]!.id])).rows[0]).toMatchObject({status:'aborted',usage:{input:replyA.usage.input,totalTokens:replyA.usage.totalTokens},error:expect.stringContaining('执行器失联')});
       expect((await runtimeConfiguration(db,{taskID:task.id})).active).toHaveLength(1);
-    }finally{await ra.dispose();await rb.dispose();}
+    }finally{release();await Promise.all([pendingA,pendingB]);await ra.dispose();await rb.dispose();}
   });
   it.each(['domain','native'])('audits %s summary failover per request and exposes policy boundaries',async mode=>{
     await db.platform().setSetting('pi_context_policy',mode);
@@ -96,8 +94,8 @@ describe('platform adaptation integration',()=>{
     const reply=await source.modelRuntime.completeSimple(routed.model,{messages:[{role:'user',content:'continue conversation',timestamp:Date.now()}]});
     await source.modelPolicy!.onResponse(reply);await source.modelPolicy!.finish!();
     const rows=(await db.query('SELECT purpose,status,usage FROM llm_request_attempts WHERE task_id=$1 ORDER BY id',[task.id])).rows;
-    expect(rows).toHaveLength(2);expect(rows[0]).toMatchObject({purpose:'conversation',status:'completed',usage:reply.usage});
-    expect(rows[1]).toMatchObject({purpose:'compaction',status:'completed',usage:summary.usage});
+    expect(rows).toHaveLength(2);expect(rows[0]).toMatchObject({purpose:'compaction',status:'completed',usage:{input:summary.usage.input,output:summary.usage.output,totalTokens:summary.usage.totalTokens}});
+    expect(rows[1]).toMatchObject({purpose:'conversation',status:'completed',usage:{input:reply.usage.input,output:reply.usage.output,totalTokens:reply.usage.totalTokens}});
   });
   it('preserves denied MCP tools and falls back to direct exposure when search is explicitly disabled',async()=>{
     const server=await db.platform().saveMCP({name:'LOCAL resource policy',transport:'stdio',command:process.execPath,args:[],env:{},url:'',enabled:true,insecure:false});

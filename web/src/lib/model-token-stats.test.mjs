@@ -33,3 +33,11 @@ test('empty and incomplete token responses keep the overview renderable', () => 
     assert.equal(models.reduce((total, item) => total + item.calls, 0), 0);
   }
 });
+test('ledger request counts remain known while incomplete input suppresses a cache rate',()=>{
+ const total=modelTokenTotals([{...row,source:'usage_ledger',version:'usage-v2',calls_complete:true,input_semantics:'unknown',input_complete:false,usage_complete:false,unknown_usage_calls:1}]);
+ assert.equal(total.knownCalls,true);assert.equal(total.knownInput,false);assert.equal(total.unknown,1);assert.equal(cacheHitRate(total.cacheRead,total.input,total.knownInput),'—');
+});
+test('partial historical request coverage is disclosed rather than advertised as an exact total',()=>{
+ const total=modelTokenTotals([{...row,source:'usage_ledger',calls_complete:false,input_semantics:'unknown',input_complete:false,history_gap_requests:2}]);
+ assert.equal(total.knownCalls,false);assert.equal(total.historyGaps,2);assert.equal(total.knownInput,false);
+});

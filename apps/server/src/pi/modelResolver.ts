@@ -6,6 +6,8 @@ import type { LLMProfile } from '../db/platform.js';
 import type { ModelResolver } from '../engine/engine.js';
 import type { ModelSource } from '../agent/roles.js';
 import { buildModelSource } from './providerFromProfile.js';
+import {meterProvider,replayUsageOutbox} from './usage-meter.js';
+import type {UsageScope} from '../db/usage-ledger.js';
 
 /** The management DTO and all role sessions use this same precedence and ordered chain. */
 export async function resolveModelProfiles(db:Database,taskID:number,role:string,context?:{conversationID?:number;profileID?:number}) {
@@ -79,46 +81,39 @@ export function makeModelResolver(db:Database,build=buildModelSource):ModelResol
       if(!source){if(cache.size>=32)cache.clear();source=build(scopedProfile);cache.set(key,source);source.catch(()=>cache.delete(key));}
       sources.push(await source);
     }
+    let index=0,retries=0,lastError='',lastResponseIndex=0,purpose:'conversation'|'compaction'='conversation';
+    let runtimeID:string|undefined,scope:UsageScope={};
     const runtime=await ModelRuntime.create({refreshOnCreate:false});
-    for(const source of sources){const provider=source.modelRuntime.getProvider(source.model.provider);if(!provider)throw new Error('模型 provider 未注册');await runtime.registerNativeProvider(provider);}
+    for(const [i,source] of sources.entries()){
+      const provider=source.modelRuntime.getProvider(source.model.provider);if(!provider)throw new Error('模型 provider 未注册');
+      await runtime.registerNativeProvider(meterProvider(db,provider,profiles[i]!,()=>({...scope,taskID,conversationID:context?.conversationID,role,purpose,runtimeID})));
+    }
     await runtime.refresh({allowNetwork:false});
     const retryRaw=await db.platform().getSetting('llm_retry_policy');
     let retryPolicy:Record<string,{attempts?:number;interval_ms?:number}>={};
     try{retryPolicy=retryRaw?JSON.parse(retryRaw) as typeof retryPolicy:{}}catch{/* invalid saved setting uses sdk defaults */}
-    let index=0,retries=0,lastError='',lastResponseIndex=0,purpose:'conversation'|'compaction'='conversation';
-    let runtimeID:string|undefined;
-    const pending:{conversation:Array<{id:number;index:number}>;compaction:Array<{id:number;index:number}>}={conversation:[],compaction:[]};
     runtime.registerVirtualModel({provider:'series-router',id:`task-${taskID}-${role}`,name:`任务 ${taskID} / ${role}`,input:sources.every(s=>s.model.input.includes('image'))?['text','image']:['text'],
       contextWindow:Math.min(...sources.map(s=>s.model.contextWindow)),maxTokens:Math.min(...sources.map(s=>s.model.maxTokens)),
       route:async request=>{
         request.signal?.throwIfAborted();
         await reserveRequest(db,profiles[index]!,request.signal);
         request.signal?.throwIfAborted();
-        const p=profiles[index]!,source=sources[index]!;
-        const row=await db.transaction(async tx=>{
-          if(runtimeID && !(await tx.query('SELECT id FROM runtime_role_configs WHERE id=$1 AND finished_at IS NULL AND expires_at>clock_timestamp() FOR SHARE',[runtimeID])).rowCount)throw new Error('模型执行器已过期，禁止发起新请求');
-          return tx.query(`INSERT INTO llm_request_attempts(task_id,role,profile_id,model,status,conversation_id,purpose,runtime_id) VALUES($1,$2,$3,$4,'running',$5,$6,$7) RETURNING id`,[taskID||null,role,p.id,p.model,context?.conversationID??null,purpose,runtimeID??null]);
-        });
-        pending[purpose].push({id:Number(row.rows[0]!.id),index});
+        const source=sources[index]!;
         return {model:source.model,thinkingLevel:source.thinkingLevel??'off'};
       }});
     return {modelRuntime:runtime,model:runtime.getModel('series-router',`task-${taskID}-${role}`)!,streaming:profiles[0]?.streaming!==false,modelPolicy:{
       setRuntimeID(id){runtimeID=id;},
+      setScope(value){scope={...value};},
       setPurpose(value){purpose=value;},
-      async finish(){const ids=[...pending.conversation,...pending.compaction].map(a=>a.id);if(ids.length)await db.query("UPDATE llm_request_attempts SET status='aborted',error='会话结束前请求被取消',finished_at=now() WHERE id=ANY($1::bigint[]) AND status='running'",[ids]);pending.conversation=[];pending.compaction=[];},
+      async finish(){await replayUsageOutbox(db);},
       async onResponse(message){
-        const m=message as {stopReason?:string;errorMessage?:string;usage?:unknown};
-        const attempt=pending[purpose].shift();
+        const m=message as {provider?:string;stopReason?:string;errorMessage?:string;content?:unknown[];usage?:{totalTokens?:number}};
         // pi may emit an aborted synthetic message after a host-completed tool turn.
         // It has no provider request and must not create failures or alter health.
-        if(!attempt)return;
-        lastResponseIndex=attempt.index;
+        if(m.stopReason==='aborted'&&!m.content?.length&&!m.usage?.totalTokens)return;
+        const physical=sources.findIndex(s=>s.model.provider===m.provider);
+        lastResponseIndex=physical>=0?physical:index;
         lastError=m.stopReason==='error'?cleanError(m.errorMessage??'模型调用失败',profiles):'';
-        if(attempt)await db.query(`UPDATE llm_request_attempts SET
-          status=CASE WHEN status='running' THEN $2 ELSE status END,
-          error=CASE WHEN status='running' THEN $3 ELSE error END,
-          usage=CASE WHEN status='running' OR COALESCE(($4::jsonb->>'totalTokens')::numeric,0)>0 THEN $4::jsonb ELSE usage END,
-          finished_at=COALESCE(finished_at,now()) WHERE id=$1`,[attempt.id,m.stopReason==='aborted'?'aborted':lastError?'failed':'completed',lastError,JSON.stringify(m.usage??{})]);
         if(!lastError){
           retries=0;
           await db.query(`INSERT INTO llm_profile_health(profile_id,fails,trips,open_until,last_error,last_at) VALUES($1,0,0,NULL,'',now())

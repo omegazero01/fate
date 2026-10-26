@@ -122,7 +122,7 @@ export function registerConfigRoutes(app: FastifyInstance): void {
     if (!profile.model || !profile.baseURL) {
       return { ok: false, error: "缺少 model 或 base_url" };
     }
-    const result = await testProfileConnection(profile);
+    const result = await testProfileConnection(profile,app.db);
     // 前端契约：一个字都不回的配置直接判失败（网络异常在 pi 层可能只产空回复）。
     if (result.ok && (result.reply ?? "") === "") {
       return { ...result, ok: false, error: `模型 ${profile.model} 未返回任何内容（base_url 不可达或配置无效）` };

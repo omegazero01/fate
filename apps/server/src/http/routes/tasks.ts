@@ -1,3 +1,4 @@
+import {aggregateUsage} from '../../db/usage-ledger.js';
 import {requireTaskGoal} from "../../agent/task-goal.js";
 import {assetContextCTE} from '../../db/asset-query.js';
 import {registerOperationRoutes} from './operations.js';
@@ -58,10 +59,9 @@ export function registerTaskRoutes(app: FastifyInstance): void {
               COALESCE((SELECT json_build_object('total',count(*),'met',count(*) FILTER (WHERE state='met'))
                  FROM exploration_nodes n WHERE n.exploration_id=t.exploration_id AND n.kind='goal'),'{"total":0,"met":0}'::json) goals,
               COALESCE((SELECT count(*) FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.task_id=t.id AND s.phase='running' AND l.expires_at>now()),0) in_flight,
-              EXTRACT(EPOCH FROM COALESCE((SELECT max(a.created_at) FROM activity a WHERE a.exploration_id=t.exploration_id), t.created_at))::bigint last_activity_unix,
-              COALESCE((SELECT json_build_object('input_tokens',COALESCE(SUM(a.input_tokens),0),'output_tokens',COALESCE(SUM(a.output_tokens),0),'cache_read_tokens',COALESCE(SUM(a.cache_read_tokens),0),'cache_write_tokens',COALESCE(SUM(a.cache_write_tokens),0))
-                 FROM activity a WHERE a.exploration_id=t.exploration_id AND a.kind='result'),'{}'::json) tokens
+              EXTRACT(EPOCH FROM COALESCE((SELECT max(a.created_at) FROM activity a WHERE a.exploration_id=t.exploration_id), t.created_at))::bigint last_activity_unix
        FROM tasks t WHERE t.deleted_at IS NULL`) as never;
+    const tokenRows=new Map((await aggregateUsage(app.db,{},'task')).map(r=>[Number(r.bucket),r]));
     const aggRows = new Map<number, Record<string, unknown>>();
     for (const r of (agg as unknown as { rows: Array<Record<string, unknown>> }).rows) aggRows.set(Number(r["id"]), r);
     return {
@@ -74,7 +74,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
           dto["goals_met"] = ((a["goals"] as { met?: number }) ?? {}).met ?? 0;
           dto["in_flight"] = Number(a["in_flight"] ?? 0);
           dto["last_activity_unix"] = Number(a["last_activity_unix"] ?? 0);
-          if (Object.keys((a["tokens"] as Record<string, unknown>) ?? {}).length > 0) dto["tokens"] = a["tokens"];
+          dto["tokens"] = tokenRows.get(t.id)??{input_tokens:0,output_tokens:0,cache_read_tokens:0,cache_write_tokens:0,usage_complete:true,version:'usage-v2'};
         }
         return dto;
       })),

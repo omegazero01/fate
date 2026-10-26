@@ -2,7 +2,7 @@ import type {Activity} from './types';
 export type TurnSummary={
  version:number;turn_id:string;revision:number;updated_at:string;worker:string;role:string|null;intent_id:string|null;main_seg:number|null;
  status:string;started_at:string|null;finished_at:string|null;queue_ms:number|null;mode:string|null;steps:number|null;tool_calls:number|null;failed_tool_calls:number|null;
- models:string[];usage:null|{input:number;output:number;cache_read:number;cache_write:number;total:number;incomplete:boolean;source:string;compaction_requests:number|null;compaction_tokens:number|null;failed_requests:number|null;failed_request_tokens:number|null};
+ models:string[];usage:null|{input:number;uncached_input?:number;output:number;cache_read:number;cache_write:number;total:number;incomplete:boolean;source:string;compaction_requests:number|null;compaction_tokens:number|null;failed_requests:number|null;failed_request_tokens:number|null};
  final_activity:Activity|null;error:string|null;
  writebacks?:{version:number;intent_id:string;available:boolean};
 };

@@ -677,7 +677,7 @@ function TurnDetails({summary,label,elapsed,conversationId}:{summary?:TurnSummar
     ['模型',summary?.models.length?summary.models.join(' → '):unknown],
     ['步骤',summary?.steps??unknown],['工具调用',summary?.tool_calls??unknown],['失败调用',summary?.failed_tool_calls??unknown],
     ['Token',usage?`${usage.total.toLocaleString()}${usage.incomplete?'（部分用量未知）':''}`:unknown],
-    ...(usage?([['输入 / 输出',`${usage.input} / ${usage.output}`],['缓存读取 / 写入',`${usage.cache_read} / ${usage.cache_write}`],
+    ...(usage?([['输入总量 / 输出',`${usage.input} / ${usage.output}`],['未缓存输入',usage.uncached_input??unknown],['缓存读取 / 写入',`${usage.cache_read} / ${usage.cache_write}`],
       ['压缩请求 / Token',usage.compaction_requests===null?unknown:`${usage.compaction_requests} / ${usage.compaction_tokens}`],
       ['失败或中断请求 / Token',usage.failed_requests===null?unknown:`${usage.failed_requests} / ${usage.failed_request_tokens}`]] as [string,React.ReactNode][]):[]),
     ...(summary?.queue_ms!=null?([['执行前等待',`${(summary.queue_ms/1000).toFixed(1)} 秒`]] as [string,React.ReactNode][]):[]),

@@ -1,0 +1,200 @@
+{
+  "at": "2026-10-26T06:40:16.136Z",
+  "version": "fate-token-meter-3f142316-20261026",
+  "tests": {
+    "serverPassed": 644,
+    "serverSkipped": 1,
+    "frontendPassed": 47,
+    "receiptRaceFocusedPassed": 18,
+    "latestFullSuite": "644 passed, 1 skipped; frozen source 3f142316",
+    "interruptedRun": {
+      "passed": 637,
+      "timeouts": 5,
+      "skipped": 1,
+      "reason": "Mac sleep / resumed execution; not accepted as passing"
+    },
+    "interruptedProtocolFocusedPassed": 17,
+    "multiProfileFocusedPassed": 10,
+    "partialUsageFocusedPassed": 11,
+    "historicalCountFocusedPassed": 14
+  },
+  "builds": {
+    "server": true,
+    "production": true,
+    "static": true
+  },
+  "task4849": {
+    "tasks": 1,
+    "calls": 301,
+    "input_tokens": 8479410,
+    "uncached_input_tokens": 828466,
+    "output_tokens": 271793,
+    "cache_read_tokens": 7650944,
+    "cache_write_tokens": 0,
+    "unknown_usage_calls": 0,
+    "history_gap_requests": 0,
+    "time_unknown_records": 0,
+    "legacy_records": 0,
+    "pending_calls": 0,
+    "failed_calls": 0,
+    "compaction_calls": 0,
+    "usage_complete": true,
+    "calls_complete": true,
+    "input_complete": true,
+    "version": "usage-v2",
+    "input_semantics": "inclusive_cache",
+    "source": "usage_ledger",
+    "total_tokens": 8751203,
+    "cache_rate": 0.9022967399854471
+  },
+  "global": {
+    "tasks": 185,
+    "calls": 4344,
+    "input_tokens": 115755640,
+    "uncached_input_tokens": 8663490,
+    "output_tokens": 3921005,
+    "cache_read_tokens": 136451909,
+    "cache_write_tokens": 104780,
+    "unknown_usage_calls": 104,
+    "history_gap_requests": 688,
+    "time_unknown_records": 1382,
+    "legacy_records": 1382,
+    "pending_calls": 0,
+    "failed_calls": 104,
+    "compaction_calls": 0,
+    "usage_complete": false,
+    "calls_complete": false,
+    "input_complete": false,
+    "version": "usage-v2",
+    "input_semantics": "unknown",
+    "source": "usage_ledger"
+  },
+  "linkedConversations": [
+    {
+      "conversation": "1086",
+      "calls": 17,
+      "input": 217372,
+      "output": 11280
+    },
+    {
+      "conversation": "1087",
+      "calls": 11,
+      "input": 142198,
+      "output": 13845
+    },
+    {
+      "conversation": "1088",
+      "calls": 15,
+      "input": 154884,
+      "output": 9086
+    }
+  ],
+  "state": [
+    {
+      "id": "4849",
+      "status": "running",
+      "paused": true
+    }
+  ],
+  "activeRuntimes": 0,
+  "deployment": {
+    "before_requests": 4344,
+    "after_requests": 4344,
+    "source_hashes_unchanged": true,
+    "backup": "/Users/pphua/.local/share/fate/backups/token-meter-20261026",
+    "backend_pid": 57322,
+    "frontend_pid": 49336,
+    "latest_backup": "/Users/pphua/.local/share/fate/backups/token-meter-20261026/delivery",
+    "final_source_hashes_unchanged": true,
+    "latest_requests_added": 0
+  },
+  "productionChecks": {
+    "httpStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "baseline": {
+      "calls": "301",
+      "total": "8751203"
+    },
+    "taskList": {
+      "bucket": "4849",
+      "model": "deepseek-flash",
+      "models": [
+        "deepseek-flash"
+      ],
+      "profile_name": null,
+      "profile_id": "541",
+      "profile_ids": [
+        "541"
+      ],
+      "task_id": "4849",
+      "role": null,
+      "date": "2026-10-23",
+      "created_at": "2026-10-23T02:40:56.548Z",
+      "tasks": 1,
+      "calls": 301,
+      "input_tokens": 8479410,
+      "uncached_input_tokens": 828466,
+      "output_tokens": 271793,
+      "cache_read_tokens": 7650944,
+      "cache_write_tokens": 0,
+      "unknown_usage_calls": 0,
+      "history_gap_requests": 0,
+      "time_unknown_records": 0,
+      "legacy_records": 0,
+      "pending_calls": 0,
+      "failed_calls": 0,
+      "compaction_calls": 0,
+      "usage_complete": true,
+      "calls_complete": true,
+      "input_complete": true,
+      "version": "usage-v2",
+      "input_semantics": "inclusive_cache",
+      "source": "usage_ledger"
+    },
+    "taskOverview": {
+      "tasks": 1,
+      "calls": 301,
+      "input_tokens": 8479410,
+      "uncached_input_tokens": 828466,
+      "output_tokens": 271793,
+      "cache_read_tokens": 7650944,
+      "cache_write_tokens": 0,
+      "unknown_usage_calls": 0,
+      "history_gap_requests": 0,
+      "time_unknown_records": 0,
+      "legacy_records": 0,
+      "pending_calls": 0,
+      "failed_calls": 0,
+      "compaction_calls": 0,
+      "usage_complete": true,
+      "calls_complete": true,
+      "input_complete": true,
+      "version": "usage-v2",
+      "input_semantics": "inclusive_cache",
+      "source": "usage_ledger"
+    },
+    "model": [
+      {
+        "model": "deepseek-flash",
+        "calls": 301,
+        "input_tokens": 8479410,
+        "output_tokens": 271793
+      }
+    ],
+    "conversations": 27
+  },
+  "browser": {
+    "production_url": "http://localhost:5173/dashboard",
+    "consoleErrors": 0,
+    "narrowWidth": 390,
+    "narrowDarkOverflow": false,
+    "desktopWidth": 1440,
+    "desktopOverflow": false
+  }
+}

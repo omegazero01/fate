@@ -765,6 +765,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               <p className="text-xs text-muted-foreground">
                 {tokenTotals.knownInput ? `输入总量包含未缓存输入 ${fmtTokens(tokenTotals.uncached)}、缓存读取及缓存写入；命中率 = 缓存读取 ÷ 输入总量。` : "历史记录未保存输入口径、实际模型或逐次调用信息，保留原始用量，不估算命中率。"}
               </p>
+              {tokenTotals.historyGaps>0&&<p className="text-xs text-muted-foreground">部分历史覆盖或重叠范围未核定，未核定历史用量单列，未重复加入请求汇总。</p>}
               {tokenTotals.knownCalls && <p className="text-xs text-muted-foreground">请求包含 {tokenTotals.compactions} 次压缩、{tokenTotals.failures} 次失败或中断、{tokenTotals.pending} 次进行中。{tokenTotals.unknown > 0 ? `${tokenTotals.unknown} 次请求用量尚未返回或未知；当前为已记录用量。` : ""}</p>}
               {/* 按模型明细表 */}
               <div className="overflow-x-auto">
@@ -786,13 +787,13 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                         <td className="max-w-[16rem] truncate py-1.5 pr-3 font-mono text-xs" title={m.model}>
                           {m.model}
                         </td>
-                        <td className="py-1.5 pr-3 text-right tabular-nums">{m.source === "request_audit" ? m.calls ?? "未记录" : "未记录"}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{m.calls_complete !== false ? m.calls ?? "未记录" : "未记录"}</td>
                         <td className="py-1.5 pr-3 text-right tabular-nums">{fmtTokens(m.input_tokens)}</td>
                         <td className="py-1.5 pr-3 text-right tabular-nums">{fmtTokens(m.output_tokens)}</td>
                         <td className="py-1.5 pr-3 text-right tabular-nums">{fmtTokens(m.cache_read_tokens)}</td>
                         <td className="py-1.5 pr-3 text-right tabular-nums">{fmtTokens(m.cache_write_tokens)}</td>
                         <td className="py-1.5 text-right tabular-nums text-emerald-500">
-                          {cacheHitRate(m.cache_read_tokens, m.input_tokens, m.input_semantics === "inclusive_cache")}
+                          {cacheHitRate(m.cache_read_tokens, m.input_tokens, m.input_semantics === "inclusive_cache" && m.input_complete !== false)}
                         </td>
                       </tr>
                     ))}

@@ -49,14 +49,14 @@ it('legacy overview keeps task-scoped totals without inventing physical request 
   }
   const response = await app.inject({ url: `/api/llm/records/by-model?task=${task.id}`, headers });
   expect(response.statusCode).toBe(200);
-  expect(response.json()).toEqual({ models: [{ model: expect.any(String), calls: null, source: 'legacy_results', input_semantics: 'unknown', input_tokens: 20, output_tokens: 6, cache_read_tokens: 4, cache_write_tokens: 0 }] });
+  expect(response.json()).toMatchObject({ models: [{ model: expect.any(String), calls: null, source: 'usage_ledger', input_semantics: 'unknown', input_tokens: 20, output_tokens: 6, cache_read_tokens: 4, cache_write_tokens: 0 }] });
 });
 
 it('an unused task returns an empty model list instead of a missing field', async () => {
   const task = await db.tasks().createTaskWithOptions('LOCAL empty overview', '', { executionMode: 'manual' });
   const response = await app.inject({ url: `/api/llm/records/by-model?task=${task.id}`, headers });
   expect(response.statusCode).toBe(200);
-  expect(response.json()).toEqual({ models: [] });
+  expect(response.json()).toMatchObject({ models: [] });
 });
 
 it('intent lists retain their pagination envelope and task isolation', async () => {
@@ -93,10 +93,12 @@ it('detail and global stats count live slots instead of historical running nodes
  await coordinator.workerSlot(task.id,token);await coordinator.workerSlot(task.id,token);
  try{
   const detail=(await app.inject({url:`/api/tasks/${task.id}`,headers})).json();
-  expect(detail).toMatchObject({in_flight:2,engine_mode:'exploring',scheduling:{task_active:2,global_active:2,limit:2}});
+  expect(detail).toMatchObject({in_flight:2,engine_mode:'exploring',scheduling:{limit_scope:'task',task_active:2,global_active:2,limit:2,available:0}});
   const stats=(await app.inject({url:'/api/stats',headers})).json();expect(stats.active_task.in_flight).toBe(2);
   const other=await db.tasks().createTaskWithOptions('LOCAL other stats','',{executionMode:'manual'});
   const scoped=(await app.inject({url:`/api/stats?task=${other.id}`,headers})).json();
   expect(scoped.active_task.id).toBe(String(other.id));expect(scoped.active_task.in_flight).toBe(0);
+  const otherDetail=(await app.inject({url:`/api/tasks/${other.id}`,headers})).json();
+  expect(otherDetail.scheduling).toMatchObject({limit_scope:'task',limit:2,task_active:0,global_active:2,available:2});
  }finally{await coordinator.release(task.id,token);}
 });

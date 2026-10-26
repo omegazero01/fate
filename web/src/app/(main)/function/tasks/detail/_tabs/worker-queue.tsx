@@ -243,8 +243,8 @@ export function WorkerQueue({ taskId, disabled }: { taskId: string; disabled: bo
           {queue && (
             <>
               {queue.scheduling && <div className="flex flex-wrap gap-2" aria-label="Worker 调度状态">
-                <Badge variant="outline">全局执行 {queue.scheduling.global_active} / {queue.scheduling.limit}</Badge>
-                <Badge variant="secondary">本任务执行 {queue.scheduling.task_active}</Badge>
+                <Badge variant="outline">本任务执行 {queue.scheduling.task_active} / {queue.scheduling.limit}</Badge>
+                <Badge variant="secondary">本任务空闲 {queue.scheduling.available}</Badge>
                 <Badge variant="secondary">退出中 {queue.scheduling.exiting}</Badge>
                 <Badge variant="secondary">待领取 {queue.scheduling.ready}</Badge>
                 <Badge variant="secondary">规划名额 {queue.scheduling.planning}</Badge>

@@ -18,13 +18,14 @@ function record(row:Record<string,unknown>){
  const usage=(row.usage&&typeof row.usage==='object'?row.usage:{}) as Record<string,unknown>;
  return {id:Number(row.id),ts:row.created_at,model:String(row.model??''),profile_name:String(row.profile_name??''),
   purpose:String(row.purpose??'conversation'),session_id:String(row.conversation_id??''),task_id:row.task_id==null?'':String(row.task_id),worker:String(row.role??''),
-  latency_ms:Math.max(0,Number(row.latency_ms)||0),input_tokens:Number(usage.input??usage.inputTokens??0),
+  latency_ms:Math.max(0,Number(row.latency_ms)||0),version:'usage-v2',input_semantics:'inclusive_cache',usage_complete:['complete','not_sent'].includes(String(row.quality)),quality:row.quality,
+  uncached_input_tokens:Number(usage.input??usage.inputTokens??0),input_tokens:Number(usage.inputTotal??(Number(usage.input??0)+Number(usage.cacheRead??0)+Number(usage.cacheWrite??0))),
   output_tokens:Number(usage.output??usage.outputTokens??0),cache_read:Number(usage.cacheRead??usage.cache_read??0),
   cache_write:Number(usage.cacheWrite??usage.cache_write??0),status:String(row.status??''),error:String(row.error??'')};
 }
 const RECORD_SELECT=`SELECT a.id,a.purpose,a.created_at,a.task_id,a.conversation_id,a.role,a.model,a.status,a.error,a.usage,
-  p.name AS profile_name,EXTRACT(EPOCH FROM (COALESCE(a.finished_at,now())-a.created_at))*1000 AS latency_ms
- FROM llm_request_attempts a LEFT JOIN llm_profiles p ON p.id=a.profile_id`;
+  l.profile_name,l.quality,EXTRACT(EPOCH FROM (COALESCE(a.finished_at,now())-a.created_at))*1000 AS latency_ms
+ FROM llm_request_attempts a LEFT JOIN llm_usage_ledger l ON l.audit_id=a.id`;
 
 export function registerLLMManagementRoutes(app:FastifyInstance){
  const db=app.db;
@@ -58,7 +59,7 @@ export function registerLLMManagementRoutes(app:FastifyInstance){
  app.delete('/api/llm/records',async(req,reply)=>{
   const task=String((req.query as {task?:string}).task??'').trim();
   if(!task||!/^\d+$/.test(task))return reply.code(400).send({error:'task must be a numeric task id'});
-  return {deleted:(await db.query('DELETE FROM llm_request_attempts WHERE task_id=$1',[task])).rowCount??0};
+  return {deleted:(await db.query('DELETE FROM llm_request_attempts WHERE task_id=$1',[task])).rowCount??0,metering_retained:true};
  });
  app.get('/api/llm/records/:id',async(req,reply)=>{
   const id=Number((req.params as {id:string}).id);

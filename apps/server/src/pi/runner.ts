@@ -129,12 +129,14 @@ export interface AgentRunnerOptions {
   /** Size-only provider boundary instrumentation; never stores request content/credentials. */
   loadDomainState?: () => Promise<Record<string,unknown>>;
   intentID?: number;
+  turnID?:string;
+  mainSegment?:number;
   compactionSettings?: {reserveTokens?:number;keepRecentTokens?:number};
   /** Adds role-specific retention requirements to native SDK compaction. */
   compactionInstructions?: string;
   onRequestSize?: (size: ReturnType<typeof requestSize>,purpose?:'conversation'|'compaction') => void | Promise<void>;
 	mcpGuard?: (server:string,method:string,tool?:string)=>Promise<void>;
-	modelPolicy?: { onResponse(message: unknown): Promise<void>; retry(signal?:AbortSignal): Promise<boolean>; setPurpose?(purpose: 'conversation'|'compaction'):void; setRuntimeID?(id:string):void; finish?():Promise<void> };
+	modelPolicy?: { onResponse(message: unknown): Promise<void>; retry(signal?:AbortSignal): Promise<boolean>; setPurpose?(purpose: 'conversation'|'compaction'):void; setRuntimeID?(id:string):void; setScope?(scope:import('../db/usage-ledger.js').UsageScope):void; finish?():Promise<void> };
 	signal?: AbortSignal;
 	maxTurns?: number;
 	maxDurationMs?: number;

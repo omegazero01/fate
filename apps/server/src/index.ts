@@ -1,3 +1,4 @@
+import {configureUsageOutbox,replayUsageOutbox} from './pi/usage-meter.js';
 import { makeModelResolver } from "./pi/modelResolver.js";
 // SERIES TS 后端入口：解析启动参数，打开数据库（含幂等迁移），构造引擎（模型源 =
 // 激活 llm_profile → pi-ai 自定义 provider），监听 HTTP。
@@ -56,6 +57,10 @@ async function main(): Promise<void> {
   mkdirSync(flags.dataDir, { recursive: true });
 
   const db = await openDatabase();
+  configureUsageOutbox(db,flags.dataDir);
+  await replayUsageOutbox(db);
+  let replaying=false;
+  const usageTimer=setInterval(()=>{if(replaying)return;replaying=true;void replayUsageOutbox(db).catch(()=>undefined).finally(()=>{replaying=false;});},5000);usageTimer.unref();
   console.log("[db] schema 迁移完成（幂等）");
 
   // 出口代理：-proxy 非空时启动，验证执行身份和暂停状态并记录流量。
@@ -105,6 +110,8 @@ async function main(): Promise<void> {
     await engine.shutdown();
     await gateway?.close().catch(() => undefined);
     await app.close().catch(() => undefined);
+    clearInterval(usageTimer);
+    await replayUsageOutbox(db).catch(()=>undefined);
     await db.close().catch(() => undefined);
     process.exit(0);
   };

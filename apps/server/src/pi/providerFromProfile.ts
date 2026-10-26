@@ -1,3 +1,5 @@
+import type {Database} from '../db/index.js';
+import {meterProvider} from './usage-meter.js';
 // LLM profile → pi-ai provider/model 构造（index.ts 的模型解析器与 /api/llm/test 共享）。
 
 import { createProvider } from "@earendil-works/pi-ai";
@@ -117,10 +119,13 @@ export function buildModelSource(profile: ProfileLike): Promise<ModelSource> {
 /** 一次最小补全用于测试连接：返回 {ok, latency_ms, model, reply, error}。 */
 export async function testProfileConnection(
   profile: ProfileLike,
+  db?:Database,
 ): Promise<{ ok: boolean; latency_ms: number; model: string; reply?: string; error?: string }> {
   const start = Date.now();
   try {
     const source = await buildModelSource(profile);
+    if(db){const provider=source.modelRuntime.getProvider(source.model.provider)!;
+      await source.modelRuntime.registerNativeProvider(meterProvider(db,provider,{id:profile.id??0,name:profile.name??'连接诊断',model:profile.model},()=>({role:'system',purpose:'diagnostic'})));}
     const models = source.modelRuntime as unknown as { completeSimple: (model: unknown, context: unknown, options?: unknown) => Promise<{ stopReason?:string;errorMessage?:string;content?: Array<{ type: string; text?: string }> }> };
     const result = await models.completeSimple(
       source.model,

@@ -54,18 +54,22 @@ it('recalls activity and complete Unicode fields with bounded snapshots and live
  await db.query("UPDATE tools SET enabled=false WHERE key='get_worker_trace'");
  try{const blocked=await call(contextGetTool(c),{items:[{ref:`activity:${activity}`}]});expect(blocked.items[0].error).toContain('权限');}finally{await db.query("UPDATE tools SET enabled=true WHERE key='get_worker_trace'");}
 });
-it('resumes a paused Worker outside the full pool exactly once through the resume button',async()=>{
+it('resumes a paused Worker once using its own task capacity despite another full task',async()=>{
  const other=await fixture();await db.query("UPDATE tasks SET status='running' WHERE id=$1",[other.task.id]);await db.platform().setSetting('workers','1');
  const capacity=new Coordinator(db,1),capacityToken=(await capacity.acquire(other.task.id))!,capacitySlot=(await capacity.workerSlot(other.task.id,capacityToken))!;
  const {task,s}=await fixture();const id=await s.addIntent({summary:'LOCAL manual resume'},5,[],'user');await s.setIntentState(id,'paused');
+ const waiting=await s.addIntent({summary:'LOCAL second manual resume'},5,[],'user');await s.setIntentState(waiting,'paused');
  const {f,source}=await model('artex-human-resume');let release!:()=>void,entered=false;const held=new Promise<void>(r=>release=r);
  f.setResponses([async ctx=>{entered=true;expect(JSON.stringify(ctx.messages)).not.toContain('human-intervention');await held;return fauxAssistantMessage('LOCAL resumed and done');}]);
  const e=new Engine(db,{...defaultEngineConfig(),workers:1,debounceMs:2},async()=>source,dir);engines.push(e);await e.run(task.id);
  try{
-  expect((await executionSnapshot(db,task.id)).available).toBe(0);
+  expect((await executionSnapshot(db,task.id)).available).toBe(1);
   const first=await e.controlIntent(task.id,id,'resume');expect(first.state).toBe('running');
   await until(async()=>entered);const repeated=await e.controlIntent(task.id,id,'resume');expect(repeated.duplicate).toBe(true);
-  expect(await executionSnapshot(db,task.id)).toMatchObject({global_active:1,task_active:1,available:0});
+  expect(await executionSnapshot(db,task.id)).toMatchObject({limit_scope:'task',global_active:2,task_active:1,available:0});
+  await expect(e.controlIntent(task.id,waiting,'resume')).rejects.toMatchObject({statusCode:409,code:'TASK_WORKER_CAPACITY_FULL'});
+  expect((await s.getNode(waiting))?.state).toBe('paused');
+  expect(f.state.callCount).toBe(1);
   release();await until(async()=>(await s.getNode(id))?.state==='done');expect(f.state.callCount).toBe(1);
  }finally{release();await e.stop(task.id);await capacity.releaseSlot(capacitySlot);await capacity.release(other.task.id,capacityToken);}
 });

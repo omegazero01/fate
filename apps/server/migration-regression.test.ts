@@ -527,11 +527,11 @@ describe('restored feature contracts',()=>{
   const second=new Engine(db,{...defaultEngineConfig(),workers:1,debounceMs:2},async()=>source,dir);engines.push(second);
   try{await e.run(t.id);await until(async()=>!!signal);await second.run(t.id);expect((await s.getNode(id))?.state).toBe('running');expect(faux.state.callCount).toBe(1);}finally{await e.stop(t.id);await second.stop(t.id);}
  });
- it('shares the worker concurrency limit across tasks',async()=>{
+ it('starts another task Worker while the first task fills its independent limit',async()=>{
   const a=await fixture(),b=await fixture();
-  for(const f of [a,b]){await db.tasks().setExecutionMode(f.t.exploration_id,'manual');await f.s.addIntent({summary:'global slot',dispatch_requested:true},1,[],'user');}
+  for(const f of [a,b]){await db.tasks().setExecutionMode(f.t.exploration_id,'manual');await f.s.addIntent({summary:'per-task slot',dispatch_requested:true},1,[],'user');}
   let signal:AbortSignal|undefined;a.faux.setResponses([async(_c,o)=>{signal=o?.signal;await new Promise<void>(resolve=>signal?.addEventListener('abort',()=>resolve(),{once:true}));return fauxAssistantMessage('',{stopReason:'aborted'});}]);
-  try{await a.e.run(a.t.id);await until(async()=>!!signal);await b.e.run(b.t.id);await new Promise(r=>setTimeout(r,120));expect(b.faux.state.callCount).toBe(0);await a.e.stop(a.t.id);await until(async()=>b.faux.state.callCount>0);}finally{await a.e.stop(a.t.id);await b.e.stop(b.t.id);}
+  try{await a.e.run(a.t.id);await until(async()=>!!signal);await b.e.run(b.t.id);await until(async()=>b.faux.state.callCount>0);expect(signal?.aborted).toBe(false);expect(a.faux.state.callCount).toBe(1);}finally{await a.e.stop(a.t.id);await b.e.stop(b.t.id);}
  });
  it('queues task admission FIFO and fences an expired owner',async()=>{
   for(const engine of engines)await engine.shutdown();

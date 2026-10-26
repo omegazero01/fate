@@ -1,3 +1,4 @@
+import {aggregateUsage,unverifiedUsageHistory} from '../../db/usage-ledger.js';
 import {coverageGraph,queryAssets} from '../../db/asset-query.js';
 import {READABLE_FINDINGS} from "./finding-projection.js";
 import {modelTokenUsage} from '../model-token-usage.js';
@@ -804,96 +805,30 @@ export function registerCompatRoutes(app: FastifyInstance): void {
 
   app.get("/api/audit", async () => ({ entries: [], attributions: {} }));
 
-  // ─── Token 计量（activity result 行聚合；profile 归属 = 当前激活 profile）───
-
-  // GET /api/exploration/tokens — 任务 token 总览：workers（按 worker 分组）+
-  // sessions（main/plan/intent:N）+ total（对齐前端 TokenStats）。
-  app.get("/api/exploration/tokens", async (req) => {
-    const q = req.query as Record<string, string>;
-    const expID = await expOf(q2n(q["task"], 0));
-    const T = `COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o,
-               COALESCE(SUM(cache_read_tokens),0) cr, COALESCE(SUM(cache_write_tokens),0) cw`;
-    const byWorker = await db().query(
-      `SELECT COALESCE(NULLIF(worker,''),'unknown') AS worker, ${T}
-       FROM activity WHERE exploration_id=$1 AND kind='result' GROUP BY 1 ORDER BY 1`,
-      [expID],
-    );
-    const bySession = await db().query(
-      `SELECT CASE WHEN node_id IS NOT NULL THEN 'intent:' || node_id
-                   WHEN worker IN ('planner','goals') THEN 'plan' ELSE 'main' END AS session, ${T}
-       FROM activity WHERE exploration_id=$1 AND kind='result' GROUP BY 1 ORDER BY 1`,
-      [expID],
-    );
-    const tot = await db().query(
-      `SELECT ${T} FROM activity WHERE exploration_id=$1 AND kind='result'`,
-      [expID],
-    );
-    const t = tot.rows[0] ?? {};
-    return {
-      workers: byWorker.rows.map((r) => ({
-        worker: String(r["worker"]),
-        input_tokens: Number(r["i"]),
-        output_tokens: Number(r["o"]),
-        cache_read_tokens: Number(r["cr"]),
-        cache_write_tokens: Number(r["cw"]),
-      })),
-      sessions: bySession.rows.map((r) => ({
-        session: String(r["session"]),
-        input_tokens: Number(r["i"]),
-        output_tokens: Number(r["o"]),
-        cache_read_tokens: Number(r["cr"]),
-        cache_write_tokens: Number(r["cw"]),
-      })),
-      total: {
-        input_tokens: Number(t["i"] ?? 0),
-        output_tokens: Number(t["o"] ?? 0),
-        cache_read_tokens: Number(t["cr"] ?? 0),
-        cache_write_tokens: Number(t["cw"] ?? 0),
-      },
-    };
+  // Counts are unique physical requests. Task-bound conversations are not added twice.
+  app.get('/api/exploration/tokens',async req=>{
+    const q=req.query as Record<string,string>;
+    const expID=await expOf(q2n(q.task,0));
+    const task=(await db().query('SELECT id FROM tasks WHERE exploration_id=$1 AND deleted_at IS NULL',[expID])).rows[0];
+    if(!task)throw Object.assign(new Error('任务不存在'),{statusCode:404});
+    const scope={taskID:Number(task.id)};
+    const [total,workers,sessions]=await Promise.all([aggregateUsage(db(),scope),aggregateUsage(db(),scope,'worker'),aggregateUsage(db(),scope,'session')]);
+    const mainSegments=sessions.filter(r=>String(r.bucket).startsWith('main:'));
+    return {total:total[0],workers:workers.map(r=>({...r,worker:r.bucket})),sessions:sessions.map(r=>({...r,session:r.bucket})),
+      session_aliases:{main:{session:'main',is_alias:true,alias_of:mainSegments.map(r=>r.bucket),input_tokens:mainSegments.reduce((n,r)=>n+r.input_tokens,0),output_tokens:mainSegments.reduce((n,r)=>n+r.output_tokens,0),cache_read_tokens:mainSegments.reduce((n,r)=>n+r.cache_read_tokens,0),cache_write_tokens:mainSegments.reduce((n,r)=>n+r.cache_write_tokens,0)}},version:'usage-v2'};
   });
-
-  app.get("/api/tokens/usage", async (req) => {
-    const q = req.query as Record<string, string>;
-    const days = Math.min(Math.max(q2n(q["days"], 365), 1), 3650);
-    const active = await db().platform().activeProfile().catch(() => null);
-    const pname = active?.name || active?.model || "default";
-    const byProfile = await db().query(
-      `SELECT COUNT(*) calls, COUNT(DISTINCT exploration_id) tasks,
-              COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o,
-              COALESCE(SUM(cache_read_tokens),0) cr, COALESCE(SUM(cache_write_tokens),0) cw
-       FROM activity WHERE kind='result' AND input_tokens IS NOT NULL AND created_at >= now()-($1||' days')::interval`, [String(days)]);
-    const daily = await db().query(
-      `SELECT TO_CHAR(DATE_TRUNC('day', created_at AT TIME ZONE 'UTC'),'YYYY-MM-DD') date,
-              COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o, COALESCE(SUM(cache_read_tokens),0) cr
-       FROM activity WHERE kind='result' AND input_tokens IS NOT NULL AND created_at >= now()-($1||' days')::interval
-       GROUP BY 1 ORDER BY 1`, [String(days)]);
-    const p = byProfile.rows[0] ?? {};
-    return {
-      by_profile: Number(p["calls"] ?? 0) > 0 ? [{
-        profile_name: pname, calls: Number(p["calls"]), tasks: Number(p["tasks"]),
-        input_tokens: Number(p["i"]), output_tokens: Number(p["o"]),
-        cache_read_tokens: Number(p["cr"]), cache_write_tokens: Number(p["cw"]),
-      }] : [],
-      daily: daily.rows.map((r) => ({
-        profile_name: pname, date: r["date"],
-        input_tokens: Number(r["i"]), output_tokens: Number(r["o"]), cache_read_tokens: Number(r["cr"]),
-      })),
-    };
+  const usageWindow=(q:Record<string,string>,defaultDays:number)=>({days:Math.min(Math.max(q2n(q.days,defaultDays),1),3650)});
+  app.get('/api/tokens/usage',async req=>{
+    const scope=usageWindow(req.query as Record<string,string>,365);
+    const [total,profiles,daily,undated]=await Promise.all([aggregateUsage(db()),aggregateUsage(db(),{},'profile'),aggregateUsage(db(),scope,'profile_day'),aggregateUsage(db(),{timeKnown:false})]);
+    return {version:'usage-v2',timezone:'Asia/Shanghai',total_scope:'retained_all_time',daily_days:scope.days,daily_complete:total[0]!.time_unknown_records===0,unassigned_time:undated[0],total:total[0],by_profile:profiles,daily,unverified_history:await unverifiedUsageHistory(db())};
   });
-
-  app.get("/api/tokens/daily", async (req) => {
-    const q = req.query as Record<string, string>;
-    const days = Math.min(Math.max(q2n(q["days"], 30), 1), 3650);
-    const rows = await db().query(
-      `SELECT TO_CHAR(DATE_TRUNC('day', created_at AT TIME ZONE 'UTC'),'YYYY-MM-DD') day,
-              COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o, COALESCE(SUM(cache_read_tokens),0) cr
-       FROM activity WHERE kind='result' AND input_tokens IS NOT NULL AND created_at >= now()-($1||' days')::interval
-       GROUP BY 1 ORDER BY 1`, [String(days)]);
-    return rows.rows.map((r) => ({ day: r["day"], input_tokens: Number(r["i"]), output_tokens: Number(r["o"]), cache_read_tokens: Number(r["cr"]) }));
+  app.get('/api/tokens/daily',async req=>(await aggregateUsage(db(),usageWindow(req.query as Record<string,string>,30),'day')).map(r=>({...r,day:r.bucket,date:r.bucket})));
+  app.get('/api/tokens/conversations',async()=>{
+    const usage=await aggregateUsage(db(),{},'conversation');
+    const conversations=(await db().query('SELECT id,title,agent_key AS role,task_id FROM conversations')).rows;
+    return usage.map(r=>{const c=conversations.find(c=>String(c.id)===r.bucket);return {...r,id:r.bucket,conversation_id:r.bucket,title:c?.title??'已删除',role:c?.role??r.role,deleted:!c,llm_profile_id:r.profile_id,task_id:r.task_id==null?null:String(r.task_id)};});
   });
-
-  app.get("/api/tokens/conversations", async () => []);
 
   app.get("/api/llm/records/by-model", async (req) => {
     const q = req.query as Record<string, string>;

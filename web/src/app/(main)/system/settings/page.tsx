@@ -89,7 +89,7 @@ export default function SystemSettingsPage() {
       .setSettings({ workers: n })
       .then((s) => {
         apply(s);
-        toast.success("已保存并发工作 agent 数（对之后启动的任务生效）");
+        toast.success("已保存每个任务的 Worker 并发上限（下一次领取时生效）");
       })
       .catch((e) => toast.error("保存失败：" + (e as Error).message))
       .finally(() => setSavingWorkers(false));
@@ -755,11 +755,11 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CpuIcon className="size-4" />
-              工作并发 · Work Agent 数
+              每个任务的 Worker 并发上限
             </CardTitle>
             <CardDescription>
-              每个任务并发运行的工作 agent 数量（默认 3）。数值越大并发探测越多、消耗也越高。修改后
-              <b>对之后启动的任务生效</b>，正在运行的任务不受影响。
+              每个任务独立使用此上限（默认 3），任务之间不共用名额。数值越大并发探测越多、消耗也越高。修改在
+              <b>下一次领取或手动恢复时生效</b>；调低上限不会中断正在执行的 Worker，超限期间不再领取。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
