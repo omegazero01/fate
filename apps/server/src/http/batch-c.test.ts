@@ -240,6 +240,7 @@ describe.skipIf(!haveDB)("批次C：分类与批量控制", () => {
     expect((miss.json() as { items: { ok: boolean; error?: string }[] }).items[0]!.ok).toBe(false);
 
     // 初始化故意使用失败模型，任务已暂停；重置夹具标志以独立验证批量 pause。
+    for(let i=0;i<100&&!(await db!.tasks().getTask(Number(task.id)))?.paused;i++)await new Promise(r=>setTimeout(r,20));
     expect((await db!.tasks().getTask(Number(task.id)))?.paused).toBe(true);
     await db!.query("UPDATE tasks SET paused=false WHERE id=$1",[Number(task.id)]);
     // 批量控制：pause → resume。
@@ -247,7 +248,7 @@ describe.skipIf(!haveDB)("批次C：分类与批量控制", () => {
     expect(pause.statusCode).toBe(200);
     const pauseBody = pause.json() as { items: { id: string; ok: boolean; status?: string }[] };
     expect(pauseBody.items[0]!.ok).toBe(true);
-    expect(pauseBody.items[0]!.status).toBe("paused");
+    expect(["paused","waiting_for_executor"]).toContain(pauseBody.items[0]!.status);
 
     const bad = await authed("POST", "/api/tasks/control/batch", { task_ids: [task.id], action: "explode" });
     expect(bad.statusCode).toBe(400);

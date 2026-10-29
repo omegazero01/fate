@@ -44,6 +44,26 @@ async function until(fn:()=>Promise<boolean>,ms=10_000){const end=Date.now()+ms;
 async function model(label:string){const faux=fauxProvider({provider:label});const modelRuntime=await ModelRuntime.create({refreshOnCreate:false});await modelRuntime.registerNativeProvider(faux.provider);return {faux,source:{modelRuntime,model:faux.getModel() as never}};}
 
 describe('context coordination',()=>{
+ it('distinguishes fact content versions from receipt formats and preserves idempotent writeback',async()=>{
+  const f=await claimed(),args={summary:'LOCAL versioned evidence',evidence:'Synthetic response; no network'};
+  const call=async()=>JSON.parse(((await f.tools.record_fact!.execute('versioned-writeback',args as never)).content[0] as {text:string}).text);
+  const saved=await call();
+  expect(saved).toMatchObject({ref:`node:${saved.fact_id}`,version:0,writeback:{version:1}});
+  const planner=runContext(db,f.task.id,f.task.exploration_id,'planner');
+  const read=await execute(contextGetTool(planner),{items:[{ref:saved.ref,view:'detail'}]});
+  expect(read.value.items[0]).toMatchObject({version:0,read_receipt:{version:1}});
+  const tool=plannerTools(planner).find(t=>t.name==='add_intent')!;
+  const wrong=await execute(tool,{summary:'LOCAL dependent direction',parent_ids:[saved.fact_id],contract:{basis:[{node_id:saved.fact_id,version:1}]}});
+  expect(wrong.error).toBe(true);expect(wrong.value.error).toContain('依据');
+  expect(await f.s.listByKind('intent')).toHaveLength(1);
+  expect((await execute(tool,{summary:'LOCAL dependent direction',parent_ids:[saved.fact_id]})).error).toBe(false);
+  const next=(await f.s.listByKind('intent')).find(n=>n.id!==f.id)!;
+  expect((next.payload.contract as {basis:unknown[]}).basis).toContainEqual({node_id:saved.fact_id,version:0});
+  await db.query("UPDATE exploration_nodes SET payload=payload||'{\"detail\":\"revised local evidence\"}'::jsonb WHERE id=$1",[saved.fact_id]);
+  const repeated=await call();
+  expect(repeated.fact_id).toBe(saved.fact_id);expect(repeated.version).toBe((await f.s.getNode(saved.fact_id))!.content_version);
+  expect(repeated.version).toBeGreaterThan(0);expect(await f.s.listByKind('fact')).toHaveLength(2); // task origin + saved fact
+ });
  it('rejects unknown execution tool names before any intent in the batch is committed',async()=>{
   const {ctx,s}=await fixture(),tool=plannerTools(ctx).find(t=>t.name==='add_intent')!;
   const result=await execute(tool,{intents:[

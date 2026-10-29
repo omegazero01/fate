@@ -1,3 +1,4 @@
+import {streamChanges} from './stream-changes.js';
 import {assetGetTool} from '../tools/assets.js';
 import {mergedAssetSearchTool} from '../tools/asset-search-compat.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
@@ -122,6 +123,7 @@ export class ConversationService {
    const detail=a.kind==='tool_start'?JSON.stringify(a.args):'text' in a?a.text??'':'';
    tail=tail.then(async()=>{const saved=await this.db.query(`INSERT INTO conversation_activities(conversation_id,worker,kind,tool,tool_use_id,summary,detail,is_error,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,metadata)
     SELECT $1,'assistant',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$14::jsonb WHERE EXISTS(SELECT 1 FROM runtime_session_leases WHERE key=$12 AND token=$13 AND expires_at>clock_timestamp())`,[id,kind,'toolName' in a?a.toolName:null,'toolCallId' in a?a.toolCallId:null,detail.slice(0,1000),detail,'isError' in a?a.isError:false,a.kind==='usage'?a.input:0,a.kind==='usage'?a.output:0,a.kind==='usage'?a.cacheRead:0,a.kind==='usage'?a.cacheWrite:0,`conversation:${id}`,lease.token,JSON.stringify({turn_id:turnID,...runnerActivityMetadata(a)})]);
+    if(saved.rowCount)streamChanges.emit('change','conversation',id);
     if(saved.rowCount&&a.kind==='assistant_message_end'&&a.streamID)await writer?.committed(a.streamID,a.isThinking?'thinking':'text');});
   };
   try{

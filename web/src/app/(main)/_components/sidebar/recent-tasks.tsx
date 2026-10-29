@@ -1,4 +1,5 @@
 "use client";
+import {useVisiblePoll} from "@/hooks/use-visible-poll";
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
@@ -16,30 +17,8 @@ export function RecentTasks() {
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const params = useSearchParams();
   const pathname = usePathname();
-  React.useEffect(() => {
-    let live = true;
-    const load = () =>
-      api
-        .tasks()
-        .then((r) => {
-          if (live)
-            setTasks(
-              r.tasks
-                .slice()
-                .sort(
-                  (a, b) => Date.parse(b.last_activity || b.created_at) - Date.parse(a.last_activity || a.created_at),
-                )
-                .slice(0, 8),
-            );
-        })
-        .catch(() => {});
-    void load();
-    const timer = setInterval(load, 30000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [pathname]);
+  const read=React.useCallback(async(signal:AbortSignal)=>{const r=await api.tasks({page:1,page_size:8,recent:true,sort:'created'});if(!signal.aborted)setTasks(r.tasks);},[pathname]);
+  useVisiblePoll(read,30000);
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>最近任务</SidebarGroupLabel>

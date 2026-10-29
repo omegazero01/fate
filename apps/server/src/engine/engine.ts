@@ -1,3 +1,5 @@
+import {streamChanges} from './stream-changes.js';
+import {pendingPlannerWakeups,plannerWakeupReady} from './planner-wakeup.js';
 import {goalsBootstrap} from '../db/goals-bootstrap.js';
 import {blackboardRevision,markWorkerReleased,recoverWorkerSettlements} from '../db/worker-drafts.js';
 import {LiveStreamWriter,runnerActivityMetadata} from './live-stream.js';
@@ -55,6 +57,7 @@ export function defaultEngineConfig(): EngineConfig {
 export type AbortCause = "pause" | "cancel" | "kill" | "task-timeout" | "stop" | "lease-lost" | "task-completed" | "task-ended" | "shutdown";
 
 interface WorkHandle {
+  turnID: string;
   abort: (cause: AbortCause, detail?:string) => Promise<void>;
   runner:Promise<{steer(message:string):Promise<void>}>;
   settled?: boolean;
@@ -65,6 +68,9 @@ interface WorkHandle {
 interface TaskRuntime {
   lease?: string;
   workerCount: number;
+  workerNames:Set<string>;
+  executions: Set<Promise<void>>;
+  plannerReserved: boolean;
   ready: boolean;
   taskID: number;
   expID: number;
@@ -121,6 +127,57 @@ export class Engine {
   private scheduler?: ReturnType<typeof setInterval>;
   private pumping = false;
   private closing = false;
+  private dispatching = false;
+  private dispatchWatchdog?:ReturnType<typeof setInterval>;
+  private dispatchTimer?: ReturnType<typeof setTimeout>;
+  private dispatchCursor = 0;
+  private plannerQueue = new Map<number,{rt:TaskRuntime;resolve:(granted:boolean)=>void;terminal:boolean}>();
+  private plannerPumping = false;
+
+  runtimeMetrics(){return {tasks:this.tasks.size,worker_executions:[...this.tasks.values()].reduce((n,r)=>n+r.executions.size,0),
+    planners:[...this.tasks.values()].filter(r=>r.plannerReserved).length,planner_queue:this.plannerQueue.size,claim_dispatchers:Number(this.dispatching),...this.coordinator.metrics()};}
+  private ensureDispatchWatchdog(){
+    if(this.dispatchWatchdog)return;
+    this.dispatchWatchdog=setInterval(()=>{
+      if(![...this.tasks.values()].some(rt=>rt.started&&!rt.stopped)&&!this.plannerQueue.size){clearInterval(this.dispatchWatchdog);this.dispatchWatchdog=undefined;return;}
+      this.scheduleDispatch();
+    },1000);this.dispatchWatchdog.unref();
+  }
+  private scheduleDispatch(){
+    if(this.closing||this.dispatchTimer)return;
+    this.dispatchTimer=setTimeout(()=>{this.dispatchTimer=undefined;void this.dispatchWorkers().catch(()=>{});void this.pumpPlanners().catch(()=>{});},25);
+    this.dispatchTimer.unref();
+  }
+  private trackExecution(rt:TaskRuntime,run:Promise<void>){
+    rt.executions.add(run);
+    void run.finally(()=>{rt.executions.delete(run);this.scheduleDispatch();}).catch(()=>{});
+  }
+  private acquirePlanner(rt:TaskRuntime,terminal=false):Promise<boolean>{
+    return new Promise(resolve=>{this.plannerQueue.set(rt.taskID,{rt,resolve,terminal});this.scheduleDispatch();});
+  }
+  private async pumpPlanners(){
+    if(this.plannerPumping||this.closing)return;this.plannerPumping=true;
+    try{for(const [id,item] of this.plannerQueue){
+      const {rt,resolve,terminal}=item;
+      if(rt.stopped||rt.paused||(!terminal&&rt.settling)){this.plannerQueue.delete(id);resolve(false);continue;}
+      if(rt.plannerReserved)continue;
+      if(!rt.lease||!await this.coordinator.plannerSlot(id,rt.lease))break;
+      this.plannerQueue.delete(id);rt.plannerReserved=true;resolve(true);
+    }}finally{this.plannerPumping=false;}
+  }
+  private async releasePlanner(rt:TaskRuntime){
+    try{if(rt.lease)await this.coordinator.releasePlanner(rt.taskID,rt.lease);}finally{rt.plannerReserved=false;this.scheduleDispatch();}
+  }
+  private trackLoop(rt:TaskRuntime,loop:Promise<void>){
+    rt.loops.push(loop);void loop.finally(()=>{rt.loops=rt.loops.filter(p=>p!==loop);}).catch(()=>{});
+  }
+  private async evictIdleRuntimes(){
+    for(const [id,rt] of this.tasks){
+      if((rt.started&&!rt.stopped)||rt.loops.length||rt.executions.size||rt.plannerReserved||this.starting.has(id)||[...this.chats.keys()].some(k=>k.startsWith(`${id}:`)))continue;
+      const tail=rt.activityTail;await tail.catch(()=>{});
+      if(tail===rt.activityTail&&!rt.started&&!rt.executions.size&&!this.starting.has(id)&&![...this.chats.keys()].some(k=>k.startsWith(`${id}:`)))this.tasks.delete(id);
+    }
+  }
   private chats = new Map<string, { controller: AbortController; done: Promise<string> }>();
 
   private async loadRuntime(taskID: number): Promise<TaskRuntime> {
@@ -132,7 +189,7 @@ export class Engine {
       const task = await this.db.tasks().getTask(taskID);
       if (!task) throw new Error(`任务 #${taskID} 不存在`);
       const rt: TaskRuntime = {
-        taskID, ready: false, workerCount: 0, expID: task.exploration_id, triggers: [], work: new Map(),
+        taskID, ready: false, workerCount: 0, workerNames:new Set(), executions:new Set(), plannerReserved:false, expID: task.exploration_id, triggers: [], work: new Map(),
         plannerBusy: null, stopped: false, paused: task.paused === true || task.status === "paused",
         settling: false, loops: [], todos: new TodoStore(this.db), notifyPending: false,
         notifyWaiters: [], workerWaiters: [], started: false, workerRevision: 0, activityTail: Promise.resolve(),
@@ -198,10 +255,10 @@ export class Engine {
     rt.loops = [];
     rt.workerCount = 0; rt.ready=false;
     const stopLeaseWatchdog=leaseWatchdog(
-      ()=>this.maintainRuntime(rt),
+      ()=>this.coordinator.renew(rt.taskID,rt.lease!),
       ()=>{rt.stopped=true;rt.plannerAbort?.abort("lease-expired");void this.cancelAllWorks(rt,"lease-lost");},
     );
-    rt.loops.push((async()=>{while(!rt.stopped)await this.waitWorker(rt,1000,rt.workerRevision);stopLeaseWatchdog();})());
+    this.trackLoop(rt,(async()=>{while(!rt.stopped)await this.waitWorker(rt,1000,rt.workerRevision);stopLeaseWatchdog();})());
     try {
     // Recover durable completion notifications, then replan unclaimed automatic work.
     await recoverWorkerSettlements(this.db,rt.expID);
@@ -256,13 +313,10 @@ export class Engine {
         }
       }
     })();
-    rt.ready=true;
-    rt.loops.push(supervise("planner", () => this.plannerLoop(rt)));
-    for (let i = 1; i <= await this.coordinator.workers(); i++) {
-      rt.workerCount = i;
-      rt.loops.push(supervise(`work#${i}`, () => this.workerLoop(rt, `work#${i}`)));
-    }
-    rt.loops.push(supervise("deadline", () => this.deadlineLoop(rt)));
+    rt.ready=true;this.ensureDispatchWatchdog();
+    this.trackLoop(rt,supervise("planner", () => this.plannerLoop(rt)));
+    this.trackLoop(rt,supervise("deadline", () => this.deadlineLoop(rt)));
+    this.trackLoop(rt,supervise("state",async()=>{while(!rt.stopped){await this.maintainRuntime(rt);await new Promise(resolve=>setTimeout(resolve,1000));}}));
     this.notify(taskID);
     } catch (err) {
       rt.started = false; rt.stopped = true;
@@ -281,6 +335,8 @@ export class Engine {
   private async pumpScheduler(){
     if(this.pumping||this.closing)return;this.pumping=true;
     try{
+      this.scheduleDispatch();
+      await this.evictIdleRuntimes();
       await recoverExpiredRuntimes(this.db);
       await this.coordinator.promote();
       await this.triggerScheduler.tick();
@@ -289,7 +345,7 @@ export class Engine {
       const rows=await this.db.query(`SELECT id,description,queue_mode FROM tasks WHERE status='running' AND NOT paused AND NOT queued AND deleted_at IS NULL ORDER BY created_at,id`);
       for(const row of rows.rows){
         const id=Number(row.id);
-        if((!this.rt(id)?.started||this.rt(id)?.stopped)&&!this.starting.has(id))void this.run(id,row.queue_mode==='bootstrap'?{decompose:{description:String(row.description??'')}}:{}).catch(()=>{});
+        if(this.starting.size<4&&(!this.rt(id)?.started||this.rt(id)?.stopped)&&!this.starting.has(id))void this.run(id,row.queue_mode==='bootstrap'?{decompose:{description:String(row.description??'')}}:{}).catch(()=>{});
       }
       const pending=await this.db.query('SELECT DISTINCT task_id FROM worker_feedback_delivery WHERE NOT published');
       for(const row of pending.rows)await this.publishFeedback(Number(row.task_id));
@@ -298,13 +354,13 @@ export class Engine {
     }finally{this.pumping=false;}
   }
   private async hasActiveTaskLease(taskID:number){
-    return !!(await this.db.query('SELECT 1 FROM engine_task_leases WHERE task_id=$1 AND expires_at>now()',[taskID])).rowCount;
+    return !!(await this.db.control().query('SELECT 1 FROM engine_task_leases WHERE task_id=$1 AND expires_at>now()',[taskID])).rowCount;
   }
   private async hasActiveMainSession(taskID:number){
-    return !!(await this.db.query("SELECT 1 FROM runtime_session_leases WHERE key LIKE $1 AND expires_at>now() LIMIT 1",[`main:${taskID}:%`])).rowCount;
+    return !!(await this.db.control().query("SELECT 1 FROM runtime_session_leases WHERE key LIKE $1 AND expires_at>now() LIMIT 1",[`main:${taskID}:%`])).rowCount;
   }
   private async acknowledgePendingPauses(taskID:number,owner:string|null,detail:string){
-    await this.db.query(`UPDATE runtime_task_commands SET status='acknowledged',acknowledged_at=now(),executor_owner=$2,detail=$3
+    await this.db.control().query(`UPDATE runtime_task_commands SET status='acknowledged',acknowledged_at=now(),executor_owner=$2,detail=$3
       WHERE task_id=$1 AND command='pause' AND status='pending'`,[taskID,owner,detail]);
   }
   private async reconcilePauseWithoutOwner(taskID:number){
@@ -317,7 +373,6 @@ export class Engine {
     if(rt.stopped||!rt.lease||this.maintaining.has(rt.taskID))return;
     this.maintaining.add(rt.taskID);
     try{
-      await this.coordinator.renew(rt.taskID,rt.lease);
       const task=await this.db.tasks().getTask(rt.taskID);
       if(!task||['done','failed','timeout'].includes(task.status)){
         rt.stopped=true;rt.plannerAbort?.abort('stop');await this.cancelAllWorks(rt,task?.status==='done'?'task-completed':task?.status==='timeout'?'task-timeout':'task-ended');
@@ -330,19 +385,21 @@ export class Engine {
         // reads/edits on an already paused task must survive the lease heartbeat.
         if(enteringPause)await this.stopMainChat(rt.taskID);
         await this.cancelAllWorks(rt,'pause');await this.starting.get(rt.taskID)?.catch(()=>undefined);
-        if(!(await this.hasActiveMainSession(rt.taskID)))await this.acknowledgePendingPauses(rt.taskID,this.coordinator.owner,'task workers and sessions stopped');
+        while(rt.plannerReserved)await new Promise(resolve=>setTimeout(resolve,25));
+        const live=(await this.db.control().query('SELECT paused,queued FROM tasks WHERE id=$1',[rt.taskID])).rows[0];
+        if(live&&!live.paused&&!live.queued){rt.paused=false;return;}
+        if(!(await this.hasActiveMainSession(rt.taskID))){await this.acknowledgePendingPauses(rt.taskID,this.coordinator.owner,'task workers and sessions stopped');rt.started=false;rt.stopped=true;await this.coordinator.release(rt.taskID,rt.lease);this.notify(rt.taskID);return;}
       }
       else if(rt.paused){rt.paused=false;this.notify(rt.taskID);}
       for(const [id,handle] of rt.work){
         const node=await this.db.exploration(rt.expID).getNode(id);
         if(node?.state!=='running'&&!node?.payload.execution_result)await handle.abort(node?.state==='paused'?'cancel':'kill');
       }
-      const workers=await this.coordinator.workers();
-      while(rt.ready&&rt.workerCount<workers){const name=`work#${++rt.workerCount}`;rt.loops.push(this.workerLoop(rt,name).catch(()=>{}));}
+
     }catch(error){
-      rt.stopped=true;rt.plannerAbort?.abort('lease-lost');
-      await this.cancelAllWorks(rt,'lease-lost');
-      this.emitActivity(rt.taskID,{worker:'system',kind:'result',isError:true,summary:`执行租约丢失，已中止本实例：${String(error)}`});
+      // Metadata query failures do not imply lease loss. The isolated watchdog
+      // fences the executor only when renewal actually fails or expires.
+      this.emitActivity(rt.taskID,{worker:'system',kind:'result',isError:true,summary:`运行状态检查失败，将重试：${String(error)}`});
     }finally{this.maintaining.delete(rt.taskID);}
   }
 
@@ -360,6 +417,7 @@ export class Engine {
   }
 
   private wakeWorkers(rt: TaskRuntime): void {
+    this.scheduleDispatch();
     rt.workerRevision++;
     const waiters = rt.workerWaiters.splice(0);
     for (const w of waiters) w();
@@ -442,20 +500,23 @@ export class Engine {
         continue;
       }
       if(Date.now()<retryAfter)continue;
-      const wakeups=(await this.db.query('SELECT id,node_id,kind FROM blackboard_wakeups WHERE exploration_id=$1 AND acknowledged_at IS NULL ORDER BY id LIMIT 50',[rt.expID])).rows;
+      const wakeups=await pendingPlannerWakeups(this.db,rt.expID);
       const revision=await blackboardRevision(this.db,rt.expID);
       const heartbeat=Math.max(1,settings?.plan_heartbeat_seconds?settings.plan_heartbeat_seconds*1000:this.cfg.heartbeatMs);
       const inspect=Date.now()-lastPlannedAt>=heartbeat&&(counts.running>0||revision!==lastRevision);
-      if(!wakeups.length&&!rt.triggers.length&&!inspect)continue;
+      if(!plannerWakeupReady(wakeups,{now:Date.now(),running:counts.running,hasControl:rt.triggers.length>0,heartbeatDue:inspect}))continue;
+      if(!await this.acquirePlanner(rt))continue;
+      try{
+      if(rt.stopped||rt.paused||rt.settling)continue;
+      // Refresh after waiting for capacity; queued rounds acknowledge nothing.
+      const wakeups=(await this.db.query('SELECT id,node_id,kind FROM blackboard_wakeups WHERE exploration_id=$1 AND acknowledged_at IS NULL ORDER BY id LIMIT 50',[rt.expID])).rows;
+      const revision=await blackboardRevision(this.db,rt.expID);
       // Durable settlement/control events are the wakeup authority, including
       // events whose result contains no new fact. Never discard one by a hash.
       await rt.todos.load(rt.expID);
 
       const task = await this.db.tasks().getTask(rt.taskID);
       const goal = task?.goal ?? task?.description ?? "";
-
-      const model = await this.modelFor(rt, "planner");
-      if (!model) continue;
 
       await compactColdGraph(this.db, rt.expID);
       if (rt.stopped || rt.paused || rt.settling) continue;
@@ -466,6 +527,8 @@ export class Engine {
         ...(wakeups.length?[`持久化通知：${wakeups.map(w=>`${w.kind} (#${w.id})`).join('、')}`]:[]),
         ...(pending.ids.length?[`待交付领域变化：${pending.ids.length} 条${pending.more?'（后续仍有分页）':''}`]:[])];
       const triggersText=`【本轮触发】\n${reasons.length?reasons.join('\n'):'心跳巡检（本轮无待交付通知）'}`;
+      const model = await this.modelFor(rt, "planner");
+      if (!model) continue;
       // Planning itself uses an execution lease and model resources. A Planner
       // that cannot dispatch any work must still be bounded by task timeout.
       if (task) await this.db.tasks().stampFirstRun(rt.taskID, task.timeout_seconds);
@@ -473,6 +536,7 @@ export class Engine {
       const planningRoundID=randomUUID();
       const triggerCount=rt.triggers.length;
       const turn=this.beginActivityTurn(rt,{worker:"planner"},planningRoundID);
+      try {
       let planningSucceeded=false;
       let deliveredContextIDs=pending.ids,deliveredWakeupIDs=wakeups.map(w=>w.id),moreContext=pending.more;
       const round = runPlannerRound({
@@ -508,8 +572,9 @@ export class Engine {
         });
         rt.triggers.splice(0,triggerCount);if(moreContext)this.notify(rt.taskID,"继续读取本轮未交付的领域变化");lastPlannedAt=Date.now();lastRevision=revision;retryAfter=0;
       }
-      await turn.finish();
+      } finally { await turn.finish(); }
       rt.plannerBusy = null;
+      }finally{rt.plannerBusy=null;await this.releasePlanner(rt);}
 
       this.wakeWorkers(rt);
 
@@ -537,43 +602,50 @@ export class Engine {
     }
   }
 
-  private async workerLoop(rt: TaskRuntime, name: string): Promise<void> {
-    while (!rt.stopped) {
-      const revision = rt.workerRevision;
-      if (!rt.paused && !rt.settling) {
-        const s = this.db.exploration(rt.expID);
-        if (await s.hasOpenIntent()) {
-          const model = await this.modelFor(rt, "worker");
-          if (model && !rt.stopped && !rt.paused && !rt.settling) {
-            const managed=await this.db.tasks().executionMode(rt.expID)!=='manual';
-            const slot=rt.lease ? await this.coordinator.workerSlot(rt.taskID,rt.lease):undefined;
-            if(!slot){await this.waitWorker(rt,250,revision);continue;}
-            try {
-            const intent = await s.claimNextWorker(name,n=>n.payload.needs_replanning!==true);
-            if (intent) {
-              await this.db.query('UPDATE engine_worker_slots SET intent_id=$2 WHERE id=$1',[slot,intent.id]);
-              if (rt.stopped || rt.paused || rt.settling) {
-                await s.compareAndSetIntentState(intent.id, "running", "open");
-              } else {
-                const task = await this.db.tasks().getTask(rt.taskID);
-                if (task) await this.db.tasks().stampFirstRun(rt.taskID, task.timeout_seconds);
-                await this.runOneIntent(rt, intent, name, model);
-                continue; // Drain the queue before waiting; wake-ups during execution cannot be lost.
-              }
+  /** One process dispatcher: one claim per task per pass, with no waiting DB locks. */
+  private async dispatchWorkers():Promise<void>{
+    if(this.dispatching||this.closing)return;this.dispatching=true;
+    let claimed=false;
+    try{
+      const tasks=[...this.tasks.values()].filter(rt=>rt.ready&&rt.started&&!rt.stopped&&!rt.paused&&!rt.settling);
+      const limit=await this.coordinator.workers();
+      const offset=tasks.length?this.dispatchCursor++%tasks.length:0;
+      for(let i=0;i<tasks.length;i++){
+        const rt=tasks[(i+offset)%tasks.length]!;
+        if(rt.executions.size>=limit||!rt.lease)continue;
+        let index=1;while(rt.workerNames.has(`work#${index}`))index++;const name=`work#${index}`;
+        try{
+          const claim=await this.db.transaction(async db=>{
+            // Fast empty check avoids capacity locks and expensive queue snapshots.
+            if(!await db.exploration(rt.expID).hasOpenIntent())return null;
+            const slot=await this.coordinator.reserveWorkerSlot(db,rt.taskID,rt.lease!);
+            if(!slot)return null;
+            const locked=(await db.query('SELECT pg_try_advisory_xact_lock($1) locked',[-rt.expID])).rows[0]?.locked;
+            const intent=locked?await db.exploration(rt.expID).claimNextWorker(name,n=>n.payload.needs_replanning!==true):null;
+            if(!intent){await db.query('DELETE FROM engine_worker_slots WHERE id=$1',[slot]);return null;}
+            await db.query('UPDATE engine_worker_slots SET intent_id=$2 WHERE id=$1',[slot,intent.id]);
+            return {slot,intent};
+          });
+          if(!claim)continue;
+          claimed=true;rt.workerNames.add(name);
+          const execution=(async()=>{
+            try{
+              if(rt.stopped||rt.paused||rt.settling){await this.db.exploration(rt.expID).compareAndSetIntentState(claim.intent.id,'running','open');return;}
+              await this.runOneIntent(rt,claim.intent,name);
+            }finally{
+              rt.workerNames.delete(name);
+              await this.coordinator.releaseSlot(claim.slot);
+              await markWorkerReleased(this.db,rt.expID,claim.intent.id);
+              await this.publishFeedback(rt.taskID);this.notify(rt.taskID);
             }
-            } finally {
-              const completed=(await this.db.query('SELECT intent_id FROM engine_worker_slots WHERE id=$1',[slot])).rows[0]?.intent_id;
-              await this.coordinator.releaseSlot(slot);
-              if(completed){await markWorkerReleased(this.db,rt.expID,Number(completed));await this.publishFeedback(rt.taskID);this.notify(rt.taskID);}
-            }
-          }
-        }
+          })().catch(error=>{this.emitActivity(rt.taskID,{worker:name,kind:'result',isError:true,summary:String(error)});});
+          this.trackExecution(rt,execution);
+        }catch(error){this.emitActivity(rt.taskID,{worker:'system',kind:'result',isError:true,summary:`领取失败：${String(error)}`});}
       }
-      await this.waitWorker(rt, 1000, revision);
-    }
+    }finally{this.dispatching=false;if(claimed)this.scheduleDispatch();}
   }
 
-  private async runOneIntent(rt: TaskRuntime, intent: { id: number }, name: string, model: ModelSource): Promise<void> {
+  private async runOneIntent(rt: TaskRuntime, intent: { id: number }, name: string, model?: ModelSource): Promise<void> {
     const s = this.db.exploration(rt.expID);
     const turn=this.beginActivityTurn(rt,{worker:name,intentID:intent.id});
     this.emitActivity(rt.taskID, {
@@ -587,6 +659,7 @@ export class Engine {
     let complete!: () => void;
     let ready!: (runner:{steer(message:string):Promise<void>})=>void;
     const handle: WorkHandle = {
+      turnID: turn.turnID,
       runner:new Promise(resolve=>{ready=resolve;}),
       abort: async (c, detail='') => {
         if(controller.signal.aborted)return; // Keep the first actual cancellation cause.
@@ -602,6 +675,10 @@ export class Engine {
     let result: WorkerRunResult | null = null;
     let failure: unknown = null;
     try {
+      model??=await this.modelFor(rt,'worker')??undefined;
+      if(!model)throw new Error('Worker 模型配置不可用');
+      const task=await this.db.tasks().getTask(rt.taskID);
+      if(task)await this.db.tasks().stampFirstRun(rt.taskID,task.timeout_seconds);
       result = await runWorkerIntent({
         turnID:turn.turnID,
         onRunner:ready,
@@ -711,6 +788,7 @@ export class Engine {
       return id;
     });
     if(activityID===null)return;
+    streamChanges.emit('change','task',rt.expID);
     this.bus.emit('activity',{id:activityID,taskID:rt.taskID,expID:rt.expID,nodeID:intent.id,worker:name,kind:'result',summary,detail:summary});
     // Completion notification follows slot release; findings may notify earlier.
     } catch(error) {
@@ -764,14 +842,7 @@ export class Engine {
     if (handle) await handle.abort(action==='pause' ? 'cancel' : 'kill',`user: ${reason}`);
     this.notify(taskID);
     await this.publishFeedback(taskID);
-    let waiting=false;
-    {
-      const deadline=Date.now()+10_000;
-      do{
-        waiting=!!(await this.db.query('SELECT 1 FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.task_id=$1 AND (s.intent_id=$2 OR s.intent_id IS NULL) AND l.expires_at>now()',[taskID,intentID])).rowCount;
-        if(!waiting)break;await new Promise(resolve=>setTimeout(resolve,100));
-      }while(Date.now()<deadline);
-    }
+    const waiting=!!(await this.db.control().query('SELECT 1 FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.task_id=$1 AND (s.intent_id=$2 OR s.intent_id IS NULL) AND l.expires_at>now()',[taskID,intentID])).rowCount;
     return { id: intentID, state, status: waiting?'waiting_for_executor':state, execution_confirmed:!waiting, cancelled_by_user: action==='cancel'||action==='delete', cancel_reason: reason, deleted: action==='delete' };
   }
 
@@ -824,32 +895,24 @@ export class Engine {
   }
 
   async pause(taskID: number): Promise<{status:'paused'|'waiting_for_executor'|'superseded';command_id:number}> {
-    await this.db.query(`INSERT INTO runtime_task_commands(task_id,command) VALUES($1,'pause') ON CONFLICT(task_id,command) WHERE status='pending' DO NOTHING`,[taskID]);
-    const command=await this.db.query<{id:string;status:string}>(`SELECT id,status FROM runtime_task_commands WHERE task_id=$1 AND command='pause' ORDER BY id DESC LIMIT 1`,[taskID]);
+    await this.db.control().query(`INSERT INTO runtime_task_commands(task_id,command) VALUES($1,'pause') ON CONFLICT(task_id,command) WHERE status='pending' DO NOTHING`,[taskID]);
+    const command=await this.db.control().query<{id:string;status:string}>(`SELECT id,status FROM runtime_task_commands WHERE task_id=$1 AND command='pause' ORDER BY id DESC LIMIT 1`,[taskID]);
     const commandID=Number(command.rows[0]?.id);
     const rt = this.rt(taskID);
     let ownsTaskLease=false;
-    if(rt?.lease){try{await this.coordinator.assert(taskID,rt.lease);ownsTaskLease=true;}catch{/* a different instance may have taken ownership */}}
+    if(rt?.lease){try{await this.coordinator.assert(taskID,rt.lease,this.db.control());ownsTaskLease=true;}catch{/* a different instance may have taken ownership */}}
     if (rt) { rt.paused = true; rt.plannerAbort?.abort("pause"); }
     // Do not block the control response indefinitely on an uncooperative tool.
     // Acknowledgment is written only after every local executor has settled.
     void (async()=>{
       await this.stopMainChat(taskID);
-      if(rt){await this.cancelAllWorks(rt,'pause');await rt.plannerBusy?.catch(()=>undefined);await this.starting.get(taskID)?.catch(()=>undefined);}
+      if(rt){await this.cancelAllWorks(rt,'pause');await rt.plannerBusy?.catch(()=>undefined);await this.starting.get(taskID)?.catch(()=>undefined);while(rt.plannerReserved)await new Promise(resolve=>setTimeout(resolve,25));}
       if(!(await this.hasActiveMainSession(taskID))&&(ownsTaskLease||!(await this.hasActiveTaskLease(taskID))))
         await this.acknowledgePendingPauses(taskID,ownsTaskLease?this.coordinator.owner:null,'task workers and sessions stopped');
     })().catch(()=>{});
-    const until=Date.now()+10_000;
-    while(Date.now()<until){
-      const state=await this.db.query<{status:string;detail:string}>(`SELECT status,detail FROM runtime_task_commands WHERE id=$1`,[commandID]);
-      if(state.rows[0]?.detail==='superseded by explicit task resume')return {status:'superseded',command_id:commandID};
-      if(state.rows[0]?.status==='acknowledged')return {status:'paused',command_id:commandID};
-      if(!(await this.hasActiveTaskLease(taskID))){
-        await this.stopMainChat(taskID);
-        if(!(await this.hasActiveMainSession(taskID)))await this.acknowledgePendingPauses(taskID,null,'executor lease expired; session stop confirmed');
-      }
-      await new Promise(resolve=>setTimeout(resolve,200));
-    }
+    const state=await this.db.control().query<{status:string;detail:string}>(`SELECT status,detail FROM runtime_task_commands WHERE id=$1`,[commandID]);
+    if(state.rows[0]?.detail==='superseded by explicit task resume')return {status:'superseded',command_id:commandID};
+    if(state.rows[0]?.status==='acknowledged')return {status:'paused',command_id:commandID};
     return {status:'waiting_for_executor',command_id:commandID};
   }
 
@@ -859,6 +922,7 @@ export class Engine {
     const rt = this.rt(taskID);
     if (!rt) return;
     rt.stopped = true;
+    this.plannerQueue.get(taskID)?.resolve(false);this.plannerQueue.delete(taskID);
     rt.plannerAbort?.abort("stop");
     await this.stopMainChat(taskID);
     await this.starting.get(taskID)?.catch(() => undefined);
@@ -872,7 +936,8 @@ export class Engine {
   }
 
   async shutdown(): Promise<void> {
-    this.closing=true;clearInterval(this.scheduler);
+    this.closing=true;clearInterval(this.scheduler);clearInterval(this.dispatchWatchdog);clearTimeout(this.dispatchTimer);
+    for(const item of this.plannerQueue.values())item.resolve(false);this.plannerQueue.clear();
 
     await this.conversations.shutdown();
     await Promise.all([...this.tasks.keys()].map((id) => this.stop(id,'shutdown')));
@@ -896,7 +961,13 @@ export class Engine {
     const runner=await Promise.race([handle.runner,handle.done.then(()=>undefined)]);
     if(!runner||handle.settled)throw Object.assign(new Error('Worker 已退出'),{statusCode:409});
     await runner.steer(`【${source} 对当前意图的纠偏；不扩大授权】\n${message}`);
-    await this.db.exploration(rt.expID).appendActivity({node_id:intentID,worker:node.owner,kind:'user',summary:message,detail:message,metadata:{event_type:'steering',source}});
+    // Platform control activity is distinct from pi's internal steering message role.
+    // Native enqueue confirms submission only, not delivery or semantic effect.
+    await this.db.exploration(rt.expID).appendActivity({
+      node_id:intentID,worker:node.owner,kind:'status',tool:'steer_work',summary:message,detail:message,
+      metadata:{event_type:'steering',turn_id:handle.turnID,source,
+        steering:{id:randomUUID(),source,intent_id:intentID,target_turn_id:handle.turnID,status:'submitted'}},
+    });
   }
 
   /** Explicit button continuation; no chat injection and no task admission. */
@@ -905,12 +976,10 @@ export class Engine {
     if(!task||task.paused||task.queued||task.status!=='running')throw Object.assign(new Error('任务暂停、排队或结束时不能续跑 Worker'),{statusCode:409});
     const rt=this.rt(taskID);
     if(!rt?.started||!rt.lease||rt.stopped||rt.paused)throw Object.assign(new Error('任务执行器尚未就绪'),{statusCode:409});
-    const model=await this.modelFor(rt,'worker');
-    if(!model)throw new Error('Worker 模型不可用');
     const name=`manual#${intentID}`;
     let slot:string|undefined;
     const inserted=await this.db.transaction(async db=>{
-      await this.coordinator.lockWorkerCapacity(db);
+      if(!await this.coordinator.lockWorkerCapacity(db))throw Object.assign(new Error('调度正在处理其他领取，请重试恢复'),{statusCode:409});
       await this.coordinator.assert(taskID,rt.lease!,db);
       await db.query('SELECT pg_advisory_xact_lock($1)',[-rt.expID]);
       const live=await db.tasks().getTask(taskID);
@@ -930,7 +999,7 @@ export class Engine {
       await db.exploration(rt.expID).appendActivity({node_id:intentID,worker:'system',kind:'text',summary:'通过按钮恢复当前 Worker',metadata:{event_type:'lifecycle',status:'resume_requested',source:'user'}});
       return true;
     });
-    if(inserted)void this.runOneIntent(rt,{id:intentID},name,model).catch(error=>{this.emitActivity(taskID,{nodeID:intentID,worker:name,kind:'result',isError:true,summary:String(error)});}).finally(async()=>{await this.coordinator.releaseSlot(slot!);await markWorkerReleased(this.db,rt.expID,intentID);await this.publishFeedback(taskID);this.notify(taskID);});
+    if(inserted)this.trackExecution(rt,this.runOneIntent(rt,{id:intentID},name).catch(error=>{this.emitActivity(taskID,{nodeID:intentID,worker:name,kind:'result',isError:true,summary:String(error)});}).finally(async()=>{await this.coordinator.releaseSlot(slot!);await markWorkerReleased(this.db,rt.expID,intentID);await this.publishFeedback(taskID);this.notify(taskID);}));
     return {id:intentID,state:'running' as const,status:'running',execution_confirmed:true,cancelled_by_user:false,duplicate:!inserted};
   }
 
@@ -976,7 +1045,7 @@ export class Engine {
   }
 
   async stopMainChat(taskID: number): Promise<void> {
-    await this.db.query("UPDATE runtime_session_leases SET stop_requested=true WHERE key LIKE $1",[`main:${taskID}:%`]);
+    await this.db.control().query("UPDATE runtime_session_leases SET stop_requested=true WHERE key LIKE $1",[`main:${taskID}:%`]);
     const chats = [...this.chats].filter(([key]) => key.startsWith(`${taskID}:`)).map(([, chat]) => chat);
     for (const chat of chats) chat.controller.abort("user");
     await Promise.race([Promise.allSettled(chats.map((chat) => chat.done)),new Promise<void>(resolve=>{const timer=setTimeout(resolve,10_000);timer.unref();})]);
@@ -986,6 +1055,7 @@ export class Engine {
     const works = [...rt.work.values()];
     await Promise.all(works.map((w) => w.abort(cause)));
     await Promise.allSettled(works.map((w) => w.done));
+    await Promise.allSettled(rt.executions);
   }
 
   private async finishTask(rt: TaskRuntime, status: "done" | "timeout", note: string): Promise<boolean> {
@@ -1053,6 +1123,8 @@ export class Engine {
 
     // 终局 planner 轮：只判目标、不派意图（任务超时词注入）。
     const s = this.db.exploration(rt.expID);
+    if(!await this.acquirePlanner(rt,true))return;
+    try{
     const model = await this.modelFor(rt, "planner");
     if (model && !rt.stopped && !rt.paused) {
       const task = await this.db.tasks().getTask(rt.taskID);
@@ -1073,6 +1145,7 @@ export class Engine {
       .finally(()=>turn.finish());
     }
     if (rt.stopped || rt.paused) return;
+    }finally{await this.releasePlanner(rt);}
     const counts = await s.executionCounts();
     const status = counts.goals > 0 && counts.met >= counts.goals ? "done" : "timeout";
     try {
@@ -1096,7 +1169,10 @@ export class Engine {
       } : undefined,
       notifyFinding: (expID: number, nodeID: number) => {
         void expID;
-        this.notify(rt.taskID, `已发布漏洞：节点 #${nodeID}`);
+        // report_finding already committed a durable finding_published event.
+        // Do not misclassify it as a second, urgent user control change.
+        void nodeID;
+        this.notify(rt.taskID);
       },
       notifyGoalMet: (expID: number, goalID: number) => {
         void expID;
@@ -1201,6 +1277,7 @@ export class Engine {
             cache_write_tokens: act.cacheWriteTokens,
         }))
             .then(async (id) => {
+            streamChanges.emit('change','task',rt.expID);
             this.bus.emit("activity", { ...act, id });
             await committed?.();
         })

@@ -1,7 +1,8 @@
+import {isSteering,steeringTurnID} from './steering';
 import type { Activity } from './types';
 
 export type ConversationTurn = { key:string; user:boolean; steps:Activity[] };
-export const turnID = (a:Activity) => a.turn_id ?? a.metadata?.turn_id;
+export const turnID = (a:Activity) => isSteering(a) ? steeringTurnID(a) : a.turn_id ?? a.metadata?.turn_id;
 export const streamKey = (a:Activity) => {
   const id=a.stream_id??a.metadata?.stream_id;
   return id ? `${id}:${a.channel??a.metadata?.channel??(a.kind==='thinking'?'thinking':'text')}` : undefined;
@@ -17,7 +18,10 @@ export function conversationTurns(items:Activity[]):ConversationTurn[] {
   for(const a of items){
     if(a.kind==='usage')continue;
     const lane=`${a.worker==='main'?'mainagent':a.worker}:${a.intent_id??''}:${a.main_seg??0}:${a.source_task_id??''}`;
-    if(a.kind==='user'||a.kind==='intent'){
+    if(isSteering(a)&&!turnID(a)){
+      turns.push({key:`steering:${a.source_task_id??''}:${a.seq}`,user:false,steps:[a]});continue;
+    }
+    if(!isSteering(a)&&(a.kind==='user'||a.kind==='intent')){
       turns.push({key:`user:${turnID(a)??a.seq}`,user:true,steps:[a]});legacy.delete(lane);continue;
     }
     if(a.metadata?.worker_feedback || a.worker==='system'){
@@ -53,7 +57,7 @@ export function withLiveStreams(items:Activity[], streams:StreamSnapshot[]):Acti
 }
 
 export function mergeConversationActivities(current:Activity[],incoming:Activity[]):Activity[]{
-  const confirmed=new Set([...current,...incoming].filter(a=>a.kind==='user'&&a.seq>0).map(turnID).filter(Boolean));
+  const confirmed=new Set([...current,...incoming].filter(a=>a.kind==='user'&&!isSteering(a)&&a.seq>0).map(turnID).filter(Boolean));
   const map=new Map<number,Activity>();
   for(const a of current)if(!(a.seq<0&&confirmed.has(turnID(a))))map.set(a.seq,a);
   for(const a of incoming)if(!(a.seq<0&&confirmed.has(turnID(a))))map.set(a.seq,a);

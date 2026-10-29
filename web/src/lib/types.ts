@@ -685,6 +685,8 @@ export interface Activity {
   summary: string;
   detail?: string;
   metadata?: {
+    role?: string;
+    planner_round?: {number:number;title:string|null};
     turn_id?: string;
     stream_id?: string;
     channel?: "text" | "thinking";
@@ -693,6 +695,8 @@ export interface Activity {
     status?: string;
     attachments?: ChatAttachment[];
     llm_transition?: LLMTransition;
+    source?: string;
+    steering?: { id?: string; source?: string; intent_id?: number | string; target_turn_id?: string; status?: string };
     worker_feedback?: { id: number; intent_id: number; state: string; source_activity_id?: number };
   };
   source_task_id?: string;
@@ -1002,6 +1006,8 @@ export interface Settings {
   };
   python_interpreter?: string; // 自定义脚本工具的 python 解释器路径(空=运行时检测)
   workers?: number; // 并发工作 agent 数(默认3)；对之后启动的任务生效
+  planner_context_budget_tokens?: number; // 压缩阈值，默认 48000；0 使用 pi 自动策略
+  worker_context_budget_tokens?: number; // 压缩阈值，默认 0（pi 自动策略）
   // 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
   task_concurrency_enabled?: boolean; // 默认 false
   task_concurrency_limit?: number; // 开启后默认 5

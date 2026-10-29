@@ -1,0 +1,53 @@
+{
+  "source_commit": "9129611707f50ab5729dea6c38a3090b1b2b51a9",
+  "runtime_version": "series-91296117-production",
+  "release_directory": "/Users/pphua/.local/share/fate/releases/20261026-232203-91296117",
+  "started_at": "2026-10-26T15:27:27.293Z",
+  "builds": {
+    "server": "passed",
+    "frontend_production": "passed",
+    "frontend_build_id": "2TFQ7aN4ptroQg8WFxYDs"
+  },
+  "endpoints": {
+    "frontend": "http://localhost:5173",
+    "backend": "http://127.0.0.1:8787",
+    "proxy": "127.0.0.1:8788"
+  },
+  "processes": {
+    "backend": 19513,
+    "frontend": 19541
+  },
+  "backup_directory": "/Users/pphua/.local/share/fate/backups/20261026-232203-91296117",
+  "database_dump_bytes": 15730571,
+  "migration": {
+    "idempotent_passes": 2,
+    "historical_evidence_preserved": true,
+    "historical_prompt_text_and_selections_preserved": true
+  },
+  "paused_task_ids": [
+    4849,
+    4850,
+    4851,
+    4852,
+    4853,
+    4854
+  ],
+  "reclaimed_expired_worker_slots": 10,
+  "paused_tasks_model_requests_after_release": 0,
+  "browser": {
+    "list": "passed",
+    "detail": "passed",
+    "historical_planner_separators": "passed",
+    "SSE_connection": "live",
+    "console_errors": 0
+  },
+  "new_task_after_start": {
+    "id": 4855,
+    "created_by_deployment": false,
+    "planner_display_rounds": 1,
+    "left_unmodified_by_deployment": true
+  },
+  "performance_acceptance": "Still not passed. User explicitly changed instruction to direct compilation/start; no 30-minute rerun performed.",
+  "regression": "No new implementation in this deployment; earlier feature and performance test evidence remains separate. Production compilation and read-only startup/browser checks passed.",
+  "rollback": "Preserve paused task states and all new domain/ledger data. Stop only the recorded new process IDs after safe executor exit, then run the previous backend artifact and frontend release recorded in the private backup. Do not restore the database over newly created task data."
+}

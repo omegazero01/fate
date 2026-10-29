@@ -143,6 +143,8 @@ function mapTask(row: Record<string, unknown>, sourceTaskIDs: number[] = []): Ta
   };
 }
 
+export const TASK_DISPLAY_STATUS=`CASE WHEN status IN ('done','failed','timeout') THEN status WHEN paused THEN 'paused' WHEN queued THEN 'queued' ELSE status END`;
+
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 export class TaskStore {
@@ -150,6 +152,10 @@ export class TaskStore {
 
   /** 探索级队列锁（与 ExplorationStore.beginQueue 同 key：pg_advisory_xact_lock(-expID)）。 */
   private async beginQueue(expID: number): Promise<{ tx: QueueTx; release: () => void }> {
+    if(this.db.transactionClient){
+      await this.db.query('SELECT pg_advisory_xact_lock($1)',[-expID]);
+      return {tx:new QueueTx(this.db.transactionClient,false),release:()=>{}};
+    }
     const client: PoolClient = await this.db.pool.connect();
     try {
       await client.query("BEGIN");
@@ -333,6 +339,22 @@ export class TaskStore {
        ORDER BY (pinned_at IS NOT NULL) DESC, pinned_at DESC NULLS LAST, id DESC`,
     );
     return this.hydrateTasksContext(res.rows.map((r) => mapTask(r)));
+  }
+
+  async listTasksPage(options:{page:number;pageSize:number;q?:string;status?:string;category?:string;sort?:string;direction?:string;recent?:boolean}){
+    const args:unknown[]=[],where=['deleted_at IS NULL'];
+    const bind=(v:unknown)=>{args.push(v);return `$${args.length}`;};
+    if(options.q){const ref=bind('%'+options.q.replace(/[\\%_]/g,'\\$&')+'%');where.push(`(id::text ILIKE ${ref} OR name ILIKE ${ref} OR description ILIKE ${ref} OR goal ILIKE ${ref} OR EXISTS(SELECT 1 FROM task_categories c WHERE c.id=tasks.category_id AND c.name ILIKE ${ref}))`);}
+    if(options.status)where.push(`${TASK_DISPLAY_STATUS}=ANY(${bind(options.status.split(','))}::text[])`);
+    if(options.category&&options.category!=='all')where.push(options.category==='uncategorized'?'category_id IS NULL':`category_id=${bind(Number(options.category))}`);
+    const direction=options.direction==='asc'?'ASC':'DESC';
+    const sort=options.sort==='created'?'created_at':options.sort==='activity'?'COALESCE((SELECT max(created_at) FROM activity WHERE exploration_id=tasks.exploration_id),tasks.created_at)':options.sort==='status'?`array_position(ARRAY['created','queued','running','paused','done','failed','timeout'],${TASK_DISPLAY_STATUS})`:options.sort==='duration'?`GREATEST(0,EXTRACT(EPOCH FROM (CASE WHEN ${TASK_DISPLAY_STATUS}='running' THEN now() ELSE COALESCE(completed_at,(SELECT max(created_at) FROM activity WHERE exploration_id=tasks.exploration_id),tasks.created_at) END-tasks.created_at)))`:'id';
+    const filter=where.join(' AND ');
+    const total=Number((await this.db.query(`SELECT count(*) n FROM tasks WHERE ${filter}`,args)).rows[0]?.n??0);
+    const page=Math.max(1,Math.min(options.page,Math.max(1,Math.ceil(total/options.pageSize))));
+    const limit=bind(options.pageSize),offset=bind((page-1)*options.pageSize);
+    const rows=(await this.db.query(`SELECT ${TASK_COLS} FROM tasks WHERE ${filter} ORDER BY ${options.recent?'':'(pinned_at IS NOT NULL) DESC,pinned_at DESC NULLS LAST,'}${sort} ${direction},id DESC LIMIT ${limit} OFFSET ${offset}`,args)).rows;
+    return {tasks:await this.hydrateTasksContext(rows.map(row=>mapTask(row))),total,page,page_size:options.pageSize};
   }
 
   async getTask(id: number): Promise<Task | null> {

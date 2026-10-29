@@ -209,8 +209,10 @@ export const api = {
     post<{ ok: boolean }>("/auth/change-password", { old_password: oldPassword, new_password: newPassword }),
 
   // ---- tasks ----
-  tasks: () =>
-    get<{ tasks: Task[]; active: string }>("/tasks").then((r) => ({ tasks: arr(r.tasks), active: r.active ?? "" })),
+  tasks: (params?:{page?:number;page_size?:number;q?:string;status?:string;category?:string;sort?:string;direction?:string;recent?:boolean}) =>
+    get<{tasks:Task[];active:string;total?:number;page?:number;page_size?:number}>("/tasks"+(params?'?'+new URLSearchParams(Object.entries(params).filter(([,v])=>v!==undefined).map(([k,v])=>[k,String(v)])):''))
+      .then(r=>({...r,tasks:arr(r.tasks),active:r.active??''})),
+  taskSummary:()=>get<{total:number;by_status:Record<string,number>}>("/tasks/summary"),
   task: (id: string) => get<Task>(`/tasks/${encodeURIComponent(id)}`),
   createTask: (input: {
     name?: string;

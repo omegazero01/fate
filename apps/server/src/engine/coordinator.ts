@@ -1,19 +1,26 @@
 import {randomUUID} from 'node:crypto';
 import type {Database} from '../db/index.js';
 const ADMISSION_LOCK=4_200_000_001, WORKER_LOCK=4_200_000_002;
-export async function executionSnapshot(db:Database,taskID:number) {
+export async function executionSnapshots(db:Database){
   const limit=Math.min(128,Math.max(1,Number(await db.platform().getSetting('workers'))||3));
   const rows=(await db.query(`SELECT s.task_id,s.phase,s.manual,n.payload ? 'execution_result' committed FROM engine_worker_slots s
     JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token AND l.expires_at>clock_timestamp()
     LEFT JOIN exploration_nodes n ON n.id=s.intent_id`)).rows;
-  const own=rows.filter(r=>Number(r.task_id)===taskID);
-  return {policy:'blackboard-v1',limit_scope:'task' as const,limit,global_active:rows.filter(r=>r.phase==='running').length,
-    task_active:own.filter(r=>r.phase==='running').length,exiting:own.filter(r=>r.phase==='running'&&r.committed).length,
-    ready:own.filter(r=>r.phase==='ready').length,planning:own.filter(r=>r.phase==='planning').length,
-    available:Math.max(0,limit-own.filter(r=>r.phase==='running').length)};
+  const grouped=new Map<number,typeof rows>();
+  for(const row of rows){const id=Number(row.task_id),list=grouped.get(id)??[];list.push(row);grouped.set(id,list);}
+  const global_active=rows.filter(r=>r.phase==='running').length;
+  return (taskID:number)=>{const own=grouped.get(taskID)??[];
+    const task_active=own.filter(r=>r.phase==='running').length;
+    return {policy:'blackboard-v1',limit_scope:'task' as const,limit,global_active,task_active,
+      exiting:own.filter(r=>r.phase==='running'&&r.committed).length,ready:own.filter(r=>r.phase==='ready').length,
+      planning:own.filter(r=>r.phase==='planning').length,available:Math.max(0,limit-task_active)};
+  };
 }
+export async function executionSnapshot(db:Database,taskID:number){return (await executionSnapshots(db))(taskID);}
 export class Coordinator {
   readonly owner=randomUUID();
+  private lockContentions=0;
+  metrics(){return {worker_lock_contentions:this.lockContentions};}
   constructor(private db:Database,private defaultWorkers:number){}
   async workers(db=this.db){const value=await db.platform().getSetting('workers');return Math.min(128,Math.max(1,Number(value)||this.defaultWorkers));}
   /** Caller holds the global admission lock before task/node locks. */
@@ -41,7 +48,7 @@ export class Coordinator {
   }
   async promote(){
     return this.db.transaction(async tx=>{
-      await tx.query('SELECT pg_advisory_xact_lock($1)',[ADMISSION_LOCK]);
+      if(!(await tx.query('SELECT pg_try_advisory_xact_lock($1) locked',[ADMISSION_LOCK])).rows[0]?.locked)return [];
       const settings=await tx.query(`SELECT key,value FROM settings WHERE key IN ('task_concurrency_enabled','task_concurrency_limit')`);
       const values=Object.fromEntries(settings.rows.map(r=>[r.key,r.value]));
       const limit=values.task_concurrency_enabled==='true'?Math.max(1,Number(values.task_concurrency_limit)||5):10000;
@@ -59,23 +66,23 @@ export class Coordinator {
     return r.rows[0]?.token as string|undefined;
   }
   async renew(taskID:number,token:string){
-    const r=await this.db.query(`UPDATE engine_task_leases SET expires_at=now()+interval '15 seconds' WHERE task_id=$1 AND owner=$2 AND token=$3 AND expires_at>now() RETURNING token`,[taskID,this.owner,token]);
+    const r=await this.db.control().query(`UPDATE engine_task_leases SET expires_at=now()+interval '15 seconds' WHERE task_id=$1 AND owner=$2 AND token=$3 AND expires_at>now() RETURNING token`,[taskID,this.owner,token]);
     if(!r.rowCount)throw new Error('任务执行租约已失效');
   }
   async assert(taskID:number,token:string,tx=this.db){
     const r=await tx.query(`SELECT token FROM engine_task_leases WHERE task_id=$1 AND owner=$2 AND token=$3 AND expires_at>clock_timestamp() FOR SHARE`,[taskID,this.owner,token]);
     if(!r.rowCount)throw new Error('任务执行租约已失效');
   }
-  async release(taskID:number,token:string){await this.db.query('DELETE FROM engine_worker_slots WHERE task_id=$1 AND token=$2',[taskID,token]);await this.db.query('DELETE FROM engine_task_leases WHERE task_id=$1 AND owner=$2 AND token=$3',[taskID,this.owner,token]);}
+  async release(taskID:number,token:string){await this.releasePlanner(taskID,token);await this.db.control().query('DELETE FROM engine_worker_slots WHERE task_id=$1 AND token=$2',[taskID,token]);await this.db.control().query('DELETE FROM engine_task_leases WHERE task_id=$1 AND owner=$2 AND token=$3',[taskID,this.owner,token]);}
   /** Serialize reservations across instances, including explicit resumes. Acquire before graph locks. */
-  async lockWorkerCapacity(tx:Database){await tx.query('SELECT pg_advisory_xact_lock($1)',[WORKER_LOCK]);}
+  async lockWorkerCapacity(tx:Database){const locked=(await tx.query('SELECT pg_try_advisory_xact_lock($1) locked',[WORKER_LOCK])).rows[0]?.locked===true;if(!locked)this.lockContentions++;return locked;}
   /** Only this task's actual executions consume its capacity. Planning never reserves slots. */
   async workerSlot(taskID:number,token:string){
     return this.db.transaction(tx=>this.reserveWorkerSlot(tx,taskID,token));
   }
   /** Also used in the manual-resume transaction so state and occupancy commit together. */
   async reserveWorkerSlot(tx:Database,taskID:number,token:string,manual=false,intentID?:number){
-    await this.lockWorkerCapacity(tx);
+      if(!await this.lockWorkerCapacity(tx))return undefined;
     await this.assert(taskID,token,tx);
     const task=await tx.tasks().getTask(taskID);
     if(!task||task.status!=='running'||task.paused||task.queued)return undefined;
@@ -86,6 +93,16 @@ export class Coordinator {
     await tx.query("INSERT INTO engine_worker_slots(id,task_id,token,phase,manual,intent_id) VALUES($1,$2,$3,'running',$4,$5)",[id,taskID,token,manual,intentID??null]);
     return id;
   }
-  async releaseSlot(id:string){await this.db.query('DELETE FROM engine_worker_slots WHERE id=$1',[id]);}
+  async releaseSlot(id:string){await this.db.control().query('DELETE FROM engine_worker_slots WHERE id=$1',[id]);}
 
+  async plannerSlot(taskID:number,token:string){
+    return this.db.transaction(async tx=>{
+      if(!(await tx.query('SELECT pg_try_advisory_xact_lock(4200000030) locked')).rows[0]?.locked)return false;
+      await this.assert(taskID,token,tx);
+      await tx.query('DELETE FROM engine_planner_slots p WHERE NOT EXISTS(SELECT 1 FROM engine_task_leases l WHERE l.task_id=p.task_id AND l.token=p.token AND l.expires_at>clock_timestamp())');
+      if(Number((await tx.query('SELECT count(*) n FROM engine_planner_slots')).rows[0]?.n)>=await this.workers(tx))return false;
+      return !!(await tx.query('INSERT INTO engine_planner_slots(task_id,token) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING task_id',[taskID,token])).rowCount;
+    });
+  }
+  async releasePlanner(taskID:number,token:string){await this.db.control().query('DELETE FROM engine_planner_slots WHERE task_id=$1 AND token=$2',[taskID,token]);}
 }

@@ -1,4 +1,5 @@
 import {catalogTools} from '../../agent/tool-catalog.js';
+import {roleContextPolicy,CONTEXT_DEFAULTS} from '../../agent/context-policy.js';
 import {toolIdentity} from '../../agent/tool-registry.js';
 import {assertActiveRole} from '../../agent/retired-roles.js';
 import {resolveRolePrompt,PROMPT_VERSION,hostProtocol} from '../../agent/prompts.js';
@@ -193,7 +194,10 @@ export function registerConfigRoutes(app: FastifyInstance): void {
       platform().workers(),
       platform().getSetting("active_task"),
     ]);
-    return { workers, pi_context_policy:(await platform().getSetting('pi_context_policy'))??'domain',pi_mcp_loading:(await platform().getSetting('pi_mcp_loading'))??'deferred', task_concurrency_enabled:(await platform().getSetting("task_concurrency_enabled"))==="true", task_concurrency_limit:Number(await platform().getSetting("task_concurrency_limit"))||5, effective:{workers:"global; next claim",role_settings:"next session",task_concurrency:"next admission"}, active_task: activeTask ?? "" };
+    return { workers,
+      planner_context_budget_tokens:Number((await platform().getSetting('planner_context_budget_tokens'))??CONTEXT_DEFAULTS.planner),
+      worker_context_budget_tokens:Number((await platform().getSetting('worker_context_budget_tokens'))??CONTEXT_DEFAULTS.worker),
+      pi_context_policy:(await platform().getSetting('pi_context_policy'))??'domain',pi_mcp_loading:(await platform().getSetting('pi_mcp_loading'))??'deferred', task_concurrency_enabled:(await platform().getSetting("task_concurrency_enabled"))==="true", task_concurrency_limit:Number(await platform().getSetting("task_concurrency_limit"))||5, effective:{workers:"per task; next claim",role_settings:"next session",task_concurrency:"next admission",planner_context_budget_tokens:'next planner session',worker_context_budget_tokens:'next worker session'}, active_task: activeTask ?? "" };
   });
 
   const setSettings = async (req: { body?: unknown }, reply: { code(c: number): { send(v: unknown): unknown } }): Promise<unknown> => {
@@ -202,12 +206,26 @@ export function registerConfigRoutes(app: FastifyInstance): void {
     for(const [key,allowed] of Object.entries({pi_context_policy:['domain','native'],pi_mcp_loading:['deferred','direct']})){
       if(b[key]!==undefined&&!allowed.includes(String(b[key])))return reply.code(400).send({error:`无效 ${key}`});
     }
+    const contextKeys=(['planner','worker'] as const).map(role=>({role,key:`${role}_context_budget_tokens`}));
+    for(const {role,key} of contextKeys){
+      if(b[key]===undefined)continue;
+      if(typeof b[key]!=='number')return reply.code(400).send({error:`${key} 必须为整数`});
+      try{roleContextPolicy(role,0,String(b[key]));}catch(error){return reply.code(400).send({error:(error as Error).message});}
+    }
+    // Both role settings are validated before either is changed.
+    await app.db.transaction(async tx=>{
+      for(const {key} of contextKeys)if(b[key]!==undefined){
+        await tx.platform().setSetting(key,String(b[key]));
+        out[key]=b[key];out.applies='next_session';
+      }
+    });
     for(const key of ['pi_context_policy','pi_mcp_loading'])if(b[key]!==undefined){await platform().setSetting(key,String(b[key]));out[key]=b[key];out.applies='next_session';}
     if(b["task_concurrency_enabled"]!==undefined)await platform().setSetting("task_concurrency_enabled",String(b["task_concurrency_enabled"]===true));
     if(b["task_concurrency_limit"]!==undefined){const n=Number(b["task_concurrency_limit"]);if(!Number.isInteger(n)||n<1)return reply.code(400).send({error:"task_concurrency_limit 必须为正整数"});await platform().setSetting("task_concurrency_limit",String(n));}
     if (b["workers"] !== undefined) {
       const n = Number(b["workers"]);
       if (!Number.isInteger(n) || n <= 0) return reply.code(400).send({ error: "workers 必须 >0" });
+      try{await app.db.plannerLockPool(Math.min(128,n));}catch(error){return reply.code(400).send({error:(error as Error).message});}
       await platform().setWorkers(n);
       out["workers"] = n;
     }

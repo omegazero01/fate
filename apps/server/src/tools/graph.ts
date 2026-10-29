@@ -54,13 +54,13 @@ export function recordFactTool(ctx: ToolRunContext) {
         const origin = await writeOrigin(c);
         const anchors = await writeAnchors(c,origin,args.asset_ids);
         if (c.toolCallID) {
-          const old=(await db.query("SELECT id,payload FROM exploration_nodes WHERE exploration_id=$1 AND kind='fact' AND tool_call_id=$2",[c.expID,c.toolCallID])).rows[0];
+          const old=(await db.query("SELECT id,payload,content_version FROM exploration_nodes WHERE exploration_id=$1 AND kind='fact' AND tool_call_id=$2",[c.expID,c.toolCallID])).rows[0];
           if (old) {
             const payload=old.payload as Record<string,unknown>;
             if (!sameSource(c,origin,payload)) throw new Error('工具调用编号已用于其他来源');
             const savedAnchors=await s.anchorAssetIDs(Number(old.id));
             await writeAnchors(c,origin,savedAnchors);
-            return {fact_id:Number(old.id),anchored_assets:savedAnchors.length,asset_ids:savedAnchors,writeback:savedWritebackReceipt(payload.writeback)};
+            return {fact_id:Number(old.id),ref:`node:${old.id}`,version:Number(old.content_version),anchored_assets:savedAnchors.length,asset_ids:savedAnchors,writeback:savedWritebackReceipt(payload.writeback)};
           }
         }
         const payload: Record<string, unknown> = {
@@ -76,9 +76,9 @@ export function recordFactTool(ctx: ToolRunContext) {
         payload.writeback=writebackReceipt(anchors,scope,args.evidence,String(payload.observation_type));
 
         const factID = await s.addNode(KindFact, payload, 0, "confirmed", c.workerName ?? c.role, anchors);
-        await db.query('UPDATE exploration_nodes SET tool_call_id=$2 WHERE id=$1',[factID,c.toolCallID??null]);
+        const saved=await db.query('UPDATE exploration_nodes SET tool_call_id=$2 WHERE id=$1 RETURNING content_version',[factID,c.toolCallID??null]);
         await s.link(origin.id, RelYields, factID);
-        return { fact_id: factID, anchored_assets: anchors.length,asset_ids:anchors,writeback:payload.writeback };
+        return { fact_id: factID,ref:`node:${factID}`,version:Number(saved.rows[0]!.content_version), anchored_assets: anchors.length,asset_ids:anchors,writeback:payload.writeback };
       });
         if(!args.facts)return save(args,ctx);
         if(args.summary||!args.facts.length||args.facts.length>20)throw new Error('使用 summary 单条或 facts 批量输入，不能混用');

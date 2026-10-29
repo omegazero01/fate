@@ -2,12 +2,12 @@ import {authorizeEvidence} from '../evidence/authorization.js';
 import {readBlob} from '../evidence/blobs.js';
 import {domainTool} from './define.js';
 import type {ToolRunContext} from './context.js';
-import {evidenceRequest} from '../evidence/http.js';
+import {evidenceRequest,type EvidenceRequestInput} from '../evidence/http.js';
 import {evidenceBody} from '../evidence/store.js';
 import {resolveGraphNode} from '../db/graph_view.js';
-export function httpRequestTool(ctx:ToolRunContext){return domainTool<{url:string;method?:string;headers?:Record<string,string>;body?:string}>({
- transactional:false, name:'http_request',description:'执行任务范围内 HTTP 请求并持久保存请求/响应证据，返回 traffic_id 可用于 report_finding；8 MiB 正文上限，超限明确标记。',
- parameters:{type:'object',properties:{url:{type:'string'},method:{type:'string'},headers:{type:'object',additionalProperties:{type:'string'}},body:{type:'string'}},required:['url']},
+export function httpRequestTool(ctx:ToolRunContext){return domainTool<EvidenceRequestInput>({
+ transactional:false, name:'http_request',description:'执行 HTTP 请求并保存证据，返回 traffic_id。默认跟随重定向；follow_redirects=false 仅读首跳。失败保留已保存流量引用及失败跳次，不能据此认定原目标不可达。8 MiB 正文上限，超限明确标记。',
+ parameters:{type:'object',properties:{url:{type:'string'},method:{type:'string'},headers:{type:'object',additionalProperties:{type:'string'}},body:{type:'string'},follow_redirects:{type:'boolean',description:'默认 true；false 保存并返回首跳响应及 redirect_location，不访问跳转目标。适用于核对 302/跳转超时。'}},required:['url']},
  run:async(args,c)=>evidenceRequest(c,args,c.signal?AbortSignal.any([c.signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000)),
 },ctx);}
 export function trafficBodyTool(ctx:ToolRunContext){return domainTool<{traffic_id:string;side?:string;offset?:number}>({

@@ -44,6 +44,16 @@ it('rejects invented boundaries atomically, stores provenance, and deduplicates'
   const other=await fixture();
   await expect(call(setConstraintsTool({...ctx,taskID:other.id}),{constraints:[]})).rejects.toThrow('所属任务');
 });
+it('rejects joined paragraphs and literal newline escapes without weakening the original constraints',async()=>{
+  const first='只允许读取本地合成样本。',second='禁止重复请求；失败时保留原始证据。';
+  const t=await fixture(`${first}\n\n${second}`),ctx={...runContext(db,t.id,t.exploration_id,'goals'),goalsPhase:'constraints' as const};
+  for(const text of [`${first}\n\n${second}`,`${first}\\n\\n${second}`]){
+    await expect(call(setConstraintsTool(ctx),{constraints:[{kind:'allow',text}]})).rejects.toThrow('原文依据');
+    expect(await loadConstraints(db,t.exploration_id)).toEqual([]);
+  }
+  expect(await call(setConstraintsTool(ctx),{constraints:[{kind:'allow',text:first},{kind:'deny',text:second}]})).toMatchObject({saved:2});
+  expect(await loadConstraints(db,t.exploration_id)).toEqual([{kind:'allow',text:first},{kind:'deny',text:second}]);
+});
 it('Main accepts only its actual current human request and failed replacement preserves rules',async()=>{
   const t=await fixture(),text='只允许被动侦察。',ctx=runContext(db,t.id,t.exploration_id,'mainagent',{userMessage:text});
   await call(setConstraintsTool(ctx),{constraints:[{kind:'allow',text}]});

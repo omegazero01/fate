@@ -68,7 +68,8 @@ export function SourceTranscript({
     };
   }, [taskId, session, anchor, retry]);
   const locate = React.useCallback(
-    (el: HTMLElement) => {
+    (el: HTMLElement, explicit = false) => {
+      if (explicit) userMoved.current = false;
       highlight.current?.clear();
       highlight.current = highlightActivity(
         el.querySelector<HTMLElement>(`[data-search-activity="${anchor}"]`) ?? el,

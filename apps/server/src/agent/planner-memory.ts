@@ -1,11 +1,14 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {existsSync,readFileSync} from 'node:fs';
+import {createReadStream} from 'node:fs';
+import {createInterface} from 'node:readline';
 import path from 'node:path';
 import type {SessionEntry} from '@earendil-works/pi-coding-agent';
 import type {Database} from '../db/index.js';
 import type {AgentRunner,RunResult} from '../pi/runner.js';
+import {mergePlannerChanges} from './planner-context-policy.js';
 
 export const PLANNER_READING_RULES = `本任务使用持续规划会话。历史对话和压缩摘要用于追溯判断，不代表当前图状态或执行授权。
+先用本轮变化和当前态势确定需要核验的节点；摘要足够判断时不要遍历全部详情。独立的相关引用可在一次 context_get 中批量读取所需字段；保留原文引用与未读位置，避免为刷新上下文重复读取未变化的大段输出。
 资产图记录身份、接口方法、参数和指纹；探索图记录目标、意图、事实、漏洞及证据。派单前使用 asset_search/asset_get 核实相关资产，用 context_search 按 asset_id 查询既有意图及结果（含冷图），context_get 读取影响决策的正反证据。关键词是字面短语；空结果、摘要截断或节点退出近期索引不能证明“从未测试”或“已删除”。有续页时继续读取或缩小筛选。
 目标节点供 prove_goal 判定，不作为派单证据；add_intent 的 parent_ids/contract.basis 只能引用 fact/finding，初始派单可省略，由宿主连接任务根事实。
 负面结论只覆盖实际测试过的资产、端口、协议、方法和参数，不能将部分端口的响应推广到未测端口或将代理返回当成所有后端协议的响应。未测方向可因约束或缺少前置而暂缓，但仍应标为未知，不能称为已测、关闭或已被证伪。
@@ -20,20 +23,25 @@ export function plannerSessionFile(dataDir:string,expID:number){
 }
 
 /** The SDK silently starts over on an invalid file. A Planner must fail recoverably instead. */
-export function validatePlannerSession(file:string){
-  if(!existsSync(file))return;
-  const lines=readFileSync(file,'utf8').split('\n').filter(l=>l.trim());
+export async function validatePlannerSession(file:string){
+  const input=createReadStream(file,{encoding:'utf8'});
+  const lines=createInterface({input,crlfDelay:Infinity});
+  let count=0;
   try{
-    if(!lines.length)throw new Error('empty');
-    const entries=lines.map(l=>JSON.parse(l));
-    if(entries[0].type!=='session'||!entries[0].id)throw new Error('header');
-    if(entries.slice(1).some(e=>!e.id||!e.type))throw new Error('entry');
-  }catch{throw new Error('Planner 会话文件损坏，已保留原文；请恢复文件后重试，不会创建空会话覆盖历史');}
+    for await(const line of lines){
+      if(!line.trim())continue;
+      const e=JSON.parse(line);
+      if(count++===0 ? e.type!=='session'||!e.id : !e.id||!e.type)throw new Error('entry');
+    }
+    if(!count)throw new Error('empty');
+  }catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return;throw new Error('Planner 会话文件损坏，已保留原文；请恢复文件后重试，不会创建空会话覆盖历史');}
+  finally{lines.close();input.destroy();}
 }
 
 /** A session-level advisory lock prevents a stale executor from writing the same file. */
 export async function lockPlannerSession(db:Database,expID:number,signal?:AbortSignal){
-  const client=await db.pool.connect(),key=`fate:planner-session:${expID}`;
+  const limit=Math.min(128,Math.max(1,Number(await db.control().platform().getSetting('workers'))||3));
+  const client=await(await db.plannerLockPool(limit)).connect(),key=`fate:planner-session:${expID}`;
   const controller=new AbortController();let lost:Error|undefined;
   const onError=(error:Error)=>{lost=error;controller.abort(error);};
   client.on('error',onError);
@@ -118,7 +126,7 @@ export function preparePlannerDelivery(args:{taskID:number;expID:number;overview
   for(const raw of args.changes){const c=object(raw);emit(`change:${c.source_task_id}:${c.ref??hash(c)}`,c);}
   const events=args.events.map(object),wakeupIDs=events.map(e=>Number(e.id)).filter(Number.isSafeInteger);
   const currentState=plannerCurrentState(args.overview,args.todos);
-  const payload={initial:!args.previous,changes:increment,notifications:events,trigger:args.triggers,
+  const payload={initial:!args.previous,changes:mergePlannerChanges(increment,args.taskID),notifications:events,trigger:args.triggers,
     ...(args.contextIDs.length?{context_event_ids:args.contextIDs}:{}),
     historical_recall:{source:'planner_session',note:'当前状态见宿主实时投影；新增内容不等于整图，资产字段变化需要实时查询。'}};
   return {version:1,id:randomUUID(),taskID:args.taskID,expID:args.expID,input:JSON.stringify(payload),

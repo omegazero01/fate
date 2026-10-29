@@ -1,0 +1,98 @@
+{
+  "feature": "Planner 规划轮次与方向分隔线",
+  "date": "2026-10-26",
+  "backend_commit_main": "e052b4dc",
+  "contract": {
+    "table": "planner_display_rounds",
+    "identity": "exploration_id + turn_id",
+    "number": "每任务持久递增；并发事务锁与 activity 保持同序；不使用 cold graph round_no",
+    "title": "同轮最终原生回复首行 <planning_title>...</planning_title>，不超过 40 个 Unicode 字符；无额外模型请求",
+    "events": [
+      "planner_round_start",
+      "planner_round_title"
+    ],
+    "fields": "Activity.metadata.planner_round / TurnSummary.planner_round 可选扩展",
+    "historical": "只继承明确的旧宿主轮号；未知回合显示历史规划；不猜测标题或分页轮号"
+  },
+  "review": [
+    "同 turn_id 重复处理只分配一个展示编号，完成标题幂等写入；跨任务不串轮。",
+    "原生工具循环、恢复已完成结果、缺失标题、终局规划和失败均通过本地 pi 回归；取消准入不分配编号、不请求模型。",
+    "模型原始总结留在 pi JSONL，显示标题先于宿主回执转换提取；自定义提示词正文保持原样。",
+    "分隔线处于过程折叠组外，搜索边界定位走原组件接口；不增加步骤、工具次数或 Token 统计。",
+    "补齐旧 activity GET/history 对 Planner round 的返回，SSE 重连与分页不再丢标记。",
+    "修复执行面板放大宽度被 Sheet 默认选择器覆盖；1440px 下放大宽度 1024px，846px 下宽度 846px。",
+    "主工作区已有性能修改已保留，包括 await validatePlannerSession；未提交内容未混入功能提交。"
+  ],
+  "validation": {
+    "backend": {
+      "passed": 65,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        "planner-rounds.test.ts",
+        "chat-stream.test.ts",
+        "turn-summary.test.ts",
+        "artex-flow.test.ts",
+        "planner-memory.test.ts"
+      ],
+      "main_with_pending_performance_changes": "相同 65 项再次通过，后端类型检查通过"
+    },
+    "frontend": {
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "web/src/lib/*.test.mjs"
+    },
+    "builds": [
+      "server production build passed",
+      "web normal build passed",
+      "web static build passed",
+      "server typecheck passed",
+      "web typecheck passed"
+    ],
+    "browser": {
+      "isolated_api": "127.0.0.1:18989",
+      "isolated_frontend": "127.0.0.1:15175",
+      "widths": [
+        390,
+        846,
+        1280,
+        1440
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "observed": [
+        "旧 258 → 新 259/260/261/262",
+        "结束前正在分析，SSE 更新为复核本地合成证据并收官",
+        "刷新后轮号及标题不变",
+        "过程收起仍显示分隔线",
+        "搜索 activity=4 定位第 259 轮且只出现一次",
+        "窄屏无横向页面溢出",
+        "控制台无 error/warn"
+      ],
+      "screenshots": [
+        "narrow-running.png",
+        "narrow-completed-dark.png",
+        "narrow-search-light.png",
+        "search-1280-light.png",
+        "expanded-846-light.png",
+        "expanded-1440-light.png"
+      ]
+    },
+    "real_model_requests": 0,
+    "external_target_requests": 0
+  },
+  "release": {
+    "state": "implemented, committed, isolated acceptance passed; production restart pending coordinated release",
+    "production_restarted": false,
+    "reason": "保留正在进行的性能与 Goals 改造，按要求统一验收后发布",
+    "rollback": "按 UI、后端顺序 git revert 对应功能提交；新增展示表可保留，不删除历史数据"
+  },
+  "limits": [
+    "标题内容是同轮模型概括，仅用于显示，不是派单或目标完成证明。",
+    "尚未运行正式服务中的真实模型轮次；本轮验收按计划只用本地确定性模型和合成活动。",
+    "没有完整可靠边界的历史记录不补算轮号。"
+  ]
+}

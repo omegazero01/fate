@@ -207,7 +207,7 @@ it.each([
   }]);
   await f.e.run(f.task.id);await until(async()=>waiting);
   if(cause==='kill')await f.e.killWork(f.task.id,f.id,'LOCAL duplicate direction','planner');
-  else if(cause==='pause'){await db.tasks().applyTaskPause(f.task.id);await f.e.pause(f.task.id);}
+  else if(cause==='pause'){await db.tasks().applyTaskPause(f.task.id);const pause=await f.e.pause(f.task.id);await until(async()=>(await db.query('SELECT status FROM runtime_task_commands WHERE id=$1',[pause.command_id])).rows[0]?.status==='acknowledged');}
   else await f.e.stop(f.task.id,cause as AbortCause);
   const node=(await f.s.getNode(f.id))!;
   expect(node.payload.execution_stop).toMatchObject({reason,accepted_result:false});

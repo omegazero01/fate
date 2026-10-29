@@ -135,6 +135,7 @@ function SectionTitle({
 export default function DashboardPage() {
   // data state
   const [tasks, setTasks] = React.useState<Task[]>([]);
+  const [taskSummary,setTaskSummary]=React.useState({total:0,by_status:{} as Record<string,number>});
   const [findings, setFindings] = React.useState<Finding[]>([]);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
@@ -158,11 +159,12 @@ export default function DashboardPage() {
     let loading = false;
     let signature = "";
     const load = async () => {
-      if (loading) return;
+      if (loading||document.hidden) return;
       loading = true;
       try {
-        const tr = await api.tasks();
+        const [tr,summary] = await Promise.all([api.tasks({page:1,page_size:5,recent:true,sort:"activity"}),api.taskSummary()]);
         if (!alive) return;
+        setTaskSummary(summary);
         const nextSignature = JSON.stringify(tr.tasks);
         if (nextSignature !== signature) {
           signature = nextSignature;
@@ -175,9 +177,11 @@ export default function DashboardPage() {
       }
     };
     void load();
+    document.addEventListener("visibilitychange",load);
     const t = setInterval(load, 5000);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange",load);
       clearInterval(t);
     };
   }, []);
@@ -188,7 +192,7 @@ export default function DashboardPage() {
     setUsageStats(null);
     let loading = false;
     const load = async () => {
-      if (loading) return;
+      if (loading||document.hidden) return;
       loading = true;
       try {
         const [findings, stats, settings, activity, usage] = await Promise.allSettled([
@@ -212,9 +216,11 @@ export default function DashboardPage() {
       }
     };
     void load();
+    document.addEventListener("visibilitychange",load);
     const timer = setInterval(load, 5000);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange",load);
       clearInterval(timer);
     };
   }, [tokenDays]);
@@ -222,7 +228,10 @@ export default function DashboardPage() {
   // slow poll: traffic, assets, system-static (every 15s)
   React.useEffect(() => {
     let alive = true;
+    let loading = false;
     const load = async () => {
+      if (loading||document.hidden) return;
+      loading = true;
       try {
         const [traf, counts, agentList, mcpList, skillList, toolList, profileList] = await Promise.all([
           api.traffic(0, 50),
@@ -243,23 +252,21 @@ export default function DashboardPage() {
         setLLMProfiles(profileList);
       } catch {
         /* transient errors */
-      }
+      } finally { loading=false; }
     };
     void load();
+    document.addEventListener("visibilitychange",load);
     const t = setInterval(load, 15000);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange",load);
       clearInterval(t);
     };
   }, []);
 
   // ── derived ───────────────────────────────────────────────────────────────
 
-  const tasksByStatus = React.useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const t of tasks) m[t.status] = (m[t.status] ?? 0) + 1;
-    return m;
-  }, [tasks]);
+  const tasksByStatus=taskSummary.by_status;
 
   const findingsBySev = React.useMemo(() => {
     const m = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -381,14 +388,14 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-semibold tabular-nums">{tasksByStatus.running ?? 0}</span>
-              <span className="text-xs text-muted-foreground">/ {tasks.length}</span>
+              <span className="text-xs text-muted-foreground">/ {taskSummary.total}</span>
             </div>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px]">
             {(tasksByStatus.running ?? 0) > 0 && <span className="text-blue-400">探索 {tasksByStatus.running}</span>}
             {(tasksByStatus.paused ?? 0) > 0 && <span className="text-amber-400">暂停 {tasksByStatus.paused}</span>}
             {(tasksByStatus.done ?? 0) > 0 && <span className="text-emerald-400">完成 {tasksByStatus.done}</span>}
-            {tasks.length === 0 && <span className="text-muted-foreground">暂无任务</span>}
+            {taskSummary.total === 0 && <span className="text-muted-foreground">暂无任务</span>}
           </CardContent>
         </Card>
 
@@ -782,7 +789,7 @@ export default function DashboardPage() {
             任务
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{tasks.length} 个任务</span>
+            <span className="text-[10px] text-muted-foreground">{taskSummary.total} 个任务</span>
             <Link
               href="/function/tasks"
               className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"

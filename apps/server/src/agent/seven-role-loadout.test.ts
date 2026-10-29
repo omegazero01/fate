@@ -9,7 +9,7 @@ import {openDatabase,type Database} from '../db/index.js';
 import {runWorkerIntent,runPlannerRound,runMainChat,runGoalsDecompose} from './roles.js';
 import {previewRoleTools,roleDefinitions} from './tool-catalog.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
-import {createTrackedRunner} from '../engine/runtime-config.js';
+import {createTrackedRunner,runtimeConfiguration} from '../engine/runtime-config.js';
 import {workerCapabilities} from './worker-capabilities.js';
 import {ACTIVE_ROLES} from './tool-registry.js';
 import {runContext,TodoStore} from '../tools/context.js';
@@ -38,6 +38,36 @@ async function fixture(role:string){
  const model={modelRuntime:runtime,model:faux.getModel() as never};
  return {task,faux,model,s:db.exploration(task.exploration_id)};
 }
+it('Worker context changes wait for the next execution, including native session recovery',async()=>{
+ const f=await fixture('worker'),previous=await db.platform().getSetting('worker_context_budget_tokens');
+ try{
+  await db.platform().setSetting('worker_context_budget_tokens','64000');
+  const id=await f.s.addIntent({summary:'LOCAL context recovery',dispatch_requested:true,contract:{objective:'LOCAL context recovery',acceptance:['Save LOCAL observation']}},5,[],'user');
+  const intent=(await f.s.claimNextWorker('context-worker'))!;
+  const input={db,taskID:f.task.id,expID:f.task.exploration_id,intent,workerName:'context-worker',model:f.model,dataDir:dir,hooks:{},onActivity:()=>{}};
+  f.faux.setResponses([
+   async()=>{
+    const running=await runtimeConfiguration(db,{taskID:f.task.id});
+    expect(running.active[0].effective.context_policy).toMatchObject({mode:'working_set',thresholdTokens:64000});
+    await db.platform().setSetting('worker_context_budget_tokens','0');
+    const updated=await runtimeConfiguration(db,{taskID:f.task.id});
+    expect(updated.active[0].effective.context_policy).toMatchObject({thresholdTokens:64000});
+    expect(updated.active[0].pending?.changed_fields).toContain('worker_context_budget_tokens');
+    return fauxAssistantMessage([fauxToolCall('record_fact',{summary:'LOCAL_CONTEXT_SAVED',evidence:'Synthetic only',confidence:'high'})]);
+   },fauxAssistantMessage('LOCAL work paused at saved observation')
+  ]);
+  expect(await runWorkerIntent(input)).toMatchObject({stopReason:'completed'});
+  f.faux.setResponses([async context=>{
+   expect(JSON.stringify(context.messages)).toContain('LOCAL_CONTEXT_SAVED');
+   const resumed=await runtimeConfiguration(db,{taskID:f.task.id});
+   expect(resumed.active[0].effective.context_policy).toMatchObject({mode:'capacity',version:'worker-context-v1'});
+   return fauxAssistantMessage('LOCAL prior record reused; no repeated write');
+  }]);
+  expect(await runWorkerIntent(input)).toMatchObject({stopReason:'completed'});
+  expect((await f.s.listByKind('fact')).filter(n=>n.payload.from_intent===id)).toHaveLength(1);
+ }finally{await db.platform().setSetting('worker_context_budget_tokens',previous??'0');}
+});
+
 async function until(fn:()=>Promise<boolean>){
  const end=Date.now()+15000;
  while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,20));}

@@ -7,6 +7,7 @@ import {postgresDSN} from '../config/index.js';
 import {openDatabase,Database} from '../db/index.js';
 import {LiveStreamWriter} from '../engine/live-stream.js';
 import {readTurnSummaries} from '../engine/turn-summary.js';
+import {beginPlannerDisplayRound,finishPlannerDisplayRound} from '../db/planner-rounds.js';
 import {Engine,defaultEngineConfig} from '../engine/engine.js';
 import {buildApp} from './app.js';
 import {signJWT} from './auth.js';
@@ -106,7 +107,7 @@ it('final commit between poll queries never removes the partial body before its 
  // precede it, otherwise this poll publishes [] while the final row is absent.
  other.query=(async(sql:string,args?:unknown[])=>{
   const rows=await original(sql,args);
-  if(armed&&sql.startsWith('SELECT * FROM activity')&&args?.[0]===task.exploration_id){
+  if(armed&&(sql.startsWith('SELECT * FROM activity')||sql.startsWith('WITH page AS MATERIALIZED'))&&args?.[0]===task.exploration_id){
    armed=false;
    finalID=await db.exploration(task.exploration_id).appendActivity({worker:'main',kind:'text',detail:'保持可见完成',metadata:{turn_id:'atomic-turn',stream_id:'atomic-stream',channel:'text'}});
    await writer.committed('atomic-stream','text');
@@ -158,4 +159,42 @@ it('summary batches retain authentication, task isolation, and revoked node visi
  await db.query('UPDATE tasks SET deleted_at=now() WHERE id=$1',[task.id]);
  expect((await app.inject({url,headers})).statusCode).toBe(404);
 
+});
+
+it('steering history/list/search and replay normalize legacy activity without mutating stored users',async()=>{
+ const task=await db.tasks().createTaskWithOptions('LOCAL steering history','',{executionMode:'manual'}),store=db.exploration(task.exploration_id);
+ const intent=await store.addIntent({summary:'LOCAL read-only fixture'},1,[],'user');
+ const seq=await store.appendActivity({node_id:intent,worker:'work#1',kind:'user',summary:'LOCAL steering history',detail:'LOCAL full original',metadata:{event_type:'steering',source:'planner'}});
+ const current=await store.appendActivity({node_id:intent,worker:'work#1',kind:'status',tool:'steer_work',summary:'LOCAL Main notice',metadata:{event_type:'steering',turn_id:'notice-turn',steering:{id:'local-id',source:'mainagent',target_turn_id:'notice-turn',intent_id:intent,status:'submitted'}}});
+ for(const url of [`/api/exploration/activity?task=${task.id}`,`/api/exploration/activity/history?task=${task.id}&session=intent:${intent}`]){
+  const r=await app.inject({url,headers:{authorization:`Bearer ${token}`}});expect(r.statusCode).toBe(200);
+  expect(r.json().items.find((a:any)=>a.seq===seq)).toMatchObject({kind:'status',tool:'steer_work',summary:'LOCAL steering history',metadata:{source:'planner'}});
+  expect(r.json().items.find((a:any)=>a.seq===current)).toMatchObject({turn_id:'notice-turn',metadata:{steering:{source:'mainagent',status:'submitted'}}});
+ }
+ const search=await app.inject({url:`/api/exploration/activity/search?task=${task.id}&session=intent:${intent}&q=steering`,headers:{authorization:`Bearer ${token}`}});
+ expect(search.json().items).toContainEqual(expect.objectContaining({id:seq,kind:'status'}));
+ const s=await stream(`/api/exploration/activity/stream?task=${task.id}`);await wait(()=>s.frames.some(f=>f.id===current));
+ expect(s.frames.find(f=>f.id===seq)?.data).toMatchObject({kind:'status',tool:'steer_work',metadata:{source:'planner'}});s.close();
+ expect((await db.query('SELECT kind,detail,metadata FROM activity WHERE id=$1',[seq])).rows[0]).toEqual({kind:'user',detail:'LOCAL full original',metadata:{event_type:'steering',source:'planner'}});
+});
+
+it('Planner boundaries survive list/history pagination and SSE reconnect, with replayable title updates',async()=>{
+ const task=await db.tasks().createTaskWithOptions('LOCAL planner headers','LOCAL synthetic',{executionMode:'manual'}),store=db.exploration(task.exploration_id);
+ const old=await store.appendActivity({worker:'planner',kind:'round',summary:'第 258 轮规划'});
+ const ignored=await store.appendActivity({worker:'work#1',kind:'round',summary:'old worker marker'});
+ await beginPlannerDisplayRound(db,task.exploration_id,'round-header');
+ const start=Number((await db.query("SELECT id FROM activity WHERE exploration_id=$1 AND metadata->>'event_type'='planner_round_start'",[task.exploration_id])).rows[0]!.id);
+ for(const url of [`/api/exploration/activity?task=${task.id}`,`/api/exploration/activity/history?task=${task.id}&session=plan&limit=1&before=${start+1}`]){
+  const r=await app.inject({url,headers:{authorization:`Bearer ${token}`}});expect(r.statusCode).toBe(200);
+  expect(r.json().items.find((a:any)=>a.seq===start)).toMatchObject({kind:'round',metadata:{planner_round:{number:259,title:null}}});
+  expect(r.json().items.some((a:any)=>a.seq===ignored)).toBe(false);
+ }
+ const history=await app.inject({url:`/api/exploration/activity/history?task=${task.id}&session=plan&before=${start}`,headers:{authorization:`Bearer ${token}`}});
+ expect(history.json().items.find((a:any)=>a.seq===old)?.summary).toBe('第 258 轮规划');
+ const a=await stream(`/api/exploration/activity/stream?task=${task.id}`);
+ await wait(()=>a.frames.some(f=>f.id===start));
+ await finishPlannerDisplayRound(db,task.exploration_id,'round-header','文件上传全面探测');
+ await wait(()=>a.frames.some(f=>f.event==='turn_summary'&&f.data.items.some((v:any)=>v.planner_round?.title==='文件上传全面探测')));
+ a.close();const b=await stream(`/api/exploration/activity/stream?task=${task.id}`);
+ await wait(()=>b.frames.some(f=>f.event==='turn_summary'&&f.data.items.some((v:any)=>v.planner_round?.number===259&&v.planner_round.title==='文件上传全面探测')));b.close();
 });

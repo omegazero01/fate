@@ -1910,3 +1910,10 @@ CREATE TABLE IF NOT EXISTS goals_bootstrap (
  goal_ids BIGINT[] NOT NULL DEFAULT '{}', fallback BOOLEAN NOT NULL DEFAULT false,
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Planning capacity is independent of Worker execution capacity.
+CREATE TABLE IF NOT EXISTS engine_planner_slots (
+ task_id BIGINT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+ token TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

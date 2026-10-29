@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-27T08:17:05.569Z",
+  "version": "series-bcfb3582-production",
+  "backend_release": "/Users/pphua/.local/share/fate/releases/20261027-160518-bcfb3582",
+  "frontend_release": "/Users/pphua/.local/share/fate/releases/20261027-161329-3a89309e",
+  "backend_pid": 38098,
+  "frontend_pid": 39022,
+  "frontend_build": "HyJVVicbIqqKLyKmhQ2AS",
+  "leases_at_shutdown": {
+    "task": 0,
+    "session": 0,
+    "role": 0,
+    "slots": 0
+  },
+  "paused_preserved": true,
+  "context": {
+    "planner": 48000,
+    "worker": 0
+  },
+  "scheduler": {
+    "tasks": 2,
+    "worker_executions": 0,
+    "planners": 0,
+    "planner_queue": 0,
+    "claim_dispatchers": 0,
+    "worker_lock_contentions": 0
+  },
+  "requests_since_shutdown": [
+    {
+      "task_id": "4849",
+      "role": "planner",
+      "requests": 5
+    },
+    {
+      "task_id": "4852",
+      "role": "planner",
+      "requests": 4
+    },
+    {
+      "task_id": "4857",
+      "role": "planner",
+      "requests": 10
+    },
+    {
+      "task_id": "4857",
+      "role": "worker",
+      "requests": 11
+    }
+  ],
+  "requests_note": "Existing unpaused production tasks resumed normally. These are NOT synthetic acceptance requests.",
+  "paused_task_requests": 0,
+  "selected_task_states": [
+    {
+      "id": "4849",
+      "status": "running",
+      "paused": false
+    },
+    {
+      "id": "4852",
+      "status": "running",
+      "paused": false
+    },
+    {
+      "id": "4855",
+      "status": "running",
+      "paused": true
+    },
+    {
+      "id": "4857",
+      "status": "done",
+      "paused": false
+    },
+    {
+      "id": "4858",
+      "status": "running",
+      "paused": true
+    }
+  ],
+  "errors_since_final_frontend_switch": [],
+  "browser": {
+    "settings_values": [
+      48,
+      0
+    ],
+    "invalid_8k_rejected": true,
+    "saved_production_settings": false,
+    "retired_auth_card_absent": true,
+    "missing_shell_capability_not_reported_as_failure": true,
+    "task_4855_realtime_connected": true,
+    "planner_round_history_visible": true
+  }
+}

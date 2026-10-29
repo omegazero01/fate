@@ -78,3 +78,30 @@ DROP TRIGGER IF EXISTS activity_usage_capture ON activity;
 CREATE TRIGGER activity_usage_capture AFTER INSERT ON activity FOR EACH ROW EXECUTE FUNCTION capture_activity_usage();
 DROP TRIGGER IF EXISTS conversation_usage_capture ON conversation_activities;
 CREATE TRIGGER conversation_usage_capture AFTER INSERT ON conversation_activities FOR EACH ROW EXECUTE FUNCTION capture_activity_usage();
+
+-- Version-only read-model invalidation, no evidence bodies or per-client state.
+CREATE TABLE IF NOT EXISTS stream_usage_versions(scope TEXT NOT NULL,scope_id BIGINT NOT NULL,version BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(scope,scope_id));
+CREATE OR REPLACE FUNCTION bump_stream_usage_version() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+ IF TG_TABLE_NAME='runtime_role_configs' AND TG_OP='UPDATE' AND NEW.finished_at IS NOT DISTINCT FROM OLD.finished_at THEN RETURN NEW;END IF;
+ IF TG_OP='DELETE' THEN r:=OLD;ELSE r:=NEW;END IF;
+ IF r.task_id IS NOT NULL THEN INSERT INTO stream_usage_versions VALUES('task',r.task_id,1) ON CONFLICT(scope,scope_id) DO UPDATE SET version=stream_usage_versions.version+1;END IF;
+ IF r.conversation_id IS NOT NULL THEN INSERT INTO stream_usage_versions VALUES('conversation',r.conversation_id,1) ON CONFLICT(scope,scope_id) DO UPDATE SET version=stream_usage_versions.version+1;END IF;
+ RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS stream_usage_version ON llm_usage_ledger;
+CREATE TRIGGER stream_usage_version AFTER INSERT OR UPDATE OR DELETE ON llm_usage_ledger FOR EACH ROW EXECUTE FUNCTION bump_stream_usage_version();
+DROP TRIGGER IF EXISTS stream_runtime_version ON runtime_role_configs;
+CREATE TRIGGER stream_runtime_version AFTER INSERT OR UPDATE OR DELETE ON runtime_role_configs FOR EACH ROW EXECUTE FUNCTION bump_stream_usage_version();
+
+-- Removing a graph node revokes its activity projection even without new usage.
+CREATE OR REPLACE FUNCTION invalidate_deleted_node_stream() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+ INSERT INTO stream_usage_versions(scope,scope_id,version)
+ SELECT 'task',id,1 FROM tasks WHERE exploration_id=OLD.exploration_id
+ ON CONFLICT(scope,scope_id) DO UPDATE SET version=stream_usage_versions.version+1;
+ RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS stream_node_deleted ON exploration_nodes;
+CREATE TRIGGER stream_node_deleted AFTER DELETE ON exploration_nodes FOR EACH ROW EXECUTE FUNCTION invalidate_deleted_node_stream();

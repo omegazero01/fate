@@ -2,7 +2,7 @@ import {aggregateUsage} from '../../db/usage-ledger.js';
 import {requireTaskGoal} from "../../agent/task-goal.js";
 import {assetContextCTE} from '../../db/asset-query.js';
 import {registerOperationRoutes} from './operations.js';
-import {executionSnapshot} from '../../engine/coordinator.js';
+import {executionSnapshot,executionSnapshots} from '../../engine/coordinator.js';
 import {prepareAttachments} from "../../evidence/attachments.js";
 // 任务路由：CRUD + 生命周期（start/pause/resume/stop|finish|control/delete）+ 意图控制 + 主对话。
 // 生命周期约定（对齐 Go manager/engine 分层）：tasks 表状态先落库，再驱动 engine；
@@ -10,7 +10,7 @@ import {prepareAttachments} from "../../evidence/attachments.js";
 
 import type { FastifyInstance } from "fastify";
 import type { Task } from "../../db/tasks.js";
-import { isTerminalTaskStatus } from "../../db/tasks.js";
+import { isTerminalTaskStatus,TASK_DISPLAY_STATUS } from "../../db/tasks.js";
 import { IntentStateConflictError } from "../../db/exploration.js";
 
 /** 列表/详情 DTO：在 store Task 之上补前端仪表盘需要的聚合位（goals/counts 在详情填充）。 */
@@ -31,15 +31,15 @@ async function engineNoop(p: unknown): Promise<void> {
 export function registerTaskRoutes(app: FastifyInstance): void {
   registerOperationRoutes(app);
   const tasks = () => app.db.tasks();
-  const serializeTask = async (task: Task) => {
+  const serializeTask = async (task: Task, batch?:{pending:Set<number>;snapshot:Awaited<ReturnType<typeof executionSnapshots>>}) => {
     const dto = taskDTO(task);
     if (!isTerminalTaskStatus(task.status)) {
-      const pending = task.paused && !!(await app.db.query("SELECT 1 FROM runtime_task_commands WHERE task_id=$1 AND command='pause' AND status='pending' LIMIT 1", [task.id])).rowCount;
+      const pending = task.paused && (batch?batch.pending.has(task.id):!!(await app.db.query("SELECT 1 FROM runtime_task_commands WHERE task_id=$1 AND command='pause' AND status='pending' LIMIT 1", [task.id])).rowCount);
       dto.status = task.paused ? (pending ? task.status : 'paused') : task.queued ? 'queued' : task.status;
       dto.execution_status = pending ? 'waiting_for_executor' : dto.status;
       dto.pause_pending = pending;
     }
-    dto.scheduling=await executionSnapshot(app.db,task.id);
+    dto.scheduling=batch?batch.snapshot(task.id):await executionSnapshot(app.db,task.id);
     dto.in_flight=(dto.scheduling as {task_active:number}).task_active;
     const occupancy=dto.scheduling as {task_active:number;ready:number;planning:number};
     dto.engine_mode=task.paused?'paused':occupancy.task_active+occupancy.ready+occupancy.planning>0?'exploring':'idle';
@@ -48,8 +48,16 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
   // ─── 列表与创建 ────────────────────────────────────────────────────────────
 
-  app.get("/api/tasks", async () => {
-    const list = await tasks().listTasks();
+  app.get("/api/tasks", async (req,reply) => {
+    const q=req.query as Record<string,string|undefined>;
+    if(['page','page_size'].some(k=>q[k]!==undefined&&(!Number.isSafeInteger(Number(q[k]))||Number(q[k])<1))||
+      (q.category!==undefined&&!['all','uncategorized'].includes(q.category)&&(!Number.isSafeInteger(Number(q.category))||Number(q.category)<1)))
+      return reply.code(400).send({error:'无效的分页或分类参数'});
+    const paged=Object.keys(q).some(k=>['page','page_size','q','status','category','sort','direction','recent'].includes(k));
+    const result=paged?await tasks().listTasksPage({page:Math.max(1,Number(q.page)||1),pageSize:Math.min(100,Math.max(1,Number(q.page_size)||20)),q:q.q,status:q.status,category:q.category,sort:q.sort,direction:q.direction,recent:q.recent==='true'}):{tasks:await tasks().listTasks()};
+    const list=result.tasks,ids=list.map(t=>t.id);
+    const snapshot=await executionSnapshots(app.db);
+    const pending=new Set((await app.db.query("SELECT task_id FROM runtime_task_commands WHERE task_id=ANY($1::bigint[]) AND command='pause' AND status='pending'",[ids])).rows.map(r=>Number(r.task_id)));
     const active = (await app.db.platform().getSetting("active_task")) ?? "";
     // 派生位聚合：findings 四档 / goals 进度 / 在跑 / 最近活动 / 任务级 token。
     const agg = await app.db.query(
@@ -60,13 +68,13 @@ export function registerTaskRoutes(app: FastifyInstance): void {
                  FROM exploration_nodes n WHERE n.exploration_id=t.exploration_id AND n.kind='goal'),'{"total":0,"met":0}'::json) goals,
               COALESCE((SELECT count(*) FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.task_id=t.id AND s.phase='running' AND l.expires_at>now()),0) in_flight,
               EXTRACT(EPOCH FROM COALESCE((SELECT max(a.created_at) FROM activity a WHERE a.exploration_id=t.exploration_id), t.created_at))::bigint last_activity_unix
-       FROM tasks t WHERE t.deleted_at IS NULL`) as never;
-    const tokenRows=new Map((await aggregateUsage(app.db,{},'task')).map(r=>[Number(r.bucket),r]));
+       FROM tasks t WHERE t.id=ANY($1::bigint[])`,[ids]) as never;
+    const tokenRows=new Map((await aggregateUsage(app.db,{taskIDs:ids},'task')).map(r=>[Number(r.bucket),r]));
     const aggRows = new Map<number, Record<string, unknown>>();
     for (const r of (agg as unknown as { rows: Array<Record<string, unknown>> }).rows) aggRows.set(Number(r["id"]), r);
-    return {
-      tasks: await Promise.all(list.map(async (t) => {
-        const dto = await serializeTask(t);
+    const items=[];
+    for(const t of list){
+        const dto = await serializeTask(t,{snapshot,pending});
         const a = aggRows.get(Number(t.id));
         if (a) {
           dto["findings"] = a["findings"];
@@ -76,10 +84,15 @@ export function registerTaskRoutes(app: FastifyInstance): void {
           dto["last_activity_unix"] = Number(a["last_activity_unix"] ?? 0);
           dto["tokens"] = tokenRows.get(t.id)??{input_tokens:0,output_tokens:0,cache_read_tokens:0,cache_write_tokens:0,usage_complete:true,version:'usage-v2'};
         }
-        return dto;
-      })),
-      active,
-    };
+        items.push(dto);
+    }
+    return {...result,tasks:items,active};
+  });
+
+  app.get('/api/tasks/summary',async()=>{
+    const rows=(await app.db.query(`SELECT ${TASK_DISPLAY_STATUS} status,count(*) n FROM tasks WHERE deleted_at IS NULL GROUP BY 1`)).rows;
+    const by_status=Object.fromEntries(rows.map(r=>[String(r.status),Number(r.n)]));
+    return {total:rows.reduce((n,r)=>n+Number(r.n),0),by_status};
   });
 
   app.post("/api/tasks", async (req, reply) => {
@@ -159,7 +172,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
   async function pauseTask(id: number): Promise<Record<string, unknown>> {
     try {
-      await tasks().applyTaskPause(id); // 原子：paused=true + 出队；不可暂停（终态/已暂停）→ 409
+      await app.db.control().tasks().applyTaskPause(id); // 原子：paused=true + 出队；不可暂停（终态/已暂停）→ 409
     } catch (err) {
       throw Object.assign(new Error(err instanceof Error ? err.message : String(err)), { statusCode: 409 });
     }

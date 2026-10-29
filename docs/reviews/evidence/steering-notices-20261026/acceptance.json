@@ -1,0 +1,111 @@
+{
+  "scope": "steer_work 独立高亮提醒",
+  "date": "2026-10-26",
+  "base": "1de62d50079215ed969b9fbb9c8f664291de6764",
+  "backend_commit": "2957523b",
+  "contract": {
+    "new_activity": {
+      "kind": "status",
+      "tool": "steer_work",
+      "metadata.event_type": "steering"
+    },
+    "source": "宿主从实际角色取得；Worker 当前回合与 intent 归属沿用执行器信息",
+    "submission_label": "已提交；不证明已交付或已生效",
+    "legacy": "读取投影兼容 user + steering；不改写数据库正文；来源、状态缺失均明确显示未记录",
+    "migration": "不需要数据库迁移；现有 HTTP/SSE 可选元数据扩展"
+  },
+  "tests": {
+    "server_focused": {
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        "engine/steering-notice.test.ts",
+        "engine/worker-lifecycle.test.ts",
+        "engine/turn-summary.test.ts",
+        "http/chat-stream.test.ts"
+      ]
+    },
+    "frontend": {
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0
+    },
+    "server_typecheck": "passed",
+    "frontend_typecheck": "passed",
+    "server_build": "passed",
+    "frontend_production_webpack": "passed",
+    "frontend_static_webpack": "passed",
+    "real_model_requests": 0,
+    "external_target_requests": 0,
+    "main_integration": {
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "server_typecheck": "passed",
+      "frontend_typecheck": "passed",
+      "scope": "主工作区合并后的 steering-notice、chat-stream、turn-summary；不代替性能改造压测验收"
+    }
+  },
+  "native_pi": {
+    "sources": [
+      "planner",
+      "mainagent"
+    ],
+    "ordering": "本地 bash 工具完成 -> 原生 steering 消息 -> 后续模型回合 record_fact -> 总结退出",
+    "worker_statistics": {
+      "model_steps": 3,
+      "tool_calls": 2,
+      "queue_ms": null
+    },
+    "late_steering": "已结束 Worker 拒绝，未新增假提交活动"
+  },
+  "browser": {
+    "widths": [
+      390,
+      846,
+      1280,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "first_three_lines": {
+      "measured_height_px": 60,
+      "line_height_px": 20
+    },
+    "copy_full_text": "包括第六行，非预览截断",
+    "collapsed_group": "有 2 条纠偏，点击展开并定位；最终答复仍独立可见",
+    "search": "activity=4 深链展开全文；从 activity=3 工具定位切换到纠偏入口会显式跳转；用户主动收起过程与正文均保持状态",
+    "refresh": "新旧纠偏来源及状态保留，不出现用户气泡；真实用户消息保持原样",
+    "console_errors": 0,
+    "screenshots": [
+      "light-390.png",
+      "light-846.png",
+      "light-1280.png",
+      "dark-1440.png",
+      "collapsed-1440.png",
+      "search-390.png",
+      "search-to-steering.png"
+    ]
+  },
+  "review": {
+    "blockers_in_scope": [],
+    "domain_semantics": "未修改 pi 循环、触发频率、并发、写回及调度；未合并 codex/artex-steering 整分支",
+    "regression_fix_during_review": [
+      "旧纠偏不再参与人工消息确认与排队时长",
+      "纠偏不能成为最终答复",
+      "提醒入口使用 MessageScroller 原生跳转",
+      "手动折叠状态保存在回合层，过程重挂载后继续保持",
+      "显式纠偏跳转独立于原搜索定位，上翻阅读仍停止自动跟随"
+    ]
+  },
+  "publication": {
+    "production_restarted": false,
+    "reason": "性能改造尚未验收且已按用户要求停止；按协调结果等待统一发布，不恢复生产任务",
+    "integrated_into_main": true,
+    "preservation": "仅提交本次功能文件；原 36 个未提交文件及未跟踪性能文件保持原状，原补丁另有本地备份"
+  },
+  "rollback": "按后端、前端两个功能提交分别 git revert；不删除既有活动和纠偏正文。"
+}

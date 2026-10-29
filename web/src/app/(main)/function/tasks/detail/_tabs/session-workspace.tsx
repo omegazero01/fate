@@ -156,7 +156,7 @@ export function SessionWorkspace({
       </ResizablePanelGroup>
       <Sheet open={open && (!wide || expanded)} onOpenChange={onOpenChange}>
         <SheetContent
-          className={expanded ? "w-full p-0 sm:max-w-5xl" : "w-full p-0 sm:max-w-xl"}
+          className={expanded ? "w-full p-0 data-[side=right]:sm:max-w-5xl" : "w-full p-0 data-[side=right]:sm:max-w-xl"}
           showCloseButton={false}
         >
           <SheetHeader className="sr-only">

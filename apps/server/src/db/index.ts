@@ -22,20 +22,55 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 以本目录为 schema 与兼容迁移的唯一数据源。
 const schemaSQL = readFileSync(path.join(__dirname, "sql", "schema.sql"), "utf8");
 const retirementSQL = readFileSync(path.join(__dirname, 'sql', 'retire-approvals.sql'), 'utf8');
+const plannerRoundsSQL=readFileSync(path.join(__dirname,'sql','planner-rounds.sql'),'utf8');
 const usageSQL=readFileSync(path.join(__dirname,'sql','usage-ledger.sql'),'utf8');
 
 const SCHEMA_MIGRATION_LOCK_KEY = 7337741001;
 const DEADLOCK_RETRY_DELAYS_MS = [100, 250, 500, 1000];
 
+interface Pools { primary:pg.Pool; control?:pg.Pool; planner?:pg.Pool; queries:number; queryErrors:number; maxConnections?:number; }
+const sharedPools=new WeakMap<pg.Pool,Pools>();
+function poolsFor(pool:pg.Pool):Pools {
+  let value=sharedPools.get(pool);
+  if(!value){value={primary:pool,queries:0,queryErrors:0};sharedPools.set(pool,value);}
+  return value;
+}
+function auxiliaryPool(primary:pg.Pool,max:number,name:string){
+  const options=(primary as pg.Pool & {options:pg.PoolConfig}).options;
+  const pool=new pg.Pool({...options,max,application_name:`fate-${name}`,idleTimeoutMillis:30_000});
+  pool.on('error',()=>{/* Active owners observe their connection error; idle connections are replaced. */});
+  return pool;
+}
+
 export class Database {
   readonly pool: pg.Pool;
 
-  constructor(pool: pg.Pool, readonly transactionClient?: pg.PoolClient) {
+  constructor(pool: pg.Pool, readonly transactionClient?: pg.PoolClient, private readonly pools=poolsFor(pool)) {
     this.pool = pool;
   }
 
   query<T extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: unknown[]) {
-    return (this.transactionClient ?? this.pool).query<T>(text, values);
+    this.pools.queries++;
+    return (this.transactionClient ?? this.pool).query<T>(text, values).catch(error=>{this.pools.queryErrors++;throw error;});
+  }
+
+  /** Short lease/stop commands must not queue behind graph queries or session locks. */
+  control():Database {
+    if(this.transactionClient)return this; // Never escape the caller's transaction.
+    this.pools.control??=auxiliaryPool(this.pools.primary,4,'control');
+    return new Database(this.pools.control,undefined,this.pools);
+  }
+  async plannerLockPool(limit:number):Promise<pg.Pool>{
+    if(this.pools.maxConnections===undefined)this.pools.maxConnections=Number((await this.control().query('SHOW max_connections')).rows[0]?.max_connections??100);
+    const primaryMax=Number((this.pools.primary as pg.Pool & {options:pg.PoolConfig}).options.max??20);
+    if(primaryMax+4+limit>this.pools.maxConnections-5)throw new Error('Planner 并发配置超出 PostgreSQL 连接容量，请调整并发或数据库连接配额');
+    this.pools.planner??=auxiliaryPool(this.pools.primary,limit,'planner-lock');
+    (this.pools.planner as pg.Pool & {options:pg.PoolConfig}).options.max=limit;
+    return this.pools.planner;
+  }
+  runtimeMetrics(){
+    const stats=(p?:pg.Pool)=>p?{total:p.totalCount,idle:p.idleCount,waiting:p.waitingCount}: {total:0,idle:0,waiting:0};
+    return {queries:this.pools.queries,query_errors:this.pools.queryErrors,pools:{primary:stats(this.pools.primary),control:stats(this.pools.control),planner_lock:stats(this.pools.planner)}};
   }
 
   /** Domain operations share one connection; nested stores must not commit independently. */
@@ -44,7 +79,7 @@ export class Database {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const result = await fn(new Database(this.pool, client));
+      const result = await fn(new Database(this.pool, client,this.pools));
       await client.query("COMMIT");
       return result;
     } catch (error) { await client.query("ROLLBACK"); throw error; }
@@ -86,7 +121,7 @@ export class Database {
   }
 
   async close(): Promise<void> {
-    await this.pool.end();
+    await Promise.all([...new Set([this.pools.primary,this.pools.control,this.pools.planner].filter((p):p is pg.Pool=>!!p))].map(p=>p.end()));
   }
 }
 
@@ -158,7 +193,7 @@ export async function openDatabase(): Promise<Database> {
     try {
       await prepareToolOutputAccessMigration(client);
       // 无参数的 query 走简单查询协议，支持单次执行整份多语句 schema。
-      const ddl = retirementSQL + "\n" + schemaSQL+'\n'+usageSQL;
+      const ddl = retirementSQL + "\n" + schemaSQL+'\n'+usageSQL+'\n'+plannerRoundsSQL;
       for (let attempt = 0; ; attempt++) {
         try {
           await client.query(ddl);

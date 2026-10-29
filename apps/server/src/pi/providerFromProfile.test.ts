@@ -52,5 +52,23 @@ it.each(['openai','openai-responses'])('omits implicit output limits for an unli
   const result=await source.modelRuntime.completeSimple(source.model,{messages:[{role:'user',content:'ping',timestamp:Date.now()}]});
   expect(result.errorMessage).toBeUndefined();
   for(const key of ['max_tokens','max_completion_tokens','max_output_tokens'])expect(received).not.toHaveProperty(key);
+  await source.modelRuntime.completeSimple(source.model,{messages:[{role:'user',content:'LOCAL bounded summary',timestamp:Date.now()}]},{maxTokens:128});
+  expect(received[format==='openai-responses'?'max_output_tokens':'max_completion_tokens']).toBe(128);
+ }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+
+it.each([0,4096])('preserves native DeepSeek output-limit field for profile maxTokens=%s',async maxTokens=>{
+ let received:any;
+ const server=createServer(async(req,res)=>{received=await body(req);res.setHeader('content-type','application/json');res.end(JSON.stringify(replies.openai));});
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ try{
+  // Local-only URL exercises pi's URL compatibility detection, without making
+  // any request to DeepSeek or depending on a real key/model response.
+  const source=await buildModelSource({id:904,name:'local compatibility',model:'fixture',baseURL:`http://127.0.0.1:${(server.address() as {port:number}).port}/deepseek.com/v1`,apiKey:'fixture',contextWindowK:128,maxTokens,format:'openai',streaming:false});
+  const result=await source.modelRuntime.completeSimple(source.model,{messages:[{role:'user',content:'LOCAL bounded summary',timestamp:Date.now()}]},{maxTokens:128});
+  expect(result.errorMessage).toBeUndefined();
+  expect(received.max_tokens).toBe(128);
+  expect(received).not.toHaveProperty('max_completion_tokens');
+  expect(received).not.toHaveProperty('max_output_tokens');
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });

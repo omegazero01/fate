@@ -136,7 +136,7 @@ export function registerCategoryRoutes(app: FastifyInstance): void {
   async function controlOne(id: number, action: string): Promise<{ ok: boolean; status?: string; queued?: boolean; command_id?: number; error?: string }> {
     try {
       if (action === "pause") {
-        await app.db.tasks().applyTaskPause(id); // 终态/已暂停 → 409 语义错误
+        await app.db.control().tasks().applyTaskPause(id); // 终态/已暂停 → 409 语义错误
         const pause=await app.engine.pause(id);
         return { ok: true, status: pause.status, command_id: pause.command_id };
       }

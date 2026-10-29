@@ -1,3 +1,4 @@
+import {projectPlannerDisplay} from '../db/planner-rounds.js';
 import {CANONICAL_USAGE_CTE,aggregateUsage} from '../db/usage-ledger.js';
 import type {Database} from '../db/index.js';
 import {activityDTO,type StreamScope} from './live-stream.js';
@@ -20,7 +21,7 @@ export function projectTurn(rows:Row[],attempts:Row[],runtime?:Row) {
  const statusOverride=terminal?.metadata.event_type!=='outcome'&&nativeEnd?.metadata.stop_reason==='budget'&&['completed','stopped'].includes(terminal?.metadata.status)?'exhausted':undefined;
  const completed=terminal&&!statusOverride&&['completed','done'].includes(terminal.metadata.status);
  // A native stop without tool calls is only final after the HOST accepts completion.
- const explicit=rows.findLast(r=>r.metadata?.final_answer);
+ const explicit=rows.findLast(r=>r.metadata?.final_answer&&r.metadata?.event_type!=='steering');
  const final=terminal?.metadata.event_type==='outcome'?terminal:completed&&explicit?explicit:completed&&response?.metadata.response.stop_reason==='stop'&&!response.metadata.response.has_tools&&response.kind!=='status'&&response.summary?response:undefined;
  const expired=runtime&&(runtime.stop_reason==='executor_expired'||!runtime.finished_at&&new Date(runtime.expires_at).getTime()<=Date.now()||runtime.finished_at&&Date.now()-new Date(runtime.finished_at).getTime()>12000);
  const status=statusOverride??terminal?.metadata.status??(expired?'interrupted':runtime?.finished_at?'awaiting_confirmation':start?'running':'unknown');
@@ -34,8 +35,8 @@ export function projectTurn(rows:Row[],attempts:Row[],runtime?:Row) {
  const sum=(kind:string)=>usageRows.reduce((n,u)=>n+(Number(u[kind])||0),0);
  const auditKnown=attempts.length>0;
  const startedAt=iso(start?.metadata.started_at);
- const requested=rows.find(r=>r.kind==='user');
- return {version:1,turn_id:String(first.metadata.turn_id),revision:Number(last.id),updated_at:new Date(Math.max(new Date(last.created_at).getTime(),...attempts.map(a=>new Date(a.finished_at??0).getTime()),new Date(runtime?.finished_at??0).getTime(),expired?new Date(runtime?.expires_at??0).getTime():0)).toISOString(),
+ const requested=rows.find(r=>r.kind==='user'&&r.metadata?.event_type!=='steering');
+ return {planner_round:projectPlannerDisplay(rows),version:1,turn_id:String(first.metadata.turn_id),revision:Number(last.id),updated_at:new Date(Math.max(new Date(last.created_at).getTime(),...attempts.map(a=>new Date(a.finished_at??0).getTime()),new Date(runtime?.finished_at??0).getTime(),expired?new Date(runtime?.expires_at??0).getTime():0)).toISOString(),
   worker:first.worker,role:start?.metadata.role??runtime?.role??null,intent_id:first.node_id==null?null:String(first.node_id),main_seg:first.main_seg??null,
   status,started_at:startedAt,finished_at:iso(terminal?.created_at??(expired?runtime?.finished_at??runtime?.expires_at:null)),
   queue_ms:startedAt&&requested?Math.max(0,Date.parse(startedAt)-new Date(requested.created_at).getTime()):null,
@@ -61,15 +62,17 @@ export async function readTurnSummaries(db:Database,scope:StreamScope,id:number,
   ${scope==='task'?'AND exploration_activity_readable($1,node_id,metadata)':''} ORDER BY id`,[id,ids])).rows;
  const runtimeIDs=rows.filter(r=>r.metadata?.event_type==='turn_start').map(r=>r.metadata.runtime_id).filter(Boolean);
  const runtimes=runtimeIDs.length?(await db.query("SELECT id,role,finished_at,expires_at,effective->>'stop_reason' AS stop_reason FROM runtime_role_configs WHERE id=ANY($1::text[])",[runtimeIDs])).rows:[];
- const attempts=runtimeIDs.length?(await db.query(`WITH ${CANONICAL_USAGE_CTE} SELECT * FROM canonical WHERE runtime_id=ANY($1::text[]) ORDER BY created_at,request_id`,[runtimeIDs])).rows:[];
+ const taskID=scope==='task'?Number((await db.query('SELECT id FROM tasks WHERE exploration_id=$1',[id])).rows[0]?.id):undefined;
+ const domainColumn=scope==='task'?'task_id':'conversation_id',domainID=scope==='task'?taskID:id;
+ const attempts=runtimeIDs.length?(await db.query(`WITH ${CANONICAL_USAGE_CTE.replace('/* usage_scope */',`WHERE ${domainColumn}=$2`)} SELECT runtime_id,model,usage,status,quality,purpose,created_at,finished_at FROM canonical WHERE runtime_id=ANY($1::text[]) ORDER BY created_at,request_id`,[runtimeIDs,domainID])).rows:[];
+ const usageByTurn=new Map((await aggregateUsage(db,{taskID,conversationID:scope==='conversation'?id:undefined},'turn')).map(row=>[row.bucket,row]));
  const groups=new Map<string,Row[]>();
  for(const row of rows){const key=String(row.metadata.turn_id);const group=groups.get(key)??[];group.push(row);groups.set(key,group);}
- return Promise.all([...groups.values()].map(async group=>{
+ return [...groups.values()].map(group=>{
   const groupRuntimes=group.filter(r=>r.metadata?.event_type==='turn_start').map(r=>r.metadata.runtime_id);
   const turnID=String(group[0]!.metadata.turn_id);
   const projection=projectTurn(group,attempts.filter(a=>groupRuntimes.includes(a.runtime_id)),runtimes.find(r=>r.id===groupRuntimes.at(-1)));
-  const taskID=scope==='task'?Number((await db.query('SELECT id FROM tasks WHERE exploration_id=$1',[id])).rows[0]?.id):undefined;
-  const [usage]=await aggregateUsage(db,{taskID,conversationID:scope==='conversation'?id:undefined,turnID});
+  const usage=usageByTurn.get(turnID);
   if(usage&&Number(usage.calls)+Number(usage.legacy_records)>0){
    const turnAttempts=attempts.filter(a=>groupRuntimes.includes(a.runtime_id));
    const total=(a:Row)=>tokenTotal(a.usage??{});
@@ -78,5 +81,5 @@ export async function readTurnSummaries(db:Database,scope:StreamScope,id:number,
     compaction_tokens:turnAttempts.filter(a=>a.purpose==='compaction').reduce((n,a)=>n+total(a),0),failed_requests:usage.failed_calls,failed_request_tokens:turnAttempts.filter(a=>['failed','aborted'].includes(String(a.status))).reduce((n,a)=>n+total(a),0)};
   }
   return projection;
- }));
+ });
 }

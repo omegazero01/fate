@@ -1,0 +1,2570 @@
+{
+  "recorded_at": "2026-10-27T07:47:19.030Z",
+  "model": "deepseek-flash",
+  "baseline_commit": "c5795437",
+  "candidate_commit": "3a029c83",
+  "method": {
+    "automatic": "Same task goal, prompt versions and two serial loopback fixture requests; actual API, Goals, Planner and Worker. Each condition repeated three times.",
+    "long_history": "Each role resumes the same deterministic synthetic history for three continuations per run. Three runs per condition. Native pi manages compaction and JSONL restoration.",
+    "after_settings": {
+      "planner": 48000,
+      "worker": 64000
+    },
+    "before_settings": "native capacity compaction (258000 window)",
+    "production_worker_setting": "unchanged; 64K is an experimental setting, not a new default",
+    "cache": "Provider-managed shared warm cache; conditions alternated, no cache flush capability. Hit rate is sum(cacheRead)/sum(inputTotal), not an arithmetic mean.",
+    "usage": "Unique physical provider requests, includes compaction and failed attempts; checked against platform canonical aggregation. No currency estimate."
+  },
+  "groups": {
+    "automatic_before": {
+      "runs": [
+        {
+          "case": "live-before-1",
+          "database": "fate_context_auto_30549",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-4uxZ2b",
+          "raw_evidence": "/tmp/fate-context-live-before-1.json",
+          "started_at": "2026-10-27T07:24:50.237Z",
+          "finished_at": "2026-10-27T07:28:02.224Z",
+          "original_harness_status": "passed",
+          "requests": 25,
+          "input_bytes": 821232,
+          "usage": {
+            "input": 55038,
+            "inputTotal": 220926,
+            "cacheRead": 165888,
+            "cacheWrite": 0,
+            "output": 7456,
+            "totalTokens": 228382
+          },
+          "cache_hit_rate": 0.7508758588848755,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2210,
+                "inputTotal": 5666,
+                "cacheRead": 3456,
+                "cacheWrite": 0,
+                "output": 1114,
+                "totalTokens": 6780
+              },
+              "cache_hit_rate": 0.6099541122484998,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 13,
+              "usage": {
+                "input": 30775,
+                "inputTotal": 145335,
+                "cacheRead": 114560,
+                "cacheWrite": 0,
+                "output": 3766,
+                "totalTokens": 149101
+              },
+              "cache_hit_rate": 0.7882478411944818,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 9,
+              "usage": {
+                "input": 22053,
+                "inputTotal": 69925,
+                "cacheRead": 47872,
+                "cacheWrite": 0,
+                "output": 2576,
+                "totalTokens": 72501
+              },
+              "cache_hit_rate": 0.6846192348945298,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "仅依据已发布事实中的 token，对 /confirm?token=... 做一次 GET 独立核对，记录 verified 与 total，与样本总和 20 比对并写回结论事实。",
+                "created_at": "2026-10-27T07:25:41.544Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "读取本地样本接口 /sample，解析其中的样本数据并计算总和，同时读取资产详情，把原始样本、token 与计算过程和总和作为可引用的事实写回，然后结束；本意图不得访问 confirm。",
+                "created_at": "2026-10-27T07:25:18.452Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET http://127.0.0.1:54794/confirm?token=3160060f-897a-4ca8-b7c9-58e6dc92fc43 返回 HTTP 200：verified=true、total=20，与事实#4 计算的样本总和 4+7+9=20 完全一致（traffic_id c905c66e-d2e9-417b-b7fc-1e691713047f）。",
+                "created_at": "2026-10-27T07:25:53.036Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:54794/sample 返回本地合成样本：values=[4,7,9]，token=3160060f-897a-4ca8-b7c9-58e6dc92fc43，按 4+7+9 计算总和为 20（traffic_id 7971efcd-2821-4463-8f94-b40d4146ffec）。",
+                "created_at": "2026-10-27T07:25:28.385Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:25:22.414Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:25:48.898Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:25:28.448Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:24:52.857Z",
+                "finished_at": "2026-10-27T07:25:00.977Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:25:01.056Z",
+                "finished_at": "2026-10-27T07:25:03.605Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:25:04.361Z",
+                "finished_at": "2026-10-27T07:25:26.942Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:25:18.687Z",
+                "finished_at": "2026-10-27T07:25:34.266Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:25:35.392Z",
+                "finished_at": "2026-10-27T07:25:53.634Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:25:41.768Z",
+                "finished_at": "2026-10-27T07:25:56.599Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:25:57.018Z",
+                "finished_at": "2026-10-27T07:26:07.832Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "live-before-2",
+          "database": "fate_context_auto_32367",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-sf17JD",
+          "raw_evidence": "/tmp/fate-context-live-before-2.json",
+          "started_at": "2026-10-27T07:36:25.830Z",
+          "finished_at": "2026-10-27T07:38:12.654Z",
+          "original_harness_status": "passed",
+          "requests": 21,
+          "input_bytes": 609040,
+          "usage": {
+            "input": 41221,
+            "inputTotal": 165381,
+            "cacheRead": 124160,
+            "cacheWrite": 0,
+            "output": 9541,
+            "totalTokens": 174922
+          },
+          "cache_hit_rate": 0.7507512954934363,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 4619,
+                "inputTotal": 7691,
+                "cacheRead": 3072,
+                "cacheWrite": 0,
+                "output": 3147,
+                "totalTokens": 10838
+              },
+              "cache_hit_rate": 0.3994279027434664,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 8,
+              "usage": {
+                "input": 15477,
+                "inputTotal": 73717,
+                "cacheRead": 58240,
+                "cacheWrite": 0,
+                "output": 3116,
+                "totalTokens": 76833
+              },
+              "cache_hit_rate": 0.7900484284493401,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 10,
+              "usage": {
+                "input": 21125,
+                "inputTotal": 83973,
+                "cacheRead": 62848,
+                "cacheWrite": 0,
+                "output": 3278,
+                "totalTokens": 87251
+              },
+              "cache_hit_rate": 0.7484310433115406,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "阶段B：依据阶段A 事实 node:4 的 token GET http://127.0.0.1:61177/confirm?token=... 取得独立核对值，与 total=20 显式比对并写回一致性结论；不重复请求 /sample。",
+                "created_at": "2026-10-27T07:37:42.208Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "阶段A：GET http://127.0.0.1:61177/sample 读取本地合成样本，按样本内自述规则计算总和并记录分组/校验字段，读取资产详情后把样本内容、计算过程与结果写成事实；本意图不访问 /confirm。",
+                "created_at": "2026-10-27T07:37:07.288Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET /confirm?token=6f0dce56-1a30-4b73-bb9b-7c2c1f9437c2 返回 200 且 verified=true、total=20，与阶段A（node:4）独立求和结果 total=20 一致。",
+                "created_at": "2026-10-27T07:37:52.109Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:61177/sample 返回 200 且体为 LOCAL_SYNTHETIC 合成样本，values=[4,7,9]，独立求和结果 total=20，样本 token=6f0dce56-1a30-4b73-bb9b-7c2c1f9437c2（尚未用于 /confirm）。",
+                "created_at": "2026-10-27T07:37:27.506Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:37:15.537Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:37:47.776Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:37:28.467Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:36:29.934Z",
+                "finished_at": "2026-10-27T07:36:52.014Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:36:52.100Z",
+                "finished_at": "2026-10-27T07:36:54.497Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:36:57.300Z",
+                "finished_at": "2026-10-27T07:37:22.771Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:37:08.782Z",
+                "finished_at": "2026-10-27T07:37:37.492Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:37:38.380Z",
+                "finished_at": "2026-10-27T07:37:47.836Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:37:43.286Z",
+                "finished_at": "2026-10-27T07:37:59.334Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:37:59.907Z",
+                "finished_at": "2026-10-27T07:38:10.366Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "live-before-3",
+          "database": "fate_context_auto_32649",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-Xmgzvw",
+          "raw_evidence": "/tmp/fate-context-live-before-3.json",
+          "started_at": "2026-10-27T07:38:16.095Z",
+          "finished_at": "2026-10-27T07:40:44.477Z",
+          "original_harness_status": "passed",
+          "requests": 20,
+          "input_bytes": 603864,
+          "usage": {
+            "input": 35994,
+            "inputTotal": 164122,
+            "cacheRead": 128128,
+            "cacheWrite": 0,
+            "output": 8278,
+            "totalTokens": 172400
+          },
+          "cache_hit_rate": 0.7806875373197987,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2170,
+                "inputTotal": 6650,
+                "cacheRead": 4480,
+                "cacheWrite": 0,
+                "output": 2085,
+                "totalTokens": 8735
+              },
+              "cache_hit_rate": 0.6736842105263158,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 9,
+              "usage": {
+                "input": 18928,
+                "inputTotal": 94064,
+                "cacheRead": 75136,
+                "cacheWrite": 0,
+                "output": 2641,
+                "totalTokens": 96705
+              },
+              "cache_hit_rate": 0.7987753019220956,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 8,
+              "usage": {
+                "input": 14896,
+                "inputTotal": 63408,
+                "cacheRead": 48512,
+                "cacheWrite": 0,
+                "output": 3552,
+                "totalTokens": 66960
+              },
+              "cache_hit_rate": 0.7650769618975524,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "意图B：仅依据事实 #4（token=63a425a7-af08-410f-bd57-51b3ceb36657，样本总和=20），对本地服务资产发起一次 GET http://127.0.0.1:62453/confirm?token=<该token>，读取独立核对值并与 20 比对，将核对值与一致性结论写回；不重复请求 /sample。",
+                "created_at": "2026-10-27T07:39:22.989Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "意图A：只对本地服务资产 GET /sample 一次，读取响应中的合成样本数据（含 token），计算样本总和并把原始数据、算法与结果作为事实写回，同时核对资产详情；不得访问 /confirm，完成后结束。",
+                "created_at": "2026-10-27T07:38:52.890Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET http://127.0.0.1:62453/confirm?token=63a425a7-af08-410f-bd57-51b3ceb36657 返回 HTTP 200，核对值 total=20、verified=true，与事实 #4 的样本总和 20 数值一致（traffic b93d67c0-71e7-4169-8c47-7a62c1d4096e）。",
+                "created_at": "2026-10-27T07:39:38.778Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:62453/sample 一次返回 HTTP 200，样本 values=[4,7,9] 的算术总和为 20，token=63a425a7-af08-410f-bd57-51b3ceb36657（traffic 30e19125-c400-46d8-8510-38aa319e61a2），未访问 /confirm。",
+                "created_at": "2026-10-27T07:39:09.101Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:38:59.962Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:39:30.158Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:39:09.353Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:38:20.722Z",
+                "finished_at": "2026-10-27T07:38:34.588Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:38:34.686Z",
+                "finished_at": "2026-10-27T07:38:37.025Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:38:38.280Z",
+                "finished_at": "2026-10-27T07:38:59.361Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:38:53.880Z",
+                "finished_at": "2026-10-27T07:39:13.473Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:39:14.594Z",
+                "finished_at": "2026-10-27T07:39:32.581Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:39:25.001Z",
+                "finished_at": "2026-10-27T07:39:52.211Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:40:17.991Z",
+                "finished_at": "2026-10-27T07:40:42.190Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        }
+      ],
+      "requests": 66,
+      "compaction_requests": 0,
+      "usage": {
+        "input": 132253,
+        "inputTotal": 550429,
+        "cacheRead": 418176,
+        "cacheWrite": 0,
+        "output": 25275,
+        "totalTokens": 575704
+      },
+      "cache_hit_rate": 0.7597274126181578
+    },
+    "automatic_after": {
+      "runs": [
+        {
+          "case": "live-after-3",
+          "database": "fate_context_auto_32435",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-owl5Tx",
+          "raw_evidence": "/tmp/fate-context-live-after-3.json",
+          "started_at": "2026-10-27T07:36:39.575Z",
+          "finished_at": "2026-10-27T07:38:30.075Z",
+          "original_harness_status": "passed",
+          "requests": 19,
+          "input_bytes": 555315,
+          "usage": {
+            "input": 35174,
+            "inputTotal": 149222,
+            "cacheRead": 114048,
+            "cacheWrite": 0,
+            "output": 9450,
+            "totalTokens": 158672
+          },
+          "cache_hit_rate": 0.764284086796853,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2631,
+                "inputTotal": 7367,
+                "cacheRead": 4736,
+                "cacheWrite": 0,
+                "output": 2823,
+                "totalTokens": 10190
+              },
+              "cache_hit_rate": 0.642866838604588,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 8,
+              "usage": {
+                "input": 19634,
+                "inputTotal": 80946,
+                "cacheRead": 61312,
+                "cacheWrite": 0,
+                "output": 3479,
+                "totalTokens": 84425
+              },
+              "cache_hit_rate": 0.7574432337607788,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 8,
+              "usage": {
+                "input": 12909,
+                "inputTotal": 60909,
+                "cacheRead": 48000,
+                "cacheWrite": 0,
+                "output": 3148,
+                "totalTokens": 64057
+              },
+              "cache_hit_rate": 0.7880608777028025,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "依据事实 node:4 的 token 与样本总和（values=[4,7,9]，总和=20），GET http://127.0.0.1:61344/confirm?token=<该token> 读取独立核对值，与 20 比对后将核对值、一致/不一致结论及证据写回事实/发现；不重复请求 /sample。",
+                "created_at": "2026-10-27T07:37:54.248Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "读取本地合成样本 http://127.0.0.1:61344/sample 的原始内容，记录全部样本数值与样本数量，计算其总和，并读取资产详情；将这些观察（样本值、数量、总和、样本中的 token）写为事实后结束。不访问 confirm。",
+                "created_at": "2026-10-27T07:37:30.268Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET http://127.0.0.1:61344/confirm?token=52f3e975-5483-452c-858b-66eba8fa9d9d 返回 verified=true、total=20，与 node:4 样本 values=[4,7,9] 的总和 20 一致，服务端 token 校验通过且核对值一致。",
+                "created_at": "2026-10-27T07:38:06.506Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:61344/sample 返回本地合成样本：values=[4,7,9]（共3个数值，总和=20），token=52f3e975-5483-452c-858b-66eba8fa9d9d，fixture=LOCAL_SYNTHETIC；资产#1 page_title=LOCAL-99a37064-9fde-4410-96d0-890461476e1b。",
+                "created_at": "2026-10-27T07:37:44.258Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:37:38.702Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:38:00.658Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:37:44.364Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:36:46.297Z",
+                "finished_at": "2026-10-27T07:37:06.573Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:37:06.967Z",
+                "finished_at": "2026-10-27T07:37:09.793Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:37:18.541Z",
+                "finished_at": "2026-10-27T07:37:36.159Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:37:32.842Z",
+                "finished_at": "2026-10-27T07:37:49.305Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:37:49.874Z",
+                "finished_at": "2026-10-27T07:37:59.145Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:37:54.606Z",
+                "finished_at": "2026-10-27T07:38:12.132Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:38:13.586Z",
+                "finished_at": "2026-10-27T07:38:27.631Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "live-after-4",
+          "database": "fate_context_auto_32689",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-viW3Tj",
+          "raw_evidence": "/tmp/fate-context-live-after-4.json",
+          "started_at": "2026-10-27T07:38:32.792Z",
+          "finished_at": "2026-10-27T07:40:52.322Z",
+          "original_harness_status": "failed",
+          "original_harness_error": "Automatic task had tool errors; inspect and fix before acceptance",
+          "requests": 21,
+          "input_bytes": 612633,
+          "usage": {
+            "input": 35764,
+            "inputTotal": 165428,
+            "cacheRead": 129664,
+            "cacheWrite": 0,
+            "output": 7301,
+            "totalTokens": 172729
+          },
+          "cache_hit_rate": 0.7838092704983437,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2232,
+                "inputTotal": 6456,
+                "cacheRead": 4224,
+                "cacheWrite": 0,
+                "output": 1776,
+                "totalTokens": 8232
+              },
+              "cache_hit_rate": 0.654275092936803,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 10,
+              "usage": {
+                "input": 19649,
+                "inputTotal": 97729,
+                "cacheRead": 78080,
+                "cacheWrite": 0,
+                "output": 2965,
+                "totalTokens": 100694
+              },
+              "cache_hit_rate": 0.7989440186638562,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 8,
+              "usage": {
+                "input": 13883,
+                "inputTotal": 61243,
+                "cacheRead": 47360,
+                "cacheWrite": 0,
+                "output": 2560,
+                "totalTokens": 63803
+              },
+              "cache_hit_rate": 0.7733128684094509,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [
+            {
+              "tool": "add_intent",
+              "error": "{\"error\":\"依据 #2 是 goal，不能作为派单证据；basis 仅接受 fact/finding，目标用于 prove_goal。初始派单可省略 basis，由宿主连接任务根事实。\"}"
+            }
+          ],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "意图 B（串行第二步）：仅依据事实 #4 的 token=97258b5f-61a9-4f60-bd74-fa0c746541bc，对 /confirm?token= 发起一次 GET，记录返回的 verified、total、traffic_id，并与样本总和 20 逐项比对，把比对结论与 traffic_id 及时 record_fact 后结束。不得重复请求 /sample。",
+                "created_at": "2026-10-27T07:39:44.853Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "意图 A（串行第一步）：对资产 #1 的 /sample 发起 GET，原样记录响应中的 values 数组、token、traffic_id 等信息并算出各项之和；同时用 asset_get 读取资产 #1 的 fingerprint 实际 page_title 并核对；把实测数值、总和、token、traffic_id 及时 record_fact 保存后结束。绝不访问 /confirm，也不做重复请求。",
+                "created_at": "2026-10-27T07:39:13.856Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET http://127.0.0.1:62609/confirm?token=97258b5f-61a9-4f60-bd74-fa0c746541bc 返回 verified=true、total=20，与 /sample 的 values(4+7+9) 总和 20 一致，目标达成。",
+                "created_at": "2026-10-27T07:40:31.010Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:62609/sample 返回 fixture=LOCAL_SYNTHETIC，values=[4,7,9]，算术总和=20，token=97258b5f-61a9-4f60-bd74-fa0c746541bc，traffic_id=55d270c3-a4c0-4a9c-8c86-c271ce290943；锚定资产 #1（127.0.0.1:62609）的 page_title 为 LOCAL-8256141b-e24a-4f49-9f9e-8398753625d2。",
+                "created_at": "2026-10-27T07:39:27.854Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:39:23.074Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:40:18.087Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:39:28.336Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:38:36.581Z",
+                "finished_at": "2026-10-27T07:38:49.570Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:38:50.070Z",
+                "finished_at": "2026-10-27T07:38:54.524Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:38:55.942Z",
+                "finished_at": "2026-10-27T07:39:22.942Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:39:14.670Z",
+                "finished_at": "2026-10-27T07:39:32.267Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:39:33.841Z",
+                "finished_at": "2026-10-27T07:40:02.235Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:39:53.487Z",
+                "finished_at": "2026-10-27T07:40:37.657Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:40:38.785Z",
+                "finished_at": "2026-10-27T07:40:50.144Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "live-after-5",
+          "database": "fate_context_auto_33311",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-J8uAqi",
+          "raw_evidence": "/tmp/fate-context-live-after-5.json",
+          "started_at": "2026-10-27T07:42:14.536Z",
+          "finished_at": "2026-10-27T07:43:38.262Z",
+          "original_harness_status": "passed",
+          "requests": 19,
+          "input_bytes": 543836,
+          "usage": {
+            "input": 30748,
+            "inputTotal": 145052,
+            "cacheRead": 114304,
+            "cacheWrite": 0,
+            "output": 7388,
+            "totalTokens": 152440
+          },
+          "cache_hit_rate": 0.7880208476959987,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2248,
+                "inputTotal": 6344,
+                "cacheRead": 4096,
+                "cacheWrite": 0,
+                "output": 1678,
+                "totalTokens": 8022
+              },
+              "cache_hit_rate": 0.6456494325346784,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 8,
+              "usage": {
+                "input": 16080,
+                "inputTotal": 79184,
+                "cacheRead": 63104,
+                "cacheWrite": 0,
+                "output": 3126,
+                "totalTokens": 82310
+              },
+              "cache_hit_rate": 0.7969286724590826,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 8,
+              "usage": {
+                "input": 12420,
+                "inputTotal": 59524,
+                "cacheRead": 47104,
+                "cacheWrite": 0,
+                "output": 2584,
+                "totalTokens": 62108
+              },
+              "cache_hit_rate": 0.7913446676970634,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "依据已发布事实中的核对 token 读取确认端点，获取独立核对值，与样本总和 20 比对，写回比对一致或不一致的结论；不重复请求样本端点。",
+                "created_at": "2026-10-27T07:43:06.274Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "读取本地合成样本端点获取样本清单（仅一次），逐项汇总求和得到总和，并读取该服务资产详情；把样本内容、计算过程要点、总和数值以及样本中出现的核对 token 写回为 fact，结束。不访问确认端点，不重复请求样本。",
+                "created_at": "2026-10-27T07:42:45.203Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET http://127.0.0.1:64603/confirm?token=c54bcdf6-e96c-4bfe-942d-c234532f4bf1 返回 verified=true、total=20，与样本 values=[4,7,9] 的独立求和 20 完全一致（fixture 同为 LOCAL_SYNTHETIC，token 回显一致）。",
+                "created_at": "2026-10-27T07:43:17.681Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:64603/sample 返回本地合成样本 fixture=LOCAL_SYNTHETIC，values=[4,7,9]，独立求和为 20，核对 token 为 c54bcdf6-e96c-4bfe-942d-c234532f4bf1。",
+                "created_at": "2026-10-27T07:42:56.270Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:42:50.712Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:43:12.658Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:42:56.605Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:42:18.576Z",
+                "finished_at": "2026-10-27T07:42:29.880Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:42:31.003Z",
+                "finished_at": "2026-10-27T07:42:33.663Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:42:34.824Z",
+                "finished_at": "2026-10-27T07:42:57.379Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:42:46.170Z",
+                "finished_at": "2026-10-27T07:42:59.822Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:43:00.441Z",
+                "finished_at": "2026-10-27T07:43:11.100Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:43:06.626Z",
+                "finished_at": "2026-10-27T07:43:22.301Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:43:23.774Z",
+                "finished_at": "2026-10-27T07:43:35.918Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        }
+      ],
+      "requests": 59,
+      "compaction_requests": 0,
+      "usage": {
+        "input": 101686,
+        "inputTotal": 459702,
+        "cacheRead": 358016,
+        "cacheWrite": 0,
+        "output": 24139,
+        "totalTokens": 483841
+      },
+      "cache_hit_rate": 0.7788001792465554
+    },
+    "long_before": {
+      "runs": [
+        {
+          "case": "long-before-1",
+          "database": "fate_context_long_30981",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-WaFLlQ",
+          "raw_evidence": "/tmp/fate-context-long-before-1.json",
+          "started_at": "2026-10-27T07:28:04.382Z",
+          "finished_at": "2026-10-27T07:28:35.755Z",
+          "original_harness_status": "passed",
+          "requests": 8,
+          "input_bytes": 3193929,
+          "usage": {
+            "input": 120790,
+            "inputTotal": 481110,
+            "cacheRead": 360320,
+            "cacheWrite": 0,
+            "output": 1502,
+            "totalTokens": 482612
+          },
+          "cache_hit_rate": 0.7489347550456237,
+          "by_role": {
+            "planner": {
+              "requests": 4,
+              "usage": {
+                "input": 60362,
+                "inputTotal": 240842,
+                "cacheRead": 180480,
+                "cacheWrite": 0,
+                "output": 809,
+                "totalTokens": 241651
+              },
+              "cache_hit_rate": 0.7493709568929008,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 4,
+              "usage": {
+                "input": 60428,
+                "inputTotal": 240268,
+                "cacheRead": 179840,
+                "cacheWrite": 0,
+                "output": 693,
+                "totalTokens": 240961
+              },
+              "cache_hit_rate": 0.7484975111125909,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 0,
+              "seed_bytes": 397498,
+              "seed_sha256": "51015c83009f855f7924435c8ab14716cb7238cb06b480b12bd57f135aa1bda3",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成（node:3 detail，version=0），仅读取、未新增任何探索：\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **总和**：values [4,7,9] → total=20\n- **否定结论**：确认为 negative 结果（LOCAL_NEGATIVE），state=confirmed，从未是未测试方向；未访问任何外部目标\n- **已有记录编号**：node:3（source_task_id=1，from_intent=2，content_version=0）\n- **范围**：scope=fixture only，证据来源 Synthetic fixture v1\n\n无新增事实、无派单、无工具操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "本轮不再执行读取：node:3 的 detail 已在第 1 次复核中读取过（同方向不重复），沿用已保存结论：\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **总和**：values [4,7,9] → total=20\n- **否定结论**：LOCAL_NEGATIVE，state=confirmed，系已确认的否定结果，非未测试方向；未访问任何外部目标\n- **已有记录编号**：node:3（version=0，source_task_id=1，from_intent=2）\n- **范围**：fixture only（Synthetic fixture v1）\n\n无新增事实、无派单、无工具操作。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "不再执行读取：node:3 detail 已于第 1 次复核读取，第 2 次亦已说明同方向不重复，本轮沿用已保存结论：\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **总和**：values [4,7,9] → total=20\n- **否定结论**：LOCAL_NEGATIVE，state=confirmed；已确认否定结果，非未测试方向；无外部目标访问\n- **已有记录编号**：node:3（version=0，source_task_id=1，from_intent=2）\n- **范围**：fixture only（Synthetic fixture v1）\n\n无新增事实、无派单、无工具操作。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 0,
+              "seed_bytes": 397511,
+              "seed_sha256": "ec05722cf8e677ada5385774f0132ea6d17dcb339c8f36ed1938ad5a46f517ad",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成（node:6，version=0，state=confirmed）：\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **已存结论**：LOCAL_NEGATIVE — 合成值 [4,7,9]，总和 20；scope=fixture only\n- **否定结论**：确认为阴性结果，从未是未测试方向；未访问任何外部目标\n- **记录编号**：node:6（source_task_id=2，from_intent=5，origin=fixture）\n\n无新增事实、无派单、无其他操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核：已在本轮首次读取中完成，按“仅读取一次”约束不再重复调用。\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **已存结论**：LOCAL_NEGATIVE — 合成值 [4,7,9]，总和 20；scope=fixture only\n- **否定结论**：确认为阴性结果，从未是未测试方向；未访问任何外部目标\n- **记录编号**：node:6（version=0，state=confirmed；source_task_id=2，from_intent=5，origin=fixture）\n\n结果与第 1 次复核一致，无新增事实、无派单、无其他工具操作。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核：沿用本轮已完成的单次读取结果，不再重复调用工具。\n\n- **RECALL_SENTINEL**：amber-cedar-27\n- **已存结论**：LOCAL_NEGATIVE — 合成值 [4,7,9]，总和 20；scope=fixture only\n- **否定结论**：确认为阴性结果，从未是未测试方向；未访问任何外部目标\n- **记录编号**：node:6（version=0，state=confirmed；source_task_id=2，from_intent=5，origin=fixture）\n\n与前两次复核一致；无新增事实、无派单、无其他操作。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "case": "long-before-2",
+          "database": "fate_context_long_31434",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-8Dgclp",
+          "raw_evidence": "/tmp/fate-context-long-before-2.json",
+          "started_at": "2026-10-27T07:30:58.325Z",
+          "finished_at": "2026-10-27T07:31:39.625Z",
+          "original_harness_status": "passed",
+          "requests": 8,
+          "input_bytes": 3190641,
+          "usage": {
+            "input": 120819,
+            "inputTotal": 480371,
+            "cacheRead": 359552,
+            "cacheWrite": 0,
+            "output": 1195,
+            "totalTokens": 481566
+          },
+          "cache_hit_rate": 0.7484881477025049,
+          "by_role": {
+            "planner": {
+              "requests": 4,
+              "usage": {
+                "input": 60398,
+                "inputTotal": 240110,
+                "cacheRead": 179712,
+                "cacheWrite": 0,
+                "output": 509,
+                "totalTokens": 240619
+              },
+              "cache_hit_rate": 0.7484569572279371,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 4,
+              "usage": {
+                "input": 60421,
+                "inputTotal": 240261,
+                "cacheRead": 179840,
+                "cacheWrite": 0,
+                "output": 686,
+                "totalTokens": 240947
+              },
+              "cache_hit_rate": 0.7485193185743837,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 0,
+              "seed_bytes": 397498,
+              "seed_sha256": "afebd4ff6e4b6ad8569eba23656e3e58da89ac52c6c891c658988a1ad14b58b4",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:3，fact 已确认）：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] total=20\n- 否定结论：confirmed negative result（非未验证方向）；无外部目标被访问\n- 已有记录编号：node:3（version 0，source_task_id=1，from_intent=2，origin=fixture）\n\n无新增事实，不派单。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "不应重复读取：第 1 次复核已读取 node:3 的 detail（version 0），同一方向不再执行。\n\n沿用已确认结果：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] total=20\n- 否定结论：confirmed negative result（非未验证方向），未访问任何外部目标\n- 已有记录编号：node:3（version 0，source_task_id=1，from_intent=2，origin=fixture，state=confirmed）\n\n无新增事实、无需工具操作。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "仍不重复读取：node:3 detail 已于第 1 次复核读取（version 0），该方向不得再执行。\n\n沿用结论：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] total=20\n- 否定结论：confirmed negative result（非未测试方向），无外部目标访问\n- 已有记录编号：node:3（version 0，source_task_id=1，from_intent=2，origin=fixture，state=confirmed）\n\n无新增事实、无派单、无工具操作。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 0,
+              "seed_bytes": 397500,
+              "seed_sha256": "da13f75f247a5ce69587f94c995161db5feb24707a4a5820c7494bfb90861413",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成，结果如下：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：synthetic values [4,7,9]，total=20\n- 否定结论：confirmed negative result（已确认的否定结果），never an untested direction；未访问任何外部目标\n- 已有记录编号：node:6（kind=fact，state=confirmed，version=0，source_task_id=2，from_intent=5）\n- 范围：fixture only（仅限合成夹具）\n\n未执行新探索，无新增事实或工具操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "该读取方向已执行过（node:6 detail 已读，version=0），按规则不重复读取。沿用已确认结果：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] → total=20\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 已有记录编号：node:6（fact，state=confirmed，source_task_id=2，from_intent=5，scope=fixture only）\n\n无新增事实、无派单、无工具操作。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "同一方向已完成（node:6 detail 已读，version=0），本轮不再重复读取。结论不变：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] → total=20\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 已有记录编号：node:6（fact，state=confirmed，version=0，source_task_id=2，from_intent=5，scope=fixture only）\n\n无新增事实、无派单、无工具操作。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "case": "long-before-3",
+          "database": "fate_context_long_31527",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-fYZTBX",
+          "raw_evidence": "/tmp/fate-context-long-before-3.json",
+          "started_at": "2026-10-27T07:31:42.068Z",
+          "finished_at": "2026-10-27T07:32:22.755Z",
+          "original_harness_status": "passed",
+          "requests": 9,
+          "input_bytes": 3596012,
+          "usage": {
+            "input": 121090,
+            "inputTotal": 541954,
+            "cacheRead": 420864,
+            "cacheWrite": 0,
+            "output": 1855,
+            "totalTokens": 543809
+          },
+          "cache_hit_rate": 0.7765677529827255,
+          "by_role": {
+            "planner": {
+              "requests": 4,
+              "usage": {
+                "input": 60317,
+                "inputTotal": 240541,
+                "cacheRead": 180224,
+                "cacheWrite": 0,
+                "output": 819,
+                "totalTokens": 241360
+              },
+              "cache_hit_rate": 0.7492444115556184,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 5,
+              "usage": {
+                "input": 60773,
+                "inputTotal": 301413,
+                "cacheRead": 240640,
+                "cacheWrite": 0,
+                "output": 1036,
+                "totalTokens": 302449
+              },
+              "cache_hit_rate": 0.7983729965197254,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 0,
+              "seed_bytes": 397498,
+              "seed_sha256": "232e65fe75453ceb7061636827d2a505e18def490fe23d19c40eaa85ddbb327f",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成（node:3，version 0，state=confirmed）：\n\n- **RECALL_SENTINEL=amber-cedar-27**\n- **总和**：synthetic values [4,7,9] → total=20\n- **否定结论**：LOCAL_NEGATIVE，已确认为阴性结果，从未是未测试方向；未访问任何外部目标\n- **已有记录编号**：node:3（来源任务 1，from_intent 2，origin=fixture，scope=fixture only）\n\n不重做探索、不新增事实、不派单。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "本轮不再读取：node:3 detail 已在上一轮读取（version 0，内容未变，无需重复工具操作）。\n\n已确认的原始结论（node:3，state=confirmed）：\n\n- **RECALL_SENTINEL=amber-cedar-27**\n- **总和**：synthetic values [4,7,9] → total=20\n- **否定结论**：LOCAL_NEGATIVE —— 已确认为阴性结果，从不是未测试方向；未访问任何外部目标\n- **已有记录编号**：node:3（source_task_id=1，from_intent=2，origin=fixture，scope=fixture only）\n\n不重做探索、不新增事实、不派单。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "本轮仍不重复读取：node:3 detail 在首次复核时已读取（version 0，state=confirmed，内容未变），第三次复核与第 1、2 次结论一致，无需再次工具操作。\n\n已保存的原始结论（node:3）：\n\n- **RECALL_SENTINEL=amber-cedar-27**\n- **总和**：synthetic values [4,7,9] → total=20\n- **否定结论**：LOCAL_NEGATIVE，已确认为阴性结果，从未是未测试方向；未访问外部目标\n- **已有记录编号**：node:3（source_task_id=1，from_intent=2，origin=fixture，scope=fixture only）\n\n不重做探索、不新增事实、不派单。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 0,
+              "seed_bytes": 397498,
+              "seed_sha256": "c15d9203b8a16e7c2945b8cc25da4023cfd320d852726dff98ddd502ec38ef15",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:6，version=0，state=confirmed）：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] → total=20\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 范围：fixture only（合成固定资料）\n- 已有记录编号：node:6（from_intent:5, source_task_id:2, origin:fixture）\n\n无新增事实、无派单、无其他工具操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核（node:6，version=0，未变更，state=confirmed）：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] → total=20\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 范围：fixture only（合成固定资料，evidence=\"Synthetic fixture v1\"）\n- 已有记录编号：node:6（from_intent:5，source_task_id:2，origin:fixture）\n\n结论与第 1 次一致，无新增事实、无派单。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核：不再重复读取。node:6 的 detail 已连续两次读取，两次返回完全一致（version=0，source_hash `602f0085…a5a`，state=confirmed），重复调用不会产生新信息。\n\n已确认结论（与第 1、2 次相同）：\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：values [4,7,9] → total=20\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 范围：fixture only（Synthetic fixture v1）\n- 已有记录编号：node:6（from_intent:5，source_task_id:2，origin:fixture）\n\n无新增事实、无派单、无其他工具操作。如需真正的新信息，请指定其他节点或字段。"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "requests": 25,
+      "compaction_requests": 0,
+      "usage": {
+        "input": 362699,
+        "inputTotal": 1503435,
+        "cacheRead": 1140736,
+        "cacheWrite": 0,
+        "output": 4552,
+        "totalTokens": 1507987
+      },
+      "cache_hit_rate": 0.7587531220172472
+    },
+    "long_after": {
+      "runs": [
+        {
+          "case": "long-after-2",
+          "database": "fate_context_long_31045",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-FwQBKo",
+          "raw_evidence": "/tmp/fate-context-long-after-2.json",
+          "started_at": "2026-10-27T07:28:45.616Z",
+          "finished_at": "2026-10-27T07:29:30.667Z",
+          "original_harness_status": "passed",
+          "requests": 12,
+          "input_bytes": 68170,
+          "usage": {
+            "input": 5158,
+            "inputTotal": 18854,
+            "cacheRead": 13696,
+            "cacheWrite": 0,
+            "output": 2988,
+            "totalTokens": 21842
+          },
+          "cache_hit_rate": 0.7264241009865281,
+          "by_role": {
+            "planner": {
+              "requests": 5,
+              "usage": {
+                "input": 2028,
+                "inputTotal": 6764,
+                "cacheRead": 4736,
+                "cacheWrite": 0,
+                "output": 1473,
+                "totalTokens": 8237
+              },
+              "cache_hit_rate": 0.7001774098166765,
+              "compaction_requests": 1
+            },
+            "worker": {
+              "requests": 7,
+              "usage": {
+                "input": 3130,
+                "inputTotal": 12090,
+                "cacheRead": 8960,
+                "cacheWrite": 0,
+                "output": 1515,
+                "totalTokens": 13605
+              },
+              "cache_hit_rate": 0.7411083540115798,
+              "compaction_requests": 1
+            }
+          },
+          "compaction_requests": 2,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 1,
+              "seed_bytes": 397498,
+              "seed_sha256": "9c2cb36a6f5e0e104284f5c37fee748b9f46211d04f2f361e03ede6e244c96be",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:3，version 0，单次读取）：\n\n- RECALL_SENTINEL=amber-cedar-27\n- 已保存结论：LOCAL_NEGATIVE（synthetic values [4,7,9]；total=20；scope=fixture only）\n- 否定性结论：确认是负向结果，该方向从未是未测试方向；未访问任何外部目标\n- 证据来源：Synthetic fixture v1；origin=fixture，state=confirmed\n- 记录编号：node:3（content_version 0，source_task_id 1，from_intent 2）\n\n本轮无新增事实、无派单、未重复任何探索方向。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核：该节点本 session 内已完整读取过一次（node:3，version 0，detail 全长 423 字符，offset 已到底、无 next_offset），内容未变，因此不重复同一读取动作。\n\n- RECALL_SENTINEL=amber-cedar-27\n- 已保存结论：LOCAL_NEGATIVE；synthetic values [4,7,9]；total=20；scope=fixture only\n- 否定性结论：confirmed negative，从未是未测试方向；未访问任何外部目标\n- 记录编号：node:3（content_version 0，state=confirmed，origin=fixture，source_task_id 1，from_intent 2，证据 Synthetic fixture v1）\n\n无新增事实、无派单、无新探索。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核：同一读取已在第 1 次执行完毕（node:3，version 0，detail 全长 423 字符，已到末尾），记录未变，不再重复该动作。\n\n- RECALL_SENTINEL=amber-cedar-27\n- 结论：LOCAL_NEGATIVE（synthetic values [4,7,9]，total=20，scope=fixture only）\n- 否定性：confirmed negative，非未测试方向；未访问外部目标\n- 记录编号：node:3（content_version 0，state=confirmed，origin=fixture，source_task_id 1，from_intent 2，Synthetic fixture v1）\n\n无新增事实、无派单、无探索。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 1,
+              "seed_bytes": 397496,
+              "seed_sha256": "2b0c0c5570cecd70ccc867437b7cebfabcf65b1a006c8e9e51d1b8979a8ed52e",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成（node:6，version 0，detail 全文 423 字符，已一次读完）：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：`[4,7,9]` → `total=20`\n- **否定结论**：`LOCAL_NEGATIVE` —— 确认为否定结果，从来不是未测试方向；未访问任何外部目标；范围仅限 fixture（Synthetic fixture v1）\n- **已有记录编号**：`node:6`（id=6, content_version=0, kind=fact, state=confirmed, origin=fixture, from_intent=5, source_task_id=2）\n\n无新增事实、无派单、无后续工具操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核完成（node:6，version 0，detail 全文 423 字符一次读完，`next_offset=null`，与上次一致）：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：值 `[4,7,9]`，`total=20`\n- **否定结论**：`LOCAL_NEGATIVE` —— 确认为否定结果，从不是未测试方向；未访问任何外部目标；范围仅 fixture（Synthetic fixture v1）\n- **已有记录编号**：`node:6`（id=6、content_version=0、kind=fact、state=confirmed、origin=fixture、from_intent=5、source_task_id=2）\n\n无新增事实、无派单、无额外探索。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核完成（node:6，version 0，detail 全文 423 字符一次读完，`next_offset=null`，source_hash 与前两次相同 `1f63b13c…`）：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：`[4,7,9]` → `total=20`\n- **否定结论**：`LOCAL_NEGATIVE` —— 确认为否定结果，从不是未测试方向；未访问任何外部目标；范围仅 fixture（Synthetic fixture v1）\n- **已有记录编号**：`node:6`（id=6、content_version=0、kind=fact、state=confirmed、origin=fixture、from_intent=5、source_task_id=2）\n\n无新增事实、无派单、无额外探索。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "case": "long-after-3",
+          "database": "fate_context_long_31295",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-mxvsIy",
+          "raw_evidence": "/tmp/fate-context-long-after-3.json",
+          "started_at": "2026-10-27T07:30:05.517Z",
+          "finished_at": "2026-10-27T07:30:54.344Z",
+          "original_harness_status": "passed",
+          "requests": 10,
+          "input_bytes": 49087,
+          "usage": {
+            "input": 3883,
+            "inputTotal": 13483,
+            "cacheRead": 9600,
+            "cacheWrite": 0,
+            "output": 3343,
+            "totalTokens": 16826
+          },
+          "cache_hit_rate": 0.7120077134168954,
+          "by_role": {
+            "planner": {
+              "requests": 5,
+              "usage": {
+                "input": 1990,
+                "inputTotal": 6854,
+                "cacheRead": 4864,
+                "cacheWrite": 0,
+                "output": 1587,
+                "totalTokens": 8441
+              },
+              "cache_hit_rate": 0.709658593522031,
+              "compaction_requests": 1
+            },
+            "worker": {
+              "requests": 5,
+              "usage": {
+                "input": 1893,
+                "inputTotal": 6629,
+                "cacheRead": 4736,
+                "cacheWrite": 0,
+                "output": 1756,
+                "totalTokens": 8385
+              },
+              "cache_hit_rate": 0.7144365666012973,
+              "compaction_requests": 1
+            }
+          },
+          "compaction_requests": 2,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 1,
+              "seed_bytes": 397500,
+              "seed_sha256": "f7a88e1483ad3237ccb4f149822bc1296db5e116b70df180f1f5c5af5c80ccf1",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "node:3（version=0，state=confirmed）复核结果：\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 记录值/总和：[4,7,9]，total=20；scope=fixture only\n- 否定结论：confirmed negative result，never an untested direction；未访问任何外部目标\n- 已有记录编号：node:3，来自 intent 2，evidence=Synthetic fixture v1\n\n无新增事实、无派单、无后续探索。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核（复用第 1 次对 node:3 detail 的同一读取，version=0 未变，无需重复读取）：\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 结论：confirmed negative result，never an untested direction；未访问外部目标\n- 记录值/总和：[4,7,9]，total=20；scope=fixture only\n- 已有记录编号：node:3（来自 intent 2，evidence=Synthetic fixture v1，state=confirmed）\n\n无新增事实、无派单、无工具操作、无重复探索。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核（沿用同一份 node:3 detail 读取，version=0 未变，不重复读取）：\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 结论：confirmed negative result，never an untested direction；未访问外部目标\n- 记录值/总和：[4,7,9]，total=20；scope=fixture only\n- 已有记录编号：node:3（intent 2，evidence=Synthetic fixture v1，state=confirmed）\n\n无新增事实、无派单、无工具操作、无重复探索。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 1,
+              "seed_bytes": 397496,
+              "seed_sha256": "3ac5caa7352ae1f32fe73008b5ab36ba8c92d3366ca5db747a36adb5b5b5793e",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:6, version=0，只读一次，无新增）：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：`[4,7,9]`，`total=20`\n- **否定结论**：`LOCAL_NEGATIVE`，已确认的否定结果，从来不是未测试的方向；未访问任何外部目标；范围 `fixture only`，证据为 `Synthetic fixture v1`。\n- **已有记录编号**：`node:6`（content_version=0，source_task_id=2，priority=0，state=confirmed，origin=fixture，from_intent=5）\n\n不重复任何探索，不派单，不新增事实。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核不做重复读取：node:6 的 detail 已在本轮前置复核中读取过一次，按规则同一方向不再执行、本轮无工具操作。\n\n沿用已确认的原始记录（`node:6`, `version=0`）：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：`[4,7,9]`，`total=20`\n- **否定结论**：`LOCAL_NEGATIVE` — 已确认的否定结果，从来不是未测试方向；未访问任何外部目标；范围 `fixture only`，证据 `Synthetic fixture v1`\n- **已有记录编号**：`node:6`（content_version=0, source_task_id=2, state=confirmed, origin=fixture, from_intent=5）\n\n无新增事实、无派单。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核同样不重复读取：`node:6` 的 detail 已读取过一次，同一方向已执行完毕，本轮不做工具操作、不新增事实或派单。\n\n原始已保存结论（`node:6`, `version=0`）保持不变：\n\n- **RECALL_SENTINEL**：`amber-cedar-27`\n- **总和**：`[4,7,9]`，`total=20`\n- **否定结论**：`LOCAL_NEGATIVE` — 已确认否定结果，非未测试方向；未访问外部目标；范围 `fixture only`；证据 `Synthetic fixture v1`\n- **已有记录编号**：`node:6`（content_version=0, source_task_id=2, state=confirmed, origin=fixture, from_intent=5）"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "case": "long-after-4",
+          "database": "fate_context_long_31620",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-rDXWGN",
+          "raw_evidence": "/tmp/fate-context-long-after-4.json",
+          "started_at": "2026-10-27T07:32:24.942Z",
+          "finished_at": "2026-10-27T07:33:06.624Z",
+          "original_harness_status": "passed",
+          "requests": 10,
+          "input_bytes": 47224,
+          "usage": {
+            "input": 4053,
+            "inputTotal": 13013,
+            "cacheRead": 8960,
+            "cacheWrite": 0,
+            "output": 2980,
+            "totalTokens": 15993
+          },
+          "cache_hit_rate": 0.6885422270037654,
+          "by_role": {
+            "planner": {
+              "requests": 5,
+              "usage": {
+                "input": 1977,
+                "inputTotal": 6585,
+                "cacheRead": 4608,
+                "cacheWrite": 0,
+                "output": 1515,
+                "totalTokens": 8100
+              },
+              "cache_hit_rate": 0.6997722095671982,
+              "compaction_requests": 1
+            },
+            "worker": {
+              "requests": 5,
+              "usage": {
+                "input": 2076,
+                "inputTotal": 6428,
+                "cacheRead": 4352,
+                "cacheWrite": 0,
+                "output": 1465,
+                "totalTokens": 7893
+              },
+              "cache_hit_rate": 0.6770379589296827,
+              "compaction_requests": 1
+            }
+          },
+          "compaction_requests": 2,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "compactions": 1,
+              "seed_bytes": 397498,
+              "seed_sha256": "814a672afc14bad18b8ad099a6e5306d19ee3b97e97492d3261271ff0a462ee8",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核完成（node:3，detail，version=0）：\n\n- RECALL_SENTINEL=amber-cedar-27\n- 总和：synthetic values [4,7,9] → total=20\n- 否定结论：confirmed negative result（LOCAL_NEGATIVE），scope=fixture only；从未是未测试方向，未访问任何外部目标\n- 已有记录编号：node:3（content_version 0，source_task_id 1，origin=fixture，state=confirmed，evidence=Synthetic fixture v1，from_intent 2）\n\n本轮仅读取原始图节点一次，未新增事实、未派单、未做探索；该方向为已确认否定，不再重复执行。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核：不重复读取。该节点已在本会话读取一次（按“只读一次”约束），以首次 detail 结果原样回执：\n\n- RECALL_SENTINEL=amber-cedar-27\n- 总和：synthetic values [4,7,9] → total=20\n- 否定结论：confirmed negative result（LOCAL_NEGATIVE），scope=fixture only；从未是未测试方向，未访问任何外部目标\n- 已有记录编号：node:3（content_version 0，source_task_id 1，origin=fixture，state=confirmed，evidence=Synthetic fixture v1，from_intent 2）\n\n无新增事实、无派单、无探索；同一方向不重复执行。如需真正重读，请明确解除“一次读取”限制。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次复核：仍不重复读取（“指定原始图节点只读一次”约束仍有效）。回执与首次一致：\n\n- RECALL_SENTINEL=amber-cedar-27\n- 总和：synthetic values [4,7,9] → total=20\n- 否定结论：confirmed negative result（LOCAL_NEGATIVE），scope=fixture only；从未是未测试方向，未访问外部目标\n- 已有记录编号：node:3（content_version 0，source_task_id 1，origin=fixture，state=confirmed，evidence=Synthetic fixture v1，from_intent 2）\n\n无新增事实、无派单、无探索；同一已确认否定方向不再执行。若要越过“一次读取”限制，请显式授权。"
+                }
+              ]
+            },
+            {
+              "role": "worker",
+              "task_id": 2,
+              "intent_id": 5,
+              "fact_id": 6,
+              "compactions": 1,
+              "seed_bytes": 397513,
+              "seed_sha256": "016d23aef2042f23b490b11dbdb68748261ec57368435ea29ea836570a1844c7",
+              "original_preserved": true,
+              "graph_unchanged": true,
+              "session_restored": true,
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:6，version 0，已确认）：\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 总和：`total=20`（值 `[4,7,9]`）\n- 否定结论：确认的否定结果（LOCAL_NEGATIVE），从未是未经检验的方向；未访问任何外部目标\n- 范围：fixture only（合成样本）\n- 已有记录编号：node 6（source_task_id 2，from_intent 5）\n\n未新增事实或操作。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "已执行过同一复核（node:6 detail，已读取一次），不再重复读取。\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 总和：`total=20`（值 `[4,7,9]`）\n- 否定结论：确认的 LOCAL_NEGATIVE，非未检验方向；无外部目标访问\n- 范围：fixture only\n- 已有记录编号：node 6（source_task_id 2，from_intent 5）\n\n无新增事实、派单或工具操作。"
+                },
+                {
+                  "round": 3,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 3 次请求同一复核方向，属已执行方向，不再调用工具。\n\n- RECALL_SENTINEL：`amber-cedar-27`\n- 总和：`total=20`（值 `[4,7,9]`）\n- 否定结论：确认的 LOCAL_NEGATIVE，非未检验方向；未访问外部目标\n- 范围：fixture only\n- 已有记录编号：node 6（source_task_id 2，from_intent 5）\n\n无新增事实、派单或工具操作。"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "requests": 32,
+      "compaction_requests": 6,
+      "usage": {
+        "input": 13094,
+        "inputTotal": 45350,
+        "cacheRead": 32256,
+        "cacheWrite": 0,
+        "output": 9311,
+        "totalTokens": 54661
+      },
+      "cache_hit_rate": 0.7112679162072767
+    },
+    "preliminary": {
+      "runs": [
+        {
+          "case": "live-after-1",
+          "database": "fate_context_auto_30965",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-skbupI",
+          "raw_evidence": "/tmp/fate-context-live-after-1.json",
+          "started_at": "2026-10-27T07:28:04.285Z",
+          "finished_at": "2026-10-27T07:29:19.991Z",
+          "original_harness_status": "passed",
+          "requests": 20,
+          "input_bytes": 580423,
+          "usage": {
+            "input": 36661,
+            "inputTotal": 157621,
+            "cacheRead": 120960,
+            "cacheWrite": 0,
+            "output": 7378,
+            "totalTokens": 164999
+          },
+          "cache_hit_rate": 0.7674104338888854,
+          "by_role": {
+            "goals": {
+              "requests": 3,
+              "usage": {
+                "input": 2155,
+                "inputTotal": 5995,
+                "cacheRead": 3840,
+                "cacheWrite": 0,
+                "output": 1454,
+                "totalTokens": 7449
+              },
+              "cache_hit_rate": 0.640533778148457,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 9,
+              "usage": {
+                "input": 21741,
+                "inputTotal": 91757,
+                "cacheRead": 70016,
+                "cacheWrite": 0,
+                "output": 2984,
+                "totalTokens": 94741
+              },
+              "cache_hit_rate": 0.7630589491809889,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 8,
+              "usage": {
+                "input": 12765,
+                "inputTotal": 59869,
+                "cacheRead": 47104,
+                "cacheWrite": 0,
+                "output": 2940,
+                "totalTokens": 62809
+              },
+              "cache_hit_rate": 0.7867844794467922,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "意图B（串行第二步）：仅依据已发布事实 #4 的 token 86a5f8b2-1ba8-457e-bced-76b343c5ac0c，对 http://127.0.0.1:56491/confirm?token=86a5f8b2-1ba8-457e-bced-76b343c5ac0c 发起一次 GET，读取返回的独立核对值（如 total），与事实 #4 中样本总和 20 逐项比对，并把实测响应与一致/不一致判定作为发现写回；不重复请求 /sample。",
+                "created_at": "2026-10-27T07:28:52.660Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "意图A（串行第一步）：仅对本地合成样本入口 GET http://127.0.0.1:56491/sample 取回样本内容，解析出样本项与总和，核对样本自带的 token/校验信息，并把样本实测内容、计算得到的总和、token 作为事实/发现写回；不改动任何数据，本轮到此结束。",
+                "created_at": "2026-10-27T07:28:28.537Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "用事实 #4 的 token 请求 /confirm 返回 {\"verified\":true,\"total\":20}，核对值 20 与样本 [4,7,9] 的总和 20 一致，本轮未再请求 /sample。",
+                "created_at": "2026-10-27T07:29:01.106Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:56491/sample 返回 200，样本值为 [4,7,9]（总和 20），token 为 86a5f8b2-1ba8-457e-bced-76b343c5ac0c；本轮未访问 /confirm。",
+                "created_at": "2026-10-27T07:28:37.860Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:28:32.437Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:28:56.793Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:28:37.909Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:28:07.309Z",
+                "finished_at": "2026-10-27T07:28:17.052Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:28:17.104Z",
+                "finished_at": "2026-10-27T07:28:20.268Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:28:21.057Z",
+                "finished_at": "2026-10-27T07:28:33.709Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:28:28.939Z",
+                "finished_at": "2026-10-27T07:28:43.041Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:28:43.547Z",
+                "finished_at": "2026-10-27T07:28:56.689Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:28:52.941Z",
+                "finished_at": "2026-10-27T07:29:05.238Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:29:05.750Z",
+                "finished_at": "2026-10-27T07:29:17.687Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "live-after-2",
+          "database": "fate_context_auto_31276",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-goals-auto-hRkNgy",
+          "raw_evidence": "/tmp/fate-context-live-after-2.json",
+          "started_at": "2026-10-27T07:30:05.526Z",
+          "finished_at": "2026-10-27T07:32:04.636Z",
+          "original_harness_status": "failed",
+          "original_harness_error": "Automatic task had tool errors; inspect and fix before acceptance",
+          "requests": 21,
+          "input_bytes": 645323,
+          "usage": {
+            "input": 35646,
+            "inputTotal": 172862,
+            "cacheRead": 137216,
+            "cacheWrite": 0,
+            "output": 10383,
+            "totalTokens": 183245
+          },
+          "cache_hit_rate": 0.7937892654255996,
+          "by_role": {
+            "goals": {
+              "requests": 4,
+              "usage": {
+                "input": 2394,
+                "inputTotal": 12890,
+                "cacheRead": 10496,
+                "cacheWrite": 0,
+                "output": 4051,
+                "totalTokens": 16941
+              },
+              "cache_hit_rate": 0.8142746314972847,
+              "compaction_requests": 0
+            },
+            "planner": {
+              "requests": 10,
+              "usage": {
+                "input": 20787,
+                "inputTotal": 106163,
+                "cacheRead": 85376,
+                "cacheWrite": 0,
+                "output": 3499,
+                "totalTokens": 109662
+              },
+              "cache_hit_rate": 0.8041973192166763,
+              "compaction_requests": 0
+            },
+            "worker": {
+              "requests": 7,
+              "usage": {
+                "input": 12465,
+                "inputTotal": 53809,
+                "cacheRead": 41344,
+                "cacheWrite": 0,
+                "output": 2833,
+                "totalTokens": 56642
+              },
+              "cache_hit_rate": 0.768347302495865,
+              "compaction_requests": 0
+            }
+          },
+          "compaction_requests": 0,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [
+            {
+              "tool": "set_constraints",
+              "error": "{\"error\":\"约束缺少当前用户原文依据；请引用完整段落并保留列表、否定词和例外。段落以空行分隔，单换行仍属同段；原文字段没有空行时须引用整个字段，不带宿主添加的【任务描述】等标题。不能引用图谱、工具输出或旧会话推断\"}"
+            },
+            {
+              "tool": "add_intent",
+              "error": "{\"error\":\"依据 #4 已变化或不再授权，请刷新上下文后重新规划\"}"
+            }
+          ],
+          "unexpected_tool_errors": 0,
+          "automatic": {
+            "task_id": 1,
+            "task_status": "done",
+            "goals": [
+              {
+                "id": 2,
+                "state": "met",
+                "source": {
+                  "field": "goal",
+                  "quote": "证明本地合成样本总和与独立核对值一致，形成有证据的核验结论。",
+                  "version": "goal-field-isolation-v1",
+                  "fallback": false,
+                  "source_hash": "bfa132a89e700fbf76b0eb344464e5f7bfec70530fe0c2036be28f9dd0575158"
+                }
+              }
+            ],
+            "intents": [
+              {
+                "id": 5,
+                "state": "done",
+                "summary": "意图B：依据事实 node:4 的 token=557cef95-8461-4ffb-a8ca-c25893931c7e 请求 GET http://127.0.0.1:57711/confirm?token=<该token>，读取独立核对值并与样本总和 20 比对，将一致/不一致结论及原始响应字段写回为事实或 finding；不重复请求 /sample。",
+                "created_at": "2026-10-27T07:31:36.226Z"
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "summary": "意图A：GET http://127.0.0.1:57711/sample 读取本地合成样本，按样本自身规则计算总和，并读取服务资产详情，将样本数值、计算过程与总和、以及所需 token 以事实写回；不访问 confirm，完成后结束。",
+                "created_at": "2026-10-27T07:31:01.630Z"
+              }
+            ],
+            "facts": [
+              {
+                "id": 6,
+                "from_intent": 5,
+                "summary": "GET /confirm?token=557cef95-... 返回 verified=true、total=20，与 /sample 样本求和 20 一致（核对通过）。",
+                "created_at": "2026-10-27T07:31:43.836Z"
+              },
+              {
+                "id": 4,
+                "from_intent": 3,
+                "summary": "GET http://127.0.0.1:57711/sample 返回 LOCAL_SYNTHETIC 样本 values=[4,7,9]，求和为 20，token=557cef95-8461-4ffb-a8ca-c25893931c7e（traffic_id 0d15d49c-e6d5-40ae-aa0c-a3ebfc5fee09）。",
+                "created_at": "2026-10-27T07:31:14.567Z"
+              }
+            ],
+            "causality": {
+              "goals_completed_before_planning": true,
+              "dependent_intent_after_worker_exit": true,
+              "fact_published_before_worker_return": true,
+              "published_fact_drives_next_intent": true,
+              "all_facts_anchored": true
+            },
+            "fixture_requests": [
+              {
+                "at": "2026-10-27T07:31:09.019Z",
+                "method": "GET",
+                "path": "/sample",
+                "accepted": true
+              },
+              {
+                "at": "2026-10-27T07:31:39.604Z",
+                "method": "GET",
+                "path": "/confirm",
+                "accepted": true
+              }
+            ],
+            "incremental_visibility": {
+              "at": "2026-10-27T07:31:14.678Z",
+              "intent_id": 3,
+              "intent_state": "running",
+              "fact_ids": [
+                4
+              ]
+            },
+            "peak_workers": 1,
+            "timeline": [
+              {
+                "role": "goals",
+                "phase": "constraints",
+                "started_at": "2026-10-27T07:30:14.678Z",
+                "finished_at": "2026-10-27T07:30:39.856Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "goals",
+                "phase": "objectives",
+                "started_at": "2026-10-27T07:30:40.253Z",
+                "finished_at": "2026-10-27T07:30:44.664Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:30:47.986Z",
+                "finished_at": "2026-10-27T07:31:06.677Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 3,
+                "started_at": "2026-10-27T07:31:02.601Z",
+                "finished_at": "2026-10-27T07:31:21.927Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:31:24.057Z",
+                "finished_at": "2026-10-27T07:31:41.138Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "worker",
+                "intent_id": 5,
+                "started_at": "2026-10-27T07:31:36.571Z",
+                "finished_at": "2026-10-27T07:31:49.288Z",
+                "stop_reason": "completed"
+              },
+              {
+                "role": "planner",
+                "started_at": "2026-10-27T07:31:50.245Z",
+                "finished_at": "2026-10-27T07:32:02.403Z",
+                "stop_reason": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "case": "long-after-1",
+          "database": "fate_context_long_30824",
+          "data_dir": "/var/folders/tq/nly3h0q967zdnzbnzt6j7wp40000gn/T/fate-context-long-e2jREq",
+          "raw_evidence": "/tmp/fate-context-long-after-1.json",
+          "started_at": "2026-10-27T07:27:01.185Z",
+          "finished_at": "2026-10-27T07:27:18.689Z",
+          "original_harness_status": "failed",
+          "original_harness_error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(events.some(e=>e.kind==='tool_end'&&e.toolName==='context_get'&&!e.isError))\n",
+          "requests": 4,
+          "input_bytes": 18030,
+          "usage": {
+            "input": 2284,
+            "inputTotal": 4844,
+            "cacheRead": 2560,
+            "cacheWrite": 0,
+            "output": 1409,
+            "totalTokens": 6253
+          },
+          "cache_hit_rate": 0.5284888521882741,
+          "by_role": {
+            "planner": {
+              "requests": 4,
+              "usage": {
+                "input": 2284,
+                "inputTotal": 4844,
+                "cacheRead": 2560,
+                "cacheWrite": 0,
+                "output": 1409,
+                "totalTokens": 6253
+              },
+              "cache_hit_rate": 0.5284888521882741,
+              "compaction_requests": 1
+            }
+          },
+          "compaction_requests": 1,
+          "usage_complete": true,
+          "platform_aggregate_matches": true,
+          "external_target_requests": 0,
+          "validation_rejections": [],
+          "unexpected_tool_errors": 0,
+          "long_history": [
+            {
+              "role": "planner",
+              "task_id": 1,
+              "intent_id": 2,
+              "fact_id": 3,
+              "seed_bytes": 397498,
+              "seed_sha256": "997acc459cc429b09f4e7300e66ffbf29c54dc9d414cec3fb7ecd9842cd28d66",
+              "rounds": [
+                {
+                  "round": 1,
+                  "compaction": {
+                    "requests": 1,
+                    "completed": 1,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "复核结果（node:3，version 0，已确认 confirmed，来源 fixture）：\n\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：total=20（values [4,7,9]）\n- 否定结论：确认为否定结果（confirmed negative），从未是未检验方向；未访问任何外部目标\n- 作用域：fixture only（合成资料 v1）\n- 已有记录编号：node:3 / version 0 / source_task_id 1\n\n与既有结论一致，无新增事实，无需继续探索或派单。"
+                },
+                {
+                  "round": 2,
+                  "compaction": {
+                    "requests": 0,
+                    "completed": 0,
+                    "failed": 0
+                  },
+                  "stop_reason": "completed",
+                  "final_text": "第 2 次复核：方向与第 1 次重复（读取 node:3 detail 已执行过一次），按规则不重复执行读取，也不再发起任何工具调用。沿用已保存结论：\n\n- 记录编号：node:3 / version 0（confirmed，origin=fixture，source_task_id 1）\n- RECALL_SENTINEL：amber-cedar-27\n- 总和：total=20（values [4,7,9]）\n- 否定结论：confirmed negative，从未是未检验方向；未访问任何外部目标\n- 作用域：fixture only（Synthetic fixture v1）\n\n结论稳定，无新增事实、无授权变化，无需继续探索或派单。若确需第三份独立佐证，应改换读取方向（如换节点或换字段），而非重复同一读取。"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "requests": 45,
+      "compaction_requests": 1,
+      "usage": {
+        "input": 74591,
+        "inputTotal": 335327,
+        "cacheRead": 260736,
+        "cacheWrite": 0,
+        "output": 19170,
+        "totalTokens": 354497
+      },
+      "cache_hit_rate": 0.777557429017049
+    }
+  },
+  "total_real_requests": 227
+}

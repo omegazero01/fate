@@ -101,7 +101,7 @@ it('initialization completes before a seeded Worker can obtain its model',async(
   return f.input.model;
  },dir);
  await db.tasks().setExecutionMode(f.task.exploration_id,'manual');
- try{await engine.run(f.task.id);for(let i=0;i<100&&!workerStarted;i++)await new Promise(r=>setTimeout(r,30));expect(workerStarted).toBe(true);}finally{await engine.shutdown();}
+ try{await engine.run(f.task.id);expect(workerStarted).toBe(false);const seed=(await db.exploration(f.task.exploration_id).listByKind('intent'))[0]!;await engine.dispatchIntent(f.task.id,seed.id);for(let i=0;i<100&&!workerStarted;i++)await new Promise(r=>setTimeout(r,30));expect(workerStarted).toBe(true);}finally{await engine.shutdown();}
 });
 it('SIGKILL after durable constraints restarts without duplicate constraints or committed goal replay',async()=>{
  const {spawn}=await import('node:child_process');const {fileURLToPath}=await import('node:url');const f=await fixture();

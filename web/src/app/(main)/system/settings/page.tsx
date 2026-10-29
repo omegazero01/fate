@@ -1,7 +1,7 @@
 "use client";
 import { PageHeading } from "@/components/workspace";
 
-import { HTTPAuthCard } from "./_components/http-auth-card";
+import { ContextBudgetCard } from "./_components/context-budget-card";
 import * as React from "react";
 
 import {
@@ -236,6 +236,7 @@ export default function SystemSettingsPage() {
   };
 
   const saveShellMode = (mode: string) => {
+    if (!shellDetected) return;
     const previous = shellMode;
     setShellMode(mode as NonNullable<Settings["shell_mode"]>);
     setSaving(true);
@@ -307,7 +308,7 @@ export default function SystemSettingsPage() {
           多列则自动按内容高度平衡填充。卡片间距靠 mb 而非 gap——多列布局下
           column-gap 只管列间距，行间距要由子元素自己给。 */}
       <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
-        <HTTPAuthCard />
+        <ContextBudgetCard />
 
         <Card className="mb-4 break-inside-avoid md:mb-6">
           <CardHeader>
@@ -350,7 +351,7 @@ export default function SystemSettingsPage() {
             <FieldGroup className="gap-3">
               <Field orientation="responsive">
                 <FieldLabel>执行模式</FieldLabel>
-                <Select value={shellMode} disabled={!loaded || saving} onValueChange={saveShellMode}>
+                <Select value={shellMode} disabled={!loaded || saving || !shellDetected} onValueChange={saveShellMode}>
                   <SelectTrigger className="@md/field-group:w-52 w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -366,7 +367,9 @@ export default function SystemSettingsPage() {
                 </Select>
               </Field>
               <FieldDescription>
-                {shellDetected?.ok
+                {!loaded ? "正在读取执行配置…" : !shellDetected
+                  ? "当前后端未提供 Shell 配置与探测信息；执行器继续使用其现有 Shell。"
+                  : shellDetected.ok
                   ? `当前解释器：${shellDetected.mode ?? "未知"}${shellDetected.path ? ` · ${shellDetected.path}` : ""} · 交互终端${shellDetected.interactive == null ? "状态未知" : shellDetected.interactive ? "可用" : "不可用"}`
                   : `探测失败：${shellDetected?.error ?? "未知错误"}`}
               </FieldDescription>

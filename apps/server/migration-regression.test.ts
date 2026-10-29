@@ -100,7 +100,7 @@ describe('migration invariants',()=>{
   const {t,e,faux,s}=await fixture(true);await db.query("UPDATE tasks SET goal='resumed bootstrap marker' WHERE id=$1",[t.id]);await db.query("UPDATE goals_bootstrap SET goal='resumed bootstrap marker' WHERE task_id=$1",[t.id]);await db.tasks().setExecutionMode(t.exploration_id,'manual');let entered=false;
   faux.setResponses([async(_context,options)=>{entered=true;await new Promise<void>(resolve=>options.signal?.addEventListener('abort',()=>resolve(),{once:true}));return fauxAssistantMessage('',{stopReason:'aborted'});}]);
   const starting=e.run(t.id,{decompose:{description:'LOCAL bootstrap fixture'}});await until(async()=>entered);
-  await db.tasks().applyTaskPause(t.id);expect((await e.pause(t.id)).status).toBe('paused');await starting;
+  await db.tasks().applyTaskPause(t.id);const paused=await e.pause(t.id);expect(['paused','waiting_for_executor']).toContain(paused.status);await starting;await until(async()=>(await db.query('SELECT status FROM runtime_task_commands WHERE id=$1',[paused.command_id])).rows[0]?.status==='acknowledged');
   expect((await s.listByKind('goal',20))).toHaveLength(0);
   faux.setResponses([fauxAssistantMessage('约束阶段完成'),fauxAssistantMessage([fauxToolCall('set_goals',{goals:[{text:'resumed bootstrap marker',source_quote:'resumed bootstrap marker'}]})])]);
   await e.admitTask(t.id);
@@ -212,7 +212,7 @@ describe('migration invariants',()=>{
    await e.run(t.id);await e.dispatchIntent(t.id,id);await until(async()=>!!signal);
    await db.tasks().applyTaskPause(t.id);
    const result=await remote.pause(t.id);
-   expect(result.status).toBe('paused');expect(signal?.aborted).toBe(true);
+   expect(['paused','waiting_for_executor']).toContain(result.status);await until(async()=>(await db.query('SELECT status FROM runtime_task_commands WHERE id=$1',[result.command_id])).rows[0]?.status==='acknowledged');expect(signal?.aborted).toBe(true);
    const row=await db.query('SELECT status,executor_owner FROM runtime_task_commands WHERE id=$1',[result.command_id]);
    expect(row.rows[0]?.status).toBe('acknowledged');expect(row.rows[0]?.executor_owner).toBeTruthy();
   }finally{await e.stop(t.id);}

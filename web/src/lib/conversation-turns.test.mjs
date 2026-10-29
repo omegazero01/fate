@@ -46,3 +46,18 @@ test('late history and pending echoes merge in either argument order without dup
  assert.deepEqual(mergeConversationActivities([saved],[pending]),[saved]);
  assert.deepEqual(mergeConversationActivities([],[pending,saved]),[saved]);
 });
+
+test('new and legacy steering are controls, with explicit turns only, never human echoes',()=>{
+ const control=(seq,kind,metadata={})=>a(seq,kind,{worker:'work#1',intent_id:'9',tool:'steer_work',metadata:{event_type:'steering',...metadata}});
+ const turns=conversationTurns([a(1,'text',{worker:'work#1',intent_id:'9',turn_id:'worker'}),control(2,'status',{steering:{target_turn_id:'worker',source:'planner'}}),control(3,'user',{source:'mainagent'}),a(4,'text',{worker:'work#1',intent_id:'9',turn_id:'worker'}),a(5,'user')]);
+ assert.deepEqual(turns.map(t=>({user:t.user,seq:t.steps.map(s=>s.seq)})),[{user:false,seq:[1,2,4]},{user:false,seq:[3]},{user:true,seq:[5]}]);
+ const pending=a(-1,'user',{turn_id:'request'}),legacy=control(6,'user',{turn_id:'request'});
+ assert.equal(mergeConversationActivities([pending],[legacy]).length,2);
+ assert.equal(mergeConversationActivities([legacy],[legacy]).length,1);
+ assert.deepEqual(conversationTurns([control(2,'status',{steering:{target_turn_id:'worker'}})])[0].steps.map(s=>s.seq),[2]);
+});
+
+test('steering cannot merge concurrent workers, task sources or old unbound history',()=>{
+ const base=a(1,'status',{worker:'work#1',intent_id:'9',metadata:{event_type:'steering',steering:{target_turn_id:'t'}}});
+ assert.equal(conversationTurns([base,{...base,seq:2,intent_id:'10'},{...base,seq:3,source_task_id:'other'},{...base,seq:4,metadata:{event_type:'steering'}}]).length,4);
+});

@@ -1,4 +1,5 @@
 "use client";
+import {useVisiblePoll} from "@/hooks/use-visible-poll";
 import { PageHeading } from "@/components/workspace";
 
 import * as React from "react";
@@ -329,6 +330,9 @@ function compareTasks(left: Task, right: Task, field: TaskSortField, direction: 
 export default function TasksPage() {
   const [activeTab, setActiveTab] = React.useState("current");
   const [tasks, setTasks] = React.useState<Task[]>([]);
+  const [total,setTotal]=React.useState(0);
+  const [listError,setListError]=React.useState("");
+  const selectionRows=React.useRef(new Map<string,Task>());
   const [categories, setCategories] = React.useState<TaskCategory[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -378,32 +382,7 @@ export default function TasksPage() {
     );
   }, [categoryFilter, filtersHydrated, statusFilter]);
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return tasks.filter((t) => {
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
-      if (categoryFilter === UNCATEGORIZED_VALUE && t.category_id != null) return false;
-      if (
-        categoryFilter !== "all" &&
-        categoryFilter !== UNCATEGORIZED_VALUE &&
-        String(t.category_id) !== categoryFilter
-      )
-        return false;
-      if (!q) return true;
-      return (
-        (t.name ?? "").toLowerCase().includes(q) ||
-        (t.category_name ?? "").toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.goal.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q)
-      );
-    });
-  }, [tasks, query, statusFilter, categoryFilter]);
-
-  const sortNowSec = sortField === "duration" ? nowSec : 0;
-  const ordered = React.useMemo(() => {
-    return [...filtered].sort((left, right) => compareTasks(left, right, sortField, sortDirection, sortNowSec));
-  }, [filtered, sortDirection, sortField, sortNowSec]);
+  const filtered=tasks;
 
   const sortTasksBy = React.useCallback(
     (field: TaskSortField) => {
@@ -421,22 +400,12 @@ export default function TasksPage() {
     setPage(1);
   }, [query, statusFilter, categoryFilter, sortField, sortDirection]);
 
-  const paginated = React.useMemo(
-    () => ordered.slice((page - 1) * pageSize, page * pageSize),
-    [ordered, page, pageSize],
-  );
-
-  // 多选删除:选择跨翻页/筛选保留,只在任务真的消失(被删或后端不再返回)时收敛。
+  const paginated=tasks;
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
-
-  React.useEffect(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
-      const live = new Set(tasks.map((t) => t.id));
-      const next = new Set([...prev].filter((id) => live.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [tasks]);
+  React.useEffect(()=>{
+    for(const id of selectionRows.current.keys())if(!selectedIds.has(id))selectionRows.current.delete(id);
+    for(const task of tasks)if(selectedIds.has(task.id))selectionRows.current.set(task.id,task);
+  },[tasks,selectedIds]);
 
   const toggleSelected = React.useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -478,21 +447,19 @@ export default function TasksPage() {
   // re-render the whole page for nothing. Bail out when it matches.
   const lastRef = React.useRef<string>("");
 
-  const load = React.useCallback(() => {
-    api
-      .tasks()
-      .then((r) => {
-        const next = r.tasks.map((t) => (t.id === r.active ? { ...t, active: true } : t));
-        setPreviewTaskID((current) => (current && !next.some((task) => task.id === current) ? null : current));
-        const sig = JSON.stringify(next);
-        if (sig === lastRef.current) return;
-        lastRef.current = sig;
-        setTasks(next);
-      })
-      .catch(() => {
-        // Polling is best-effort; the next interval retries automatically.
-      });
-  }, []);
+  const [refreshVersion,refresh]=React.useReducer((n:number)=>n+1,0);
+  const load=React.useCallback(()=>refresh(),[]);
+  const readTasks=React.useCallback(async(signal:AbortSignal)=>{
+    try{
+      const r=await api.tasks({page,page_size:pageSize,q:query.trim(),status:statusFilter==='all'?undefined:statusFilter,
+        category:categoryFilter===UNCATEGORIZED_VALUE?'uncategorized':categoryFilter,sort:sortField,direction:sortDirection});
+      if(signal.aborted)return;
+      setTotal(r.total??0);setPage(r.page??page);setListError('');
+      const next=r.tasks.map(t=>t.id===r.active?{...t,active:true}:t),sig=JSON.stringify(next);
+      if(sig!==lastRef.current){lastRef.current=sig;setTasks(next);}
+    }catch(error){if(!signal.aborted)setListError((error as Error).message);}
+  },[page,pageSize,query,statusFilter,categoryFilter,sortField,sortDirection,refreshVersion]);
+  useVisiblePoll(readTasks,POLL_MS);
 
   const loadCategories = React.useCallback(() => {
     api
@@ -507,11 +474,8 @@ export default function TasksPage() {
   }, []);
 
   React.useEffect(() => {
-    load();
     loadCategories();
-    const i = setInterval(load, POLL_MS);
-    return () => clearInterval(i);
-  }, [load, loadCategories]);
+  }, [loadCategories]);
 
   const refreshCategoriesAndTasks = React.useCallback(() => {
     lastRef.current = "";
@@ -577,7 +541,7 @@ export default function TasksPage() {
       try {
         const result = await api.controlTask(id, action);
         toast.success(
-          action === "pause" ? `任务 #${id} 已暂停` : `任务 #${id} 已继续${result.queued ? "，已进入队列" : ""}`,
+          action === "pause" ? `任务 #${id} ${result.status==="waiting_for_executor"?"正在暂停":"已暂停"}` : `任务 #${id} 已继续${result.queued ? "，已进入队列" : ""}`,
         );
       } catch (e) {
         toast.error(`${action === "pause" ? "暂停" : "继续"}失败：${(e as Error).message}`);
@@ -696,7 +660,7 @@ export default function TasksPage() {
     [load],
   );
 
-  const selectedTasks = React.useMemo(() => tasks.filter((task) => selectedIds.has(task.id)), [tasks, selectedIds]);
+  const selectedTasks = React.useMemo(() => [...selectedIds].map(id=>tasks.find(t=>t.id===id)??selectionRows.current.get(id)).filter((t):t is Task=>!!t), [tasks, selectedIds]);
   const pausableTaskIDs = React.useMemo(
     () => selectedTasks.filter((task) => taskControlAction(task.status) === "pause").map((task) => task.id),
     [selectedTasks],
@@ -870,7 +834,7 @@ export default function TasksPage() {
                 </SelectContent>
               </Select>
               <span className="text-muted-foreground text-xs tabular-nums">
-                {filtered.length}/{tasks.length} 条
+                {total} 条
               </span>
               {selectedIds.size > 0 && (
                 <>
@@ -943,7 +907,7 @@ export default function TasksPage() {
               />
             </div>
 
-            {tasks.length === 0 ? (
+            {listError ? <p role="alert">任务读取失败：{listError}</p> : tasks.length === 0 ? (
               <div className="text-muted-foreground mx-4 flex items-center justify-center rounded-lg border border-dashed py-20 text-sm lg:mx-6">
                 暂无任务，点击右上角「新建任务」开始。
               </div>
@@ -1031,7 +995,7 @@ export default function TasksPage() {
             <TablePagination
               page={page}
               pageSize={pageSize}
-              total={filtered.length}
+              total={total}
               onPageChange={setPage}
               onPageSizeChange={(nextPageSize) => {
                 setPageSize(nextPageSize);
@@ -2537,7 +2501,7 @@ function BulkDeleteTasksDialog({
 // behind the drawer (plus its sticky column and 20 AlertDialog trees), which showed up as
 // input lag. Now typing only re-renders the drawer.
 function SourceTaskPicker({
-  tasks,
+  tasks: initialTasks,
   value,
   onValueChange,
   portalContainer,
@@ -2547,6 +2511,10 @@ function SourceTaskPicker({
   onValueChange: (value: string[]) => void;
   portalContainer?: React.RefObject<HTMLElement | null>;
 }) {
+  const [query,setQuery]=React.useState(''),[sourcePage,setSourcePage]=React.useState(1);
+  const [tasks,setTasks]=React.useState<Task[]>(initialTasks),[sourceTotal,setSourceTotal]=React.useState(0);
+  const read=React.useCallback(async(signal:AbortSignal)=>{const r=await api.tasks({page:sourcePage,page_size:20,q:query});if(!signal.aborted){setTasks(r.tasks);setSourceTotal(r.total??0);}},[query,sourcePage]);
+  useVisiblePoll(read,30000);
   const tasksByID = React.useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const taskIDs = React.useMemo(() => tasks.map((task) => task.id), [tasks]);
   const atLimit = value.length >= MAX_SOURCE_TASKS;
@@ -2558,6 +2526,9 @@ function SourceTaskPicker({
   return (
     <Combobox
       items={taskIDs}
+      filter={null}
+      inputValue={query}
+      onInputValueChange={text=>{setQuery(text);setSourcePage(1);}}
       itemToStringValue={(taskID) => {
         const task = tasksByID.get(taskID);
         return task ? `${task.id} ${task.description} ${task.goal}` : taskID;
@@ -2598,6 +2569,7 @@ function SourceTaskPicker({
             );
           }}
         </ComboboxList>
+        <TablePagination page={sourcePage} pageSize={20} pageSizeOptions={[20]} total={sourceTotal} onPageChange={setSourcePage} onPageSizeChange={()=>{}} />
       </ComboboxContent>
     </Combobox>
   );
@@ -3013,7 +2985,7 @@ function CategoryTaskDragPreview({ task }: { task: Task }) {
 
 function CategoryManagementSheet({
   categories,
-  tasks,
+  tasks: initialTasks,
   onChanged,
   onTaskMoved,
 }: {
@@ -3030,6 +3002,16 @@ function CategoryManagementSheet({
   const [deleting, setDeleting] = React.useState(false);
   const [movingTaskID, setMovingTaskID] = React.useState<string | null>(null);
   const [activeTaskID, setActiveTaskID] = React.useState<string | null>(null);
+  const [tasks,setTasks]=React.useState(initialTasks),[categoryPage,setCategoryPage]=React.useState(1),[categoryTotal,setCategoryTotal]=React.useState(0);
+  const [uncategorizedCount,setUncategorizedCount]=React.useState(0);
+  const readCategory=React.useCallback(async(signal:AbortSignal)=>{
+    if(!open||selectedView==='new')return;
+    const r=await api.tasks({page:categoryPage,page_size:20,category:String(selectedView)});
+    const uncategorized=selectedView==='uncategorized'?r:await api.tasks({page:1,page_size:1,category:'uncategorized'});
+    if(!signal.aborted){setTasks(r.tasks);setCategoryTotal(r.total??0);setUncategorizedCount(uncategorized.total??0);}
+  },[open,selectedView,categoryPage,initialTasks]);
+  useVisiblePoll(readCategory,10000);
+  React.useEffect(()=>setCategoryPage(1),[selectedView]);
   const wasOpen = React.useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -3059,7 +3041,7 @@ function CategoryManagementSheet({
     [categories, selectedView],
   );
 
-  const uncategorizedCount = React.useMemo(() => tasks.filter((task) => task.category_id == null).length, [tasks]);
+
 
   const visibleTasks = React.useMemo(() => {
     if (selectedView === "uncategorized") return tasks.filter((task) => task.category_id == null);
@@ -3246,11 +3228,12 @@ function CategoryManagementSheet({
                           <FieldLabel>{selectedCategory ? "分类任务" : "未分类任务"}</FieldLabel>
                           <FieldDescription>
                             {selectedCategory
-                              ? `该分类包含 ${visibleTasks.length} 个任务。`
-                              : `当前有 ${visibleTasks.length} 个任务尚未分类。`}
+                              ? `该分类包含 ${categoryTotal} 个任务。`
+                              : `当前有 ${categoryTotal} 个任务尚未分类。`}
                           </FieldDescription>
                         </div>
                       </div>
+                      <TablePagination page={categoryPage} pageSize={20} pageSizeOptions={[20]} total={categoryTotal} onPageChange={setCategoryPage} onPageSizeChange={()=>{}} />
                       {visibleTasks.length === 0 ? (
                         <Empty className="min-h-36 border">
                           <EmptyHeader>

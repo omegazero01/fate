@@ -32,7 +32,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
           health.requests++;
           let response;
           try{
-            response=await opts.modelRuntime.completeSimple(model,context,{signal,maxTokens:Math.min(maxTokens,model.maxTokens),cacheRetention:'none',
+            response=await opts.modelRuntime.completeSimple(model,context,{signal,maxTokens:Math.min(maxTokens,model.maxTokens>0?model.maxTokens:Infinity,opts.summaryMaxTokens??Infinity),cacheRetention:'none',
               onPayload:async payload=>{await opts.onRequestSize?.(requestSize(payload),'compaction');}});
           }catch{
             await opts.modelPolicy?.onResponse({stopReason:signal.aborted?'aborted':'error',errorMessage:'摘要模型请求失败'});

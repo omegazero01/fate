@@ -17,6 +17,10 @@ import {
   Wrench,
   XIcon,
 } from "lucide-react";
+import {plannerRoundView,isPlannerBoundary} from '@/lib/planner-round';
+import {PlannerRoundMarker} from '@/components/planner-round-marker';
+import {SteeringNotice} from '@/components/steering-notice';
+import {isSteering} from '@/lib/steering';
 import {useTurnSummaries} from '@/hooks/use-turn-summaries';
 import {WorkerWritebacks,WorkerConclusion} from '@/components/worker-writebacks';
 import {turnParts,durationLabel,type TurnSummary} from '@/lib/turn-summary';
@@ -34,7 +38,7 @@ import { conversationTurns, isLifecycle, turnID } from "@/lib/conversation-turns
 import { Message, MessageAvatar, MessageContent, MessageFooter } from "@/components/ui/message";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { MessageScrollerItem } from "@/components/ui/message-scroller";
+import { MessageScrollerItem, useMessageScroller } from "@/components/ui/message-scroller";
 import type { Activity } from "@/lib/types";
 
 // ---- per-agent lane color (planner + work#1/#2/#3 …) ---------------------------
@@ -84,6 +88,7 @@ function useInView(rootMargin = "400px"): [React.RefObject<HTMLDivElement | null
 // a run of consecutive conversational steps (text/thinking/result) from the same
 // agent is one "message".
 type Group =
+  | { type: "steering"; key: number; step: Activity }
   | { type: "user"; key: number; step: Activity; intent?: boolean }
   | { type: "answer"; key: number; step: Activity }
   | { type: "round"; key: number; label: string }
@@ -97,6 +102,7 @@ function groupSteps(steps: Activity[], chat: boolean): Group[] {
   for (const s of steps) {
     const callKey = `${s.worker}:${s.intent_id ?? ""}:${s.main_seg ?? 0}:${s.tool_use_id}`;
     if (s.kind === "usage" || isLifecycle(s)) continue; // live token-usage marker — not a rendered step
+    if (isSteering(s)) {out.push({type:"steering",key:s.seq,step:s});continue;}
     if (s.kind === "round") {
       out.push({ type: "round", key: s.seq, label: s.summary || "新一轮" }); // planner round boundary
       continue;
@@ -195,7 +201,7 @@ function ToolBlock({
   getDetail: (seq: number) => Promise<string>;
   showWorker?: boolean;
   focused?: boolean;
-  onLocated?: (el: HTMLElement) => void;
+  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
   focusLabel?: string;
 }) {
   const [open, setOpen] = React.useState(!!focused);
@@ -537,7 +543,7 @@ function LocatedActivity({
 }: {
   step: Activity;
   getDetail: (seq: number) => Promise<string>;
-  onLocated?: (el: HTMLElement) => void;
+  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
 }) {
   const root = React.useRef<HTMLDivElement>(null);
   const [body, setBody] = React.useState<string | null>(null);
@@ -594,13 +600,17 @@ function ActivitySteps({
   focusActivity,
   onLocated,
   focusLabel = "来源调用",
+  steeringExpanded = {},
+  onSteeringExpanded,
 }: {
+  steeringExpanded?: Record<number,boolean>;
+  onSteeringExpanded?: (seq:number,open:boolean)=>void;
   activity: Activity[];
   taskId?: string;
   chat?: boolean;
   fetchDetail?: (seq: number) => Promise<string>;
   focusActivity?: number;
-  onLocated?: (el: HTMLElement) => void;
+  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
   focusLabel?: string;
 }) {
   const showWorker = new Set(activity.map((a) => a.worker)).size > 1;
@@ -613,7 +623,9 @@ function ActivitySteps({
   return (
     <div className="flex flex-col">
       {groupSteps(activity, !!chat).map((g) =>
-        g.type === "round" && g.key === focusActivity ? (
+        g.type === "steering" ? (
+          <SteeringNotice key={"s"+g.key} step={g.step} getDetail={getDetail} expanded={steeringExpanded[g.key]??false} onExpandedChange={onSteeringExpanded!} focused={g.key===focusActivity} onLocated={onLocated}/>
+        ) : g.type === "round" && g.key === focusActivity ? (
           <LocatedActivity
             key={`located-${g.key}`}
             step={activity.find((a) => a.seq === g.key)!}
@@ -708,42 +720,71 @@ function ExecutionTurn({turn,summary,latest,...props}:ExecutionProps&{turn:Retur
   const [now,setNow]=React.useState(Date.now);
   React.useEffect(()=>{if(!live)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[live]);
   const elapsed=durationLabel(summary?.started_at??null,summary?.finished_at??terminal?.ts??null,now);
-  const {final,process}=turnParts(turn.steps,summary);
+  const {final,process:rawProcess}=turnParts(turn.steps,summary);
+  const planning=plannerRoundView(turn.steps,summary,live,ended);
+  const process=planning?rawProcess.filter(a=>!isPlannerBoundary(a)):rawProcess;
   const workerResults=!!props.taskId&&!props.conversationId&&ended&&(summary?.role==='worker'||last.worker.startsWith('work#'));
-  const focus=props.focusActivity;
+  const [steeringFocus,setSteeringFocus]=React.useState<number>();
+  const [steeringExpanded,setSteeringExpanded]=React.useState<Record<number,boolean>>({});
+  const onSteeringExpanded=React.useCallback((seq:number,open:boolean)=>setSteeringExpanded(old=>({...old,[seq]:open})),[]);
+  React.useEffect(()=>{setSteeringFocus(undefined);if(props.focusActivity!=null)onSteeringExpanded(props.focusActivity,true);},[props.focusActivity,onSteeringExpanded]);
+  const focus=steeringFocus??props.focusActivity;
+  const steeringJump=React.useRef<number|undefined>(undefined);
+  const locate=React.useCallback((el:HTMLElement)=>{
+    const explicit=steeringJump.current!=null&&el.dataset.activityId===String(steeringJump.current);
+    if(explicit)steeringJump.current=undefined;
+    props.onLocated?.(el,explicit);
+  },[props.onLocated]);
+  const stepProps={...props,onLocated:locate,focusActivity:focus,steeringExpanded,onSteeringExpanded};
   // Search can reveal the original duplicate receipt without corrupting the normal assembly.
-  const focusedOriginal=turn.steps.find(s=>s.seq===focus);
+  const focusedOriginal=turn.steps.find(s=>s.seq===focus&&!(planning&&isPlannerBoundary(s)));
   const processSteps=focusedOriginal&&focusedOriginal.seq!==final?.seq&&!process.some(s=>s.seq===focus)?[...process,focusedOriginal].sort((a,b)=>a.seq-b.seq):process;
-  const hasProcess=processSteps.length>0&&(processSteps.some(s=>['thinking','tool_use','tool_result','round'].includes(s.kind))||(summary?.steps??0)>1);
+  const hasProcess=processSteps.length>0&&(processSteps.some(s=>isSteering(s)||['thinking','tool_use','tool_result','round'].includes(s.kind))||(summary?.steps??0)>1);
   const [manualOpen,setManualOpen]=React.useState<{open:boolean;focus?:number}|undefined>(undefined);
   const focusInside=!!focus&&processSteps.some(s=>s.seq===focus);
   const open=(focusInside&&manualOpen?.focus!==focus)||(manualOpen?.open??(live||!summary?.started_at));
+  const steering=processSteps.filter(isSteering);
   const errorText=summary?.error??(failed?terminal?.detail||terminal?.summary:undefined);
   const failedTools=summary?.failed_tool_calls??new Set(processSteps.filter(s=>s.kind==='tool_result'&&s.is_error).map(s=>s.tool_use_id??s.seq)).size;
   const statusClass=cn('execution-status text-sm',failed||status==='exhausted'?'text-destructive':status==='completed'||status==='done'?'text-[var(--status-success)]':'text-muted-foreground',live&&'shimmer');
   async function copy(){try{const entries=final?[final]:processSteps.filter(s=>['text','assistant','result'].includes(s.kind));const bodies=await Promise.all(entries.map(s=>s.detail??(s.seq>0?getDetail(s.seq):Promise.resolve(s.summary))));await navigator.clipboard.writeText(bodies.join('\n\n'));toast.success('已复制');}catch{toast.error('复制失败');}}
+  if(turn.steps.every(isSteering))return <ActivitySteps {...stepProps} activity={turn.steps}/>;
   if(turn.user)return <UserRow step={last} intent={last.kind==='intent'} getDetail={getDetail}/>;
-  if(last.metadata?.worker_feedback||last.worker==='system')return <Message align="start"><MessageContent><Bubble variant="muted"><BubbleContent><ActivitySteps {...props} activity={turn.steps}/></BubbleContent></Bubble></MessageContent></Message>;
+  if(last.metadata?.worker_feedback||last.worker==='system')return <Message align="start"><MessageContent><Bubble variant="muted"><BubbleContent><ActivitySteps {...stepProps} activity={turn.steps}/></BubbleContent></Bubble></MessageContent></Message>;
   return <Message data-turn-id={turn.key} data-run-status={label} align="start"><MessageContent>
+    {planning&&<PlannerRoundMarker round={planning} focusActivity={focus} onLocated={props.onLocated}/> }
     <Bubble variant="ghost" className="w-full max-w-full"><BubbleContent className="flex w-full min-w-0 flex-col gap-4 py-2">
       <div className="flex flex-wrap items-center gap-2"><span role="status" className={statusClass}><span className="execution-status-dot" aria-hidden="true"/>{label}</span><span aria-hidden="true" className="text-muted-foreground">/</span><span className="text-sm text-muted-foreground tabular-nums">{elapsed}</span><TurnDetails summary={summary} label={label} elapsed={elapsed} conversationId={props.conversationId}/></div>
-      {hasProcess?<Collapsible open={open} onOpenChange={open=>setManualOpen({open,focus})}>
+      {hasProcess?<Collapsible open={open} onOpenChange={open=>{setManualOpen({open,focus:props.focusActivity});setSteeringFocus(undefined);}}>
         <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"><ChevronRight className={cn('transition-transform',open&&'rotate-90')}/><span>{live?'执行中':ended?(failed?'执行失败':['completed','done'].includes(status??'')?'执行完成':'执行记录'):'历史过程'}</span><span className="font-normal text-muted-foreground">{summary?.steps==null?'步骤未记录':`${summary.steps} 步`} · {summary?.tool_calls==null?'调用数未记录':`${summary.tool_calls} 次工具调用`}{failedTools>0?` · ${failedTools} 次失败`:''}</span></Button></CollapsibleTrigger>
-        <CollapsibleContent className="min-w-0 border-l pl-3 sm:pl-5"><ActivitySteps {...props} activity={processSteps}/></CollapsibleContent>
-      </Collapsible>:processSteps.length>0?<ActivitySteps {...props} activity={processSteps}/>:null}
+        {!open&&steering.length>0&&<Button variant="outline" size="sm" onClick={()=>{const seq=steering[0].seq;steeringJump.current=seq;setManualOpen({open:true,focus:seq});setSteeringFocus(seq);onSteeringExpanded(seq,true);}}><Flag/>有 {steering.length} 条纠偏</Button>}
+        <CollapsibleContent className="min-w-0 border-l pl-3 sm:pl-5"><ActivitySteps {...stepProps} activity={processSteps}/></CollapsibleContent>
+      </Collapsible>:processSteps.length>0?<ActivitySteps {...stepProps} activity={processSteps}/>:null}
       {errorText&&!final&&<Alert variant={failed||status==='exhausted'?'destructive':'default'}><AlertDescription>{errorText}</AlertDescription></Alert>}
-      {final&&<div data-final-answer="true">{workerResults?<WorkerConclusion focused={focus===final.seq}><ActivitySteps {...props} activity={[final]}/></WorkerConclusion>:<ActivitySteps {...props} activity={[final]}/>}</div>}
+      {final&&<div data-final-answer="true">{workerResults?<WorkerConclusion focused={focus===final.seq}><ActivitySteps {...stepProps} activity={[final]}/></WorkerConclusion>:<ActivitySteps {...stepProps} activity={[final]}/>}</div>}
       {workerResults&&<WorkerWritebacks key={`${props.taskId}:${turn.key}`} task={props.taskId!} turn={summary?.turn_id??turnID(last)??turn.key} status={status} revision={terminal?.seq??summary?.revision??last.seq}/>}
     </BubbleContent></Bubble>
     <MessageFooter className="gap-3"><Button variant="ghost" size="icon-sm" onClick={()=>void copy()} disabled={!final&&!processSteps.some(s=>["text","assistant","result"].includes(s.kind)&&!!(s.detail||s.summary))} aria-label="复制答复"><CopyIcon/></Button><ActivityTime ts={terminal?.ts??last.ts}/>{last.inherited&&<Badge variant="outline">来源任务 · 只读</Badge>}</MessageFooter>
   </MessageContent></Message>;
+}
+// Native scroller owns the jump and disables follow-to-bottom for this explicit
+// navigation. The negative margin locates the control within its enclosing turn.
+function ScrollingExecutionTurn(props:React.ComponentProps<typeof ExecutionTurn>) {
+  const {scrollToMessage}=useMessageScroller();
+  const locate=React.useCallback((el:HTMLElement,explicit?:boolean)=>{
+    if(props.onLocated){props.onLocated(el,explicit);return;}
+    const item=el.closest<HTMLElement>('[data-slot="message-scroller-item"]');
+    if(item)scrollToMessage(props.turn.key,{align:'start',scrollMargin:12-(el.getBoundingClientRect().top-item.getBoundingClientRect().top)});
+  },[props.onLocated,props.turn.key,scrollToMessage]);
+  return <ExecutionTurn {...props} onLocated={locate}/>;
 }
 function ExecView(props:ExecutionProps) {
   const turns=conversationTurns(props.activity);
   const summaries=useTurnSummaries(props.taskId,props.conversationId,props.activity.map(turnID).filter((id):id is string=>!!id));
   return <>{turns.map((turn,index)=>{
     const id=turn.steps.map(turnID).find(Boolean);
-    const body=<ExecutionTurn {...props} turn={turn} summary={id?summaries[id]:undefined} latest={index===turns.length-1}/>;
+    const Turn=props.scrollItems?ScrollingExecutionTurn:ExecutionTurn;
+    const body=<Turn {...props} turn={turn} summary={id?summaries[id]:undefined} latest={index===turns.length-1}/>;
     return props.scrollItems?<MessageScrollerItem key={turn.key} messageId={turn.key}>{body}</MessageScrollerItem>:<div key={turn.key} className="my-2 min-w-0">{body}</div>;
   })}</>;
 }
@@ -775,7 +816,7 @@ export function Transcript({
   fetchDetail?: (seq: number) => Promise<string>;
   focusActivity?: number;
   focusedSeq?: number;
-  onLocated?: (el: HTMLElement) => void;
+  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
   focusLabel?: string;
 }) {
   const detailFetcher=React.useRef(fetchDetail);

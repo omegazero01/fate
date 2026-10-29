@@ -1,6 +1,6 @@
 import type {Database} from './index.js';
 
-export type UsageScope={taskID?:number;conversationID?:number;intentID?:number;mainSegment?:number;runtimeID?:string;turnID?:string};
+export type UsageScope={taskIDs?:number[];taskID?:number;conversationID?:number;intentID?:number;mainSegment?:number;runtimeID?:string;turnID?:string};
 export const USAGE_VERSION='usage-v2';
 
 /** One-way import. No business record is rewritten; reruns and deleted logs cannot remove receipts. */
@@ -88,10 +88,11 @@ export function usageDTO(row:Record<string,unknown>={}){
    usage_complete:row.usage_complete!==false,calls_complete:row.calls_complete!==false,input_complete:row.input_complete!==false,source:'usage_ledger'};
 }
 
-export async function aggregateUsage(db:Database,scope:UsageScope&{days?:number;since?:string;until?:string;timeKnown?:boolean}={},group?:'model'|'profile'|'day'|'profile_day'|'worker'|'session'|'conversation'|'role'|'task'):Promise<Array<Record<string,any>&ReturnType<typeof usageDTO>>>{
+export async function aggregateUsage(db:Database,scope:UsageScope&{days?:number;since?:string;until?:string;timeKnown?:boolean}={},group?:'model'|'profile'|'day'|'profile_day'|'worker'|'session'|'conversation'|'role'|'task'|'turn'):Promise<Array<Record<string,any>&ReturnType<typeof usageDTO>>>{
  const params:unknown[]=[];const where:string[]=[];
  for(const [key,col] of [['taskID','task_id'],['conversationID','conversation_id'],['runtimeID','runtime_id'],['turnID','turn_id'],['intentID','intent_id'],['mainSegment','main_seg']] as const)
   if(scope[key]!==undefined){params.push(scope[key]);where.push(`${col}=$${params.length}`);}
+ if(scope.taskIDs!==undefined){params.push(scope.taskIDs);where.push(`task_id=ANY($${params.length}::bigint[])`);}
  const identityWhere=where.join(' AND ');
  if(scope.days!==undefined){params.push(scope.days);where.push(`created_at>=((now() AT TIME ZONE 'Asia/Shanghai')::date-($${params.length}::int-1)) AT TIME ZONE 'Asia/Shanghai'`);}
  for(const [key,operator] of [['since','>='],['until','<']] as const)if(scope[key]){params.push(scope[key]);where.push(`created_at${operator}$${params.length}::timestamptz`);}
@@ -101,7 +102,7 @@ export async function aggregateUsage(db:Database,scope:UsageScope&{days?:number;
   profile_day:"COALESCE(profile_id::text,'unknown')||':'||to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD')",
   worker:"CASE WHEN role='worker' THEN COALESCE(worker_name,'intent:'||intent_id,'worker') ELSE role END",
   session:"CASE WHEN conversation_id IS NOT NULL THEN 'conversation:'||conversation_id WHEN intent_id IS NOT NULL THEN 'intent:'||intent_id WHEN role='mainagent' THEN 'main:'||COALESCE(main_seg,0) WHEN role IN ('planner','goals') THEN 'plan' ELSE role END",
-  conversation:'conversation_id::text',role:'role',task:'task_id::text'};
+  conversation:'conversation_id::text',role:'role',task:'task_id::text',turn:'turn_id'};
  if(group==='conversation')where.push('conversation_id IS NOT NULL');
  if(group==='task')where.push('task_id IS NOT NULL');
  const rows=(await db.query(`WITH ${CANONICAL_USAGE_CTE.replace('/* usage_scope */',identityWhere?'WHERE '+identityWhere:'')} SELECT ${group?`${expression[group]} bucket, CASE WHEN count(DISTINCT model)=1 THEN max(model) END model,array_agg(DISTINCT model) models,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_name) END profile_name,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_id) END profile_id,array_agg(DISTINCT profile_id) profile_ids,CASE WHEN count(DISTINCT COALESCE(task_id::text,'unknown'))=1 THEN max(task_id) END task_id,CASE WHEN count(DISTINCT role)=1 THEN max(role) END role,min(to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD')) date, min(created_at) created_at,`:''}${USAGE_SUM_SQL}

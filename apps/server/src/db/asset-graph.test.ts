@@ -20,6 +20,8 @@ import {
 	insertAssetsTool,
 } from "../tools/assets.js";
 import { runContext } from "../tools/context.js";
+import { mergedAssetSearchTool } from "../tools/asset-search-compat.js";
+import { applyToolBindings } from "../agent/tool-bindings.js";
 import { buildGraphOverview } from "../tools/overview.js";
 import { randomUUID } from "node:crypto";
 let db: Database,
@@ -97,6 +99,48 @@ it("SERIES identity: preserve explicit ports, URL path/query and IP types", () =
 	expect(args).toEqual([443, "%nginx%", 400]);
 	expect(() => compileAssetDSL("port==abc", [])).toThrow();
 	expect(() => compileAssetDSL("(domain=x", [])).toThrow();
+});
+it("Planner DSL type and top-level type return identical scoped, paginated assets through tools and HTTP", async () => {
+	const target = await db.tasks().createTaskWithOptions("LOCAL DSL target", "", { executionMode: "manual" });
+	const direct = await db.tasks().createTaskWithOptions("LOCAL DSL source", "", { executionMode: "manual" });
+	const unrelated = await db.tasks().createTaskWithOptions("LOCAL DSL unrelated", "", { executionMode: "manual" });
+	await db.query("INSERT INTO task_relations(task_id,source_task_id) VALUES($1,$2)", [target.id, direct.id]);
+	for (const t of [target, direct, unrelated]) {
+		const result = await writeAssets(db, [
+			{ type: "endpoint", url: `http://dsl-${t.id}.${root}:5200/entry`, method: "GET" },
+			{ type: "endpoint", url: `http://dsl-${t.id}.${root}:5201/other`, method: "GET" },
+			{ type: "service", url: `http://dsl-${t.id}.${root}:5200` },
+		], { taskID: t.id, agent: "fixture" });
+		expect(result.errors).toEqual([]);
+	}
+	const ctx = runContext(db, target.id, target.exploration_id, "planner");
+	const [tool] = await applyToolBindings(db, "planner", [mergedAssetSearchTool(ctx)]);
+	expect((tool!.parameters as any).properties.dsl.description).toContain("type==endpoint");
+	const dsl = "port==5200 AND type==endpoint";
+	const complete = await call(tool!, { dsl, limit: 50 });
+	expect(complete).toEqual(await call(tool!, { dsl: "port==5200", type: "endpoint", limit: 50 }));
+	expect(complete.total).toBe(2);
+	expect(complete.assets.every((a: any) => a.port === 5200 && a.type === "endpoint")).toBe(true);
+	expect(complete.assets.find((a: any) => a.source_task_id === direct.id)).toMatchObject({ inherited: true, read_only: true });
+	const first = await call(tool!, { dsl, limit: 1 });
+	expect(first).toMatchObject({ total: 2, count: 1, has_more: true, next_offset: 1 });
+	const last = await call(tool!, { dsl, limit: 1, offset: first.next_offset });
+	expect(last).toMatchObject({ total: 2, count: 1, has_more: false });
+	expect([...first.assets, ...last.assets]).toEqual(complete.assets);
+	expect((await call(tool!, { dsl, type: "service" })).total).toBe(0);
+	await db.query("UPDATE tools SET enabled=false WHERE key='asset_search'");
+	try { expect((await tool!.execute("disabled", { dsl } as never)).isError).toBe(true); }
+	finally { await db.query("UPDATE tools SET enabled=true WHERE key='asset_search'"); }
+	const app = Fastify();
+	app.decorate("db", db);
+	registerAssetRoutes(app);
+	try {
+		const response = await app.inject({ url: `/api/assets?task_id=${target.id}&dsl=${encodeURIComponent(dsl)}` });
+		expect(response.statusCode).toBe(200);
+		expect(response.json().assets.map((a: any) => a.id)).toEqual(complete.assets.map((a: any) => a.id));
+		const invalid = await app.inject({ url: `/api/assets?dsl=${encodeURIComponent("constructor==1")}` });
+		expect(invalid.statusCode).toBe(400);
+	} finally { await app.close(); }
 });
 it("real regression: string DNS, multiple IPs, partial errors, append merges and intent anchors", async () => {
 	const r = await writeAssets(

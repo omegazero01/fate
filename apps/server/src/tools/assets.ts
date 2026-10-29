@@ -106,9 +106,9 @@ const searchProperties = {
 	dsl: {
 		type: "string",
 		description:
-			"如 port==443 AND technology=nginx；= 模糊、== 精确、!= 排除，支持 AND/OR/括号",
+			"如 port==5200 AND type==endpoint；常用字段 type、port、domain、ip、url、method、status_code、technology。= 模糊、== 精确、!= 排除，支持 AND/OR/括号",
 	},
-	type: { type: "string", enum: ASSET_TYPES },
+	type: { type: "string", enum: ASSET_TYPES, description: "资产类型精确过滤；也可写入 dsl，如 type==endpoint。与 dsl 同时提供时取交集。" },
 	untested: { type: "boolean" },
 	limit: { type: "integer", minimum: 1, maximum: 50 },
 	offset: { type: "integer", minimum: 0 },

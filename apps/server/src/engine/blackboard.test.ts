@@ -20,6 +20,9 @@ import {markWorkerReleased,recoverWorkerSettlements} from '../db/worker-drafts.j
 import {plannerTools,mainTools,workerTools} from '../tools/index.js';
 import {insertAssetsTool} from '../tools/assets.js';
 
+// Lifecycle assertions test ordering and durability, not a latency SLO.
+// Leave headroom for native pi startup in the full integration suite.
+const lifecycleWaitMs=30_000;
 const name=`fate_blackboard_${process.pid}`,dir=mkdtempSync(path.join(tmpdir(),'fate-blackboard-'));
 let db:Database;const engines:Engine[]=[];
 beforeAll(async()=>{process.env.SERIES_PG_DSN=`postgres://series:series@127.0.0.1:5433/${name}?sslmode=disable`;db=await openDatabase();await db.platform().setSetting('workers','3');});
@@ -157,9 +160,9 @@ it('refills one released slot from final graph results while the other two worke
  }));
  const e=new Engine(db,{...defaultEngineConfig(),workers:3,debounceMs:5},async(_id,role)=>({modelRuntime:runtime,model:(role==='planner'?planner:worker).getModel() as never}),dir);engines.push(e);
  try{
-  await e.run(task.id);await until(async()=>{const nodes=await s.listByKind('intent');const failed=nodes.find(n=>n.state==='blocked');if(failed)throw new Error(JSON.stringify(failed.payload.execution_stop));return refillObserved&&nodes.filter(n=>n.state==='done').length===2;},12000);
+  await e.run(task.id);await until(async()=>{const nodes=await s.listByKind('intent');const failed=nodes.find(n=>n.state==='blocked');if(failed)throw new Error(JSON.stringify(failed.payload.execution_stop));return refillObserved&&nodes.filter(n=>n.state==='done').length===2;},lifecycleWaitMs);
   expect((await db.tasks().getTask(task.id))?.status).toBe('running');expect((await s.listByKind('intent')).filter(n=>n.state==='running')).toHaveLength(2);
-  release();await until(async()=>(await db.tasks().getTask(task.id))?.status==='done',12000);
+  release();await until(async()=>(await db.tasks().getTask(task.id))?.status==='done',lifecycleWaitMs);
   expect(peak).toBe(3);expect((await s.listByKind('intent')).every(n=>n.state==='done')).toBe(true);expect(worker.state.callCount).toBe(8);
  }finally{release();await e.stop(task.id);}
 });
@@ -251,6 +254,24 @@ it('reserves capacity without borrowing another connection while holding the tra
  }finally{await a.release(f.task.id,ta);await b.release(other.task.id,tb);await small.close();}
 });
 
+it('does not queue a second owner on capacity locks and renews leases outside a saturated business pool',async()=>{
+ const f=await fixture(false);await db.query("UPDATE tasks SET status='running' WHERE id=$1",[f.task.id]);
+ const aDB=new Database(new pg.Pool({connectionString:process.env.SERIES_PG_DSN,max:1,connectionTimeoutMillis:1000}));
+ const bDB=new Database(new pg.Pool({connectionString:process.env.SERIES_PG_DSN,max:1,connectionTimeoutMillis:1000}));
+ const a=new Coordinator(aDB,2),b=new Coordinator(bDB,2),token=(await a.acquire(f.task.id))!;
+ try{
+  await aDB.transaction(async tx=>{
+   expect(await a.lockWorkerCapacity(tx)).toBe(true);
+   const started=Date.now();
+   expect(await b.workerSlot(f.task.id,token)).toBeUndefined();
+   expect(Date.now()-started).toBeLessThan(500);
+   await a.renew(f.task.id,token); // The only business connection remains held by tx.
+   expect(aDB.control().runtimeMetrics().pools.primary.waiting).toBe(0);
+   expect(tx.control()).toBe(tx);
+  });
+ }finally{await a.release(f.task.id,token);await aDB.close();await bDB.close();}
+});
+
 it('keeps a submitted intent executable after unrelated graph changes',async()=>{
  await db.platform().setSetting('workers','1');const f=await fixture(false),a=new Coordinator(db,1),token=(await a.acquire(f.task.id))!;
  await db.query("UPDATE tasks SET status='running',execution_mode='managed' WHERE id=$1",[f.task.id]);
@@ -319,7 +340,7 @@ it('allows independent incremental observations while refusing draft-style overw
  expect(((await f.s.listByKind('fact')).filter(n=>n.payload.from_intent===f.id)).map(n=>n.id).sort((a,b)=>a-b)).toEqual([first.fact_id,second.fact_id]);
 });
 
-it('lets Planner read a live Worker finding and wakes again after Worker release',async()=>{
+it('coalesces a live Worker finding, keeps it readable immediately and wakes again after Worker release',async()=>{
  await db.platform().setSetting('workers','3');
  const task=await db.tasks().createTaskWithOptions('LOCAL live writeback','Observe LOCAL fixture',{executionMode:'managed'}),s=db.exploration(task.exploration_id);
  const goal=await s.addGoal({text:task.goal},'user');
@@ -335,7 +356,17 @@ it('lets Planner read a live Worker finding and wakes again after Worker release
  worker.setResponses([fauxAssistantMessage([fauxToolCall('record_fact',observation),fauxToolCall('report_finding',{vulnclass:'LOCAL fixture',severity:'low',summary:'LOCAL finding',evidence:'Synthetic evidence only'})]),
  async(_context,options)=>{holding=true;await Promise.race([held,new Promise<void>(r=>options?.signal?.addEventListener('abort',()=>r(),{once:true}))]);return fauxAssistantMessage('LOCAL observations saved.');}]);
  const e=new Engine(db,{...defaultEngineConfig(),workers:3,debounceMs:5},async(_id,role)=>({modelRuntime:runtime,model:(role==='planner'?planner:worker).getModel() as never}),dir);engines.push(e);
- try{await e.run(task.id);await until(async()=>holding&&liveObserved,12000);release();await until(async()=>(await db.tasks().getTask(task.id))?.status==='done',12000);expect(worker.state.callCount).toBe(2);}
+ try{
+  await e.run(task.id);await until(async()=>holding,lifecycleWaitMs);
+  expect(await s.listByKind('finding')).toHaveLength(1); // publication itself is never delayed
+  const calls=planner.state.callCount;e.notify(task.id);await new Promise(r=>setTimeout(r,100));
+  expect(planner.state.callCount).toBe(calls);expect(liveObserved).toBe(false);
+  expect((await db.query("SELECT 1 FROM blackboard_wakeups WHERE exploration_id=$1 AND kind='control_changed'",[task.exploration_id])).rowCount).toBe(0);
+  // Advance only this synthetic event's durable age, without a 30-second test sleep.
+  await db.query("UPDATE blackboard_wakeups SET created_at=now()-interval '31 seconds' WHERE exploration_id=$1 AND kind='finding_published'",[task.exploration_id]);
+  e.notify(task.id);await until(async()=>liveObserved,lifecycleWaitMs);release();
+  await until(async()=>(await db.tasks().getTask(task.id))?.status==='done',lifecycleWaitMs);expect(worker.state.callCount).toBe(2);
+ }
  finally{release();await e.stop(task.id);}
 });
 

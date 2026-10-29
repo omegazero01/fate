@@ -1,0 +1,543 @@
+{
+  "started_at": "2026-10-27T08:56:37.777452+00:00",
+  "original_tip": "50b5055f32900283bf616adc73110a46d35871f2",
+  "backup_branch": "codex/backup-before-chinese-20261027",
+  "strategy": "preserve published commits; add Chinese functional and rollback documentation only",
+  "preserved_local_files": 759,
+  "checkpoints": [
+    {
+      "key": "tools",
+      "label": "工具修复完成",
+      "target": "8bdb2042f5fc82f7eb3b1626af1161054524ceea",
+      "directory": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools",
+      "reverted_commits": [
+        "50b5055f32900283bf616adc73110a46d35871f2",
+        "3a89309eabda33e58a2c2d0de444501bafc8f74b",
+        "bcfb358219df286c603ea44b25c94775ade39c3f",
+        "60f6fb3f763349051f77d37b1124590e5e25a7d2",
+        "3a029c83f936e6e791f4f8a6998855fd73b62489",
+        "7e29b9bc0f40c01b9521b69a3fd09bb91fc70770",
+        "d81bfb6faea6bbaf483ff4f43739b5962f83c0e1",
+        "be848dfb9b3382c1e2bd51519aab75d74765f4b4",
+        "d06cef12aa9a6d3582ecff5798d874252842ac70",
+        "271223418bd7f7204f0e7320454657434c7987bd",
+        "47b9c7490d7d9d83df56e9eae6b26541d7d4b743",
+        "b8fbd864e4b6e99d895f098f32df1e4a7245c2af",
+        "bb41878d467123ba5543e163e3ddad8837f2a2e6",
+        "8251ebe52821e64776cf23d94ce2641872990cd6",
+        "0c0d4686239a6b269c6775d357424c281757558d"
+      ],
+      "tree": "09376915ead40b0ace136d53c8209bfc86801885",
+      "matches_target_tree": true,
+      "revert_log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-revert.log",
+      "checks": {
+        "server-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-server-typecheck.log",
+          "started_at": "2026-10-27T08:58:05.760596+00:00",
+          "exit_code": 0,
+          "seconds": 4.24
+        },
+        "server-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-server-build.log",
+          "started_at": "2026-10-27T08:58:09.996798+00:00",
+          "exit_code": 0,
+          "seconds": 4.42
+        },
+        "server-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/vitest/vitest.mjs",
+            "run",
+            "src/db/asset-dsl.test.ts",
+            "src/db/asset-graph.test.ts",
+            "src/evidence/http.test.ts",
+            "src/http/api.test.ts",
+            "--reporter=default",
+            "--reporter=json",
+            "--outputFile=/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-tests.json"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-server-tests.log",
+          "started_at": "2026-10-27T08:58:14.417048+00:00",
+          "exit_code": 0,
+          "seconds": 14.03,
+          "counts": {
+            "numTotalTests": 38,
+            "numPassedTests": 38,
+            "numFailedTests": 0,
+            "numPendingTests": 0
+          }
+        },
+        "web-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "--test",
+            "src/lib/model-token-stats.test.mjs",
+            "src/lib/task-model-settings.test.mjs"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-web-tests.log",
+          "started_at": "2026-10-27T08:58:28.446091+00:00",
+          "exit_code": 0,
+          "seconds": 0.18
+        },
+        "web-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/web/node_modules/typescript/bin/tsc",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-web-typecheck.log",
+          "started_at": "2026-10-27T08:58:28.625168+00:00",
+          "exit_code": 0,
+          "seconds": 7.93
+        },
+        "web-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "--",
+            "--webpack"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/tools-web-build.log",
+          "started_at": "2026-10-27T08:58:36.552048+00:00",
+          "exit_code": 0,
+          "seconds": 40.59
+        }
+      },
+      "status": "passed",
+      "web_test_count": 8
+    },
+    {
+      "key": "planner",
+      "label": "Planner 优化完成",
+      "target": "47b9c7490d7d9d83df56e9eae6b26541d7d4b743",
+      "directory": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner",
+      "reverted_commits": [
+        "50b5055f32900283bf616adc73110a46d35871f2",
+        "3a89309eabda33e58a2c2d0de444501bafc8f74b",
+        "bcfb358219df286c603ea44b25c94775ade39c3f",
+        "60f6fb3f763349051f77d37b1124590e5e25a7d2",
+        "3a029c83f936e6e791f4f8a6998855fd73b62489",
+        "7e29b9bc0f40c01b9521b69a3fd09bb91fc70770",
+        "d81bfb6faea6bbaf483ff4f43739b5962f83c0e1",
+        "be848dfb9b3382c1e2bd51519aab75d74765f4b4",
+        "d06cef12aa9a6d3582ecff5798d874252842ac70",
+        "271223418bd7f7204f0e7320454657434c7987bd"
+      ],
+      "tree": "b9188e3fed1974fef924df96d317fb2c1824b19e",
+      "matches_target_tree": true,
+      "revert_log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-revert.log",
+      "checks": {
+        "server-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-server-typecheck.log",
+          "started_at": "2026-10-27T08:59:17.139463+00:00",
+          "exit_code": 0,
+          "seconds": 4.15
+        },
+        "server-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-server-build.log",
+          "started_at": "2026-10-27T08:59:21.294611+00:00",
+          "exit_code": 0,
+          "seconds": 6.2
+        },
+        "server-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/vitest/vitest.mjs",
+            "run",
+            "src/pi/providerFromProfile.test.ts",
+            "src/pi/domain-compaction.test.ts",
+            "src/agent/planner-context-policy.test.ts",
+            "src/agent/planner-token-cost.test.ts",
+            "src/engine/planner-wakeup.test.ts",
+            "context-coordination.test.ts",
+            "src/http/api.test.ts",
+            "--reporter=default",
+            "--reporter=json",
+            "--outputFile=/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-tests.json"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-server-tests.log",
+          "started_at": "2026-10-27T08:59:27.494567+00:00",
+          "exit_code": 0,
+          "seconds": 30.25,
+          "counts": {
+            "numTotalTests": 71,
+            "numPassedTests": 71,
+            "numFailedTests": 0,
+            "numPendingTests": 0
+          }
+        },
+        "web-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "--test",
+            "src/lib/model-token-stats.test.mjs",
+            "src/lib/task-model-settings.test.mjs"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-web-tests.log",
+          "started_at": "2026-10-27T08:59:57.746159+00:00",
+          "exit_code": 0,
+          "seconds": 0.13
+        },
+        "web-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/web/node_modules/typescript/bin/tsc",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-web-typecheck.log",
+          "started_at": "2026-10-27T08:59:57.877044+00:00",
+          "exit_code": 0,
+          "seconds": 6.72
+        },
+        "web-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "--",
+            "--webpack"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/planner-web-build.log",
+          "started_at": "2026-10-27T09:00:04.595849+00:00",
+          "exit_code": 0,
+          "seconds": 37.44
+        }
+      },
+      "status": "passed",
+      "web_test_count": 8
+    },
+    {
+      "key": "context",
+      "label": "上下文配置完成",
+      "target": "d06cef12aa9a6d3582ecff5798d874252842ac70",
+      "directory": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context",
+      "reverted_commits": [
+        "50b5055f32900283bf616adc73110a46d35871f2",
+        "3a89309eabda33e58a2c2d0de444501bafc8f74b",
+        "bcfb358219df286c603ea44b25c94775ade39c3f",
+        "60f6fb3f763349051f77d37b1124590e5e25a7d2",
+        "3a029c83f936e6e791f4f8a6998855fd73b62489",
+        "7e29b9bc0f40c01b9521b69a3fd09bb91fc70770",
+        "d81bfb6faea6bbaf483ff4f43739b5962f83c0e1",
+        "be848dfb9b3382c1e2bd51519aab75d74765f4b4"
+      ],
+      "tree": "af9feefd830c89e35b658189be62ce6d96a54ab8",
+      "matches_target_tree": true,
+      "revert_log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-revert.log",
+      "checks": {
+        "server-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-server-typecheck.log",
+          "started_at": "2026-10-27T09:00:42.041027+00:00",
+          "exit_code": 0,
+          "seconds": 4.08
+        },
+        "server-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-server-build.log",
+          "started_at": "2026-10-27T09:00:46.123256+00:00",
+          "exit_code": 0,
+          "seconds": 4.63
+        },
+        "server-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/apps/server/node_modules/vitest/vitest.mjs",
+            "run",
+            "src/agent/context-policy.test.ts",
+            "src/agent/seven-role-loadout.test.ts",
+            "src/pi/domain-compaction.test.ts",
+            "src/pi/internal-discovery.test.ts",
+            "context-coordination.test.ts",
+            "src/http/api.test.ts",
+            "--reporter=default",
+            "--reporter=json",
+            "--outputFile=/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-tests.json"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-server-tests.log",
+          "started_at": "2026-10-27T09:00:50.751533+00:00",
+          "exit_code": 0,
+          "seconds": 31.9,
+          "counts": {
+            "numTotalTests": 85,
+            "numPassedTests": 85,
+            "numFailedTests": 0,
+            "numPendingTests": 0
+          }
+        },
+        "web-tests": {
+          "status": "passed",
+          "command": [
+            "node",
+            "--test",
+            "src/lib/model-token-stats.test.mjs",
+            "src/lib/task-model-settings.test.mjs",
+            "src/lib/context-budget.test.mjs"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-web-tests.log",
+          "started_at": "2026-10-27T09:01:22.652055+00:00",
+          "exit_code": 0,
+          "seconds": 0.18
+        },
+        "web-typecheck": {
+          "status": "passed",
+          "command": [
+            "node",
+            "/Users/pphua/Documents/GitHub/fate/web/node_modules/typescript/bin/tsc",
+            "--noEmit"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-web-typecheck.log",
+          "started_at": "2026-10-27T09:01:22.829518+00:00",
+          "exit_code": 0,
+          "seconds": 6.26
+        },
+        "web-build": {
+          "status": "passed",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "--",
+            "--webpack"
+          ],
+          "log": "/Users/pphua/.local/share/fate/git-history/rollback-20261027-165624/context-web-build.log",
+          "started_at": "2026-10-27T09:01:29.088657+00:00",
+          "exit_code": 0,
+          "seconds": 37.66
+        }
+      },
+      "status": "passed",
+      "web_test_count": 10
+    }
+  ],
+  "finished_at": "2026-10-27T09:02:06.747853+00:00",
+  "status": "passed",
+  "commit_history_preserved": true,
+  "remote_history_rewritten": false,
+  "pushed_by_this_task": false,
+  "local_files_unchanged": true,
+  "original_application_tree": "51fec842e6f98d135a4f6a7efe4953dfea3998ea",
+  "functional_commits": [
+    {
+      "commit": "d40fa1c81760cd754269d9cddc61100eb03219b9",
+      "chinese_title": "文档：记录正式构建与安全启动结果",
+      "changes": "保存正式产物、受控启动和发布核对记录，便于追溯当前运行版本。",
+      "validation_reference": "发布结果见本提交 deployment.json；本次仅整理说明，代码树保持一致。",
+      "rollback_dependency": "仅发布证据，无运行代码依赖。",
+      "tree": "eb6dbde2f7fc2c3803ba41a5ba8966410acb4603",
+      "unchanged": true
+    },
+    {
+      "commit": "925ded1a25c15ecd616a2077c79c79bc36502759",
+      "chinese_title": "修复资产查询：支持 DSL 中的资产类型过滤",
+      "changes": "补齐 type 条件解析及校验，使 type==endpoint 与独立类型筛选保持一致；增加 DSL 和资产图回归。",
+      "validation_reference": "对应 asset-dsl、asset-graph 回归及工具修复发布记录。",
+      "rollback_dependency": "资产查询功能可单独撤销；撤销前运行对应 DSL 和资产图回归。",
+      "tree": "6fccdae8e4eca49978eca34ce06dd0627579fed4",
+      "unchanged": true
+    },
+    {
+      "commit": "c5795437adc2cc2ddf176202fedb04d8b7ecc776",
+      "chinese_title": "修复 HTTP 请求：保留重定向证据并完善传输错误诊断",
+      "changes": "保留请求各跳转证据，标明失败位置及传输原因，避免把超时解释为端口关闭；补充 HTTP 回归。",
+      "validation_reference": "对应 evidence/http 回归及工具修复发布记录。",
+      "rollback_dependency": "HTTP 传输、错误格式及工具适配作为同一功能撤销。",
+      "tree": "9deada35bb9714de5b3dbd75a792a4fc69993997",
+      "unchanged": true
+    },
+    {
+      "commit": "8bdb2042f5fc82f7eb3b1626af1161054524ceea",
+      "chinese_title": "文档：记录资产查询与 HTTP 工具发布验收",
+      "changes": "记录资产 DSL、HTTP 工具修复的正式发布版本、服务健康及暂停状态核对。",
+      "validation_reference": "本提交 release.json 保存当时发布检查；本次没有重启服务。",
+      "rollback_dependency": "工具修复完成检查点；发布证据可独立撤销。",
+      "tree": "09376915ead40b0ace136d53c8209bfc86801885",
+      "unchanged": true
+    },
+    {
+      "commit": "0c0d4686239a6b269c6775d357424c281757558d",
+      "chinese_title": "修复模型参数：保留摘要请求的明确输出上限",
+      "changes": "不限普通输出时仍保留摘要请求明确指定的输出上限，避免摘要参数被删除。",
+      "validation_reference": "对应 providerFromProfile 请求参数回归。",
+      "rollback_dependency": "与后续 Provider 字段兼容修复关联；整体撤销时按提交逆序处理。",
+      "tree": "03493182e7fb870253aa79924a6e2ab5922678b7",
+      "unchanged": true
+    },
+    {
+      "commit": "8251ebe52821e64776cf23d94ce2641872990cd6",
+      "chinese_title": "优化 Planner：提前压缩长历史并合并重复图谱上下文",
+      "changes": "使用 pi 原生工作上下文压缩目标，合并同来源同版本图谱投影，保留证据引用和失败恢复边界。",
+      "validation_reference": "新增上下文策略、成本夹具、API 和历史恢复回归；阶段结果见 Planner 优化报告。",
+      "rollback_dependency": "后续独立角色配置建立在本功能上；先撤销界面和角色配置，再撤销本提交。",
+      "tree": "041396aa8275795faa3ef7baaa0767045f960ec8",
+      "unchanged": true
+    },
+    {
+      "commit": "bb41878d467123ba5543e163e3ddad8837f2a2e6",
+      "chinese_title": "优化规划调度：合并普通通知并保留即时结束唤醒",
+      "changes": "合并 Worker 运行期间的资产及漏洞通知，保留 Worker 结束、用户控制和到期心跳唤醒。",
+      "validation_reference": "对应 planner-wakeup 和 blackboard 回归，验证事件持久年龄及跨分页紧急通知。",
+      "rollback_dependency": "与后续黑板测试等待调整关联；撤销时同步恢复对应测试。",
+      "tree": "19924ea651becc33adb8304797c36baf01f411a7",
+      "unchanged": true
+    },
+    {
+      "commit": "b8fbd864e4b6e99d895f098f32df1e4a7245c2af",
+      "chinese_title": "修复模型兼容：保留供应商原生输出参数字段",
+      "changes": "保留 pi 选择的 Provider 输出上限字段，仅在显式配置时覆盖，补齐 DeepSeek 参数兼容。",
+      "validation_reference": "对应 providerFromProfile 参数协议回归。",
+      "rollback_dependency": "建立在摘要输出上限修复之上；整体回退时先撤销本提交。",
+      "tree": "d71eee7dbf66bdce0e2ab9d15dcb6bd146876200",
+      "unchanged": true
+    },
+    {
+      "commit": "47b9c7490d7d9d83df56e9eae6b26541d7d4b743",
+      "chinese_title": "文档：记录 Planner Token 优化与回归结果",
+      "changes": "说明工作上下文压缩、图谱去重、通知合并，以及确定性成本验证和回退设置。",
+      "validation_reference": "记录阶段回归与构建结果，明确当时尚未验证的真实模型范围。",
+      "rollback_dependency": "Planner 优化完成检查点；报告属于验证记录。",
+      "tree": "b9188e3fed1974fef924df96d317fb2c1824b19e",
+      "unchanged": true
+    },
+    {
+      "commit": "271223418bd7f7204f0e7320454657434c7987bd",
+      "chinese_title": "新增上下文配置：独立设置 Planner 与 Worker 压缩阈值",
+      "changes": "集中管理两个角色的压缩触发目标，补齐范围校验、模型容量收紧和实际运行配置。",
+      "validation_reference": "对应 context-policy、seven-role-loadout 和 HTTP 设置接口回归。",
+      "rollback_dependency": "系统配置界面依赖该后端接口；回滚时先撤销界面，再撤销本提交。",
+      "tree": "81e67144b0e98a95e88f53f3d768910d43296435",
+      "unchanged": true
+    },
+    {
+      "commit": "d06cef12aa9a6d3582ecff5798d874252842ac70",
+      "chinese_title": "新增系统配置界面：配置上下文阈值并校验输入范围",
+      "changes": "新增 Planner 与 Worker 的 K Token 输入、数值校验、默认值及下一会话生效说明。",
+      "validation_reference": "对应前端 context-budget 回归、类型检查和正式构建记录。",
+      "rollback_dependency": "依赖独立角色上下文配置接口；与该接口成组回退或先撤销本界面。",
+      "tree": "af9feefd830c89e35b658189be62ce6d96a54ab8",
+      "unchanged": true
+    },
+    {
+      "commit": "be848dfb9b3382c1e2bd51519aab75d74765f4b4",
+      "chinese_title": "修复事实引用：区分节点内容版本与回执格式版本",
+      "changes": "record_fact 返回实际 ref/version，重试读取当前内容版本；派单 Schema 明确依据版本来源。",
+      "validation_reference": "对应 context-coordination 回归，覆盖节点版本 0、错误格式版本及重复提交。",
+      "rollback_dependency": "事实回执和意图参数说明一起撤销，保留数据库中的已有事实与证据。",
+      "tree": "05b37209a242e43d937448cd28af189b0ca50f21",
+      "unchanged": true
+    },
+    {
+      "commit": "d81bfb6faea6bbaf483ff4f43739b5962f83c0e1",
+      "chinese_title": "修复目标约束：明确完整原文段落的引用规则",
+      "changes": "说明单段原文、真实换行与宿主标题边界，拒绝拼接多个段落和转义后伪造引用。",
+      "validation_reference": "对应 constraint-grounding、constraint-policy 回归及真实合成任务验收。",
+      "rollback_dependency": "与后续提示词精简属于同一约束功能；不要只撤销精简而留下超长提示词。",
+      "tree": "50b63ed460693c977c7953b0b59e8947bdb1203c",
+      "unchanged": true
+    },
+    {
+      "commit": "7e29b9bc0f40c01b9521b69a3fd09bb91fc70770",
+      "chinese_title": "修复恢复测试：准确定位持锁连接并稳定故障注入",
+      "changes": "故障注入准确匹配实际持有目标锁的连接，避免误杀空闲连接后悬挂；保留冷图完成断言。",
+      "validation_reference": "对应 planner-memory 专项回归；修改仅涉及测试设施。",
+      "rollback_dependency": "恢复测试修正可单独撤销，但旧故障注入的稳定性问题会随之恢复。",
+      "tree": "d25cfbe1c323ba8b116bbd4828b68460f8278d03",
+      "unchanged": true
+    },
+    {
+      "commit": "3a029c83f936e6e791f4f8a6998855fd73b62489",
+      "chinese_title": "测试：增加真实模型成本与会话恢复对照脚本",
+      "changes": "增加可选择编译运行版本的自动任务和长历史对照脚本，限制到本地合成证据并核对物理请求计量。",
+      "validation_reference": "真实 DeepSeek 验收结果见后续成本与发布报告，包含摘要和纠错消耗。",
+      "rollback_dependency": "仅验收脚本，可独立撤销，不删除既有数据库或原始验收记录。",
+      "tree": "b6965e508df95bc8dc41675217c9ab907b8f58e5",
+      "unchanged": true
+    },
+    {
+      "commit": "60f6fb3f763349051f77d37b1124590e5e25a7d2",
+      "chinese_title": "精简目标约束提示：保留原文校验并满足长度要求",
+      "changes": "压缩原文段落说明的重复表达，保持换行、否定与例外规则，使角色正文满足既有长度门槛。",
+      "validation_reference": "对应提示词长度和约束原文回归；最终完整验收见后续报告。",
+      "rollback_dependency": "与完整原文引用规则成组处理；单独撤销会恢复提示词长度回归失败。",
+      "tree": "0aec41899e05d574496e7586dc41d35ede2747f6",
+      "unchanged": true
+    },
+    {
+      "commit": "bcfb358219df286c603ea44b25c94775ade39c3f",
+      "chinese_title": "调整黑板回归：为生命周期验证保留启动等待余量",
+      "changes": "为两项黑板生命周期用例增加 native pi 启动等待余量，保留写回、补位和自然结束断言。",
+      "validation_reference": "最终完整服务端回归 696 项通过、1 项跳过；不是放宽生产延迟指标。",
+      "rollback_dependency": "测试设施调整，不改变生产调度；回退通知合并时同步核对该测试文件。",
+      "tree": "33e0e0dcc771df66a04830b0d54ab3e0fbac0a14",
+      "unchanged": true
+    },
+    {
+      "commit": "3a89309eabda33e58a2c2d0de444501bafc8f74b",
+      "chinese_title": "修复系统配置：清理退役入口并准确展示 Shell 信息",
+      "changes": "移除已退役 HTTP Auth 卡片的挂载；Shell 诊断缺失时准确提示并阻止无效保存。",
+      "validation_reference": "前端相关 10 项回归、类型检查、正式构建及生产浏览器核对通过。",
+      "rollback_dependency": "可单独撤销界面兼容修复，但会恢复退役入口 404 和错误提示。",
+      "tree": "c5f45535f12473876f18a98d59c631cfc4ef182c",
+      "unchanged": true
+    },
+    {
+      "commit": "50b5055f32900283bf616adc73110a46d35871f2",
+      "chinese_title": "文档：记录真实模型成本对照与安全发布验收",
+      "changes": "保存三组真实 DeepSeek 对照、用量及恢复证据、功能提交清单、安全发布核对和配置截图。",
+      "validation_reference": "最终服务端 696 项通过、1 项跳过；前端 10 项通过；真实模型与确定性结果分别记录。",
+      "rollback_dependency": "仅验收文档和脱敏证据；历史旧提交号由备份分支保留，不修改原发布记录。",
+      "tree": "51fec842e6f98d135a4f6a7efe4953dfea3998ea",
+      "unchanged": true
+    }
+  ]
+}

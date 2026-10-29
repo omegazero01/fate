@@ -1,6 +1,6 @@
 /** SERIES 78ab23f asset_dsl.go: parameterized AND/OR asset queries. */
 const strings: Record<string, string> = Object.fromEntries(
-	"domain root_domain ip url page_title icp service_name app_name bundle_id category app_icp method service_type record_type"
+	"type domain root_domain ip url page_title icp service_name app_name bundle_id category app_icp method service_type record_type"
 		.split(" ")
 		.map((k) => [k, k]),
 );
@@ -108,9 +108,9 @@ export function compileAssetDSL(
 		}
 		if (f === "task_id") return `${param(integer(v))}=ANY(${alias}.task_ids)`;
 		if (f === "company_id") return `${alias}.company_id=${param(integer(v))}`;
-		if (numbers[f])
+		if (Object.hasOwn(numbers, f))
 			return `${alias}.${numbers[f]} ${op === "==" ? "=" : op} ${param(integer(v))}`;
-		if (arrays[f]) {
+		if (Object.hasOwn(arrays, f)) {
 			const col = `${alias}.${arrays[f]}`;
 			if (op === "=")
 				return `EXISTS(SELECT 1 FROM unnest(${col}) v WHERE v ILIKE ${param("%" + v + "%")})`;
@@ -118,12 +118,14 @@ export function compileAssetDSL(
 				return `${op === "!=" ? "NOT " : ""}(${param(v)}=ANY(${col}))`;
 			throw new AssetQueryError(`数组字段 ${f} 不支持 ${op}`);
 		}
-		if (strings[f]) {
+		if (Object.hasOwn(strings, f)) {
 			if (!["=", "==", "!="].includes(op))
 				throw new AssetQueryError(`字符串字段 ${f} 不支持 ${op}`);
 			return `${alias}.${strings[f]} ${op === "==" ? "=" : op === "!=" ? "NOT ILIKE" : "ILIKE"} ${param(op === "==" ? v : "%" + v + "%")}`;
 		}
-		throw new AssetQueryError(`未知 DSL 字段: ${f}`);
+		throw new AssetQueryError(`未知 DSL 字段: ${f}；支持字段: ${[
+			...Object.keys(strings), ...Object.keys(numbers), ...Object.keys(arrays), "task_id", "company_id",
+		].join(", ")}`);
 	};
 	const atom = (): string => {
 		const t = tokens[p++];

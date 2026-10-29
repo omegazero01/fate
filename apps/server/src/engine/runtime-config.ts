@@ -20,7 +20,9 @@ export async function configuredRole(db:Database,taskID:number,role:string,conve
  const skills=(await db.query('SELECT v.skill_name,v.enabled FROM agent_skill_visibility v JOIN agents a ON a.id=v.agent_id WHERE a.key=$1 ORDER BY v.skill_name',[role])).rows;
  const conv=conversationID?(await db.query('SELECT llm_profile_id FROM conversations WHERE id=$1',[conversationID])).rows[0]:undefined;
  const resolved=await resolveModelProfiles(db,taskID,role,{conversationID,profileID:Number(conv?.llm_profile_id)||undefined});
- return {platform_policy:await platformPolicy(db,role),enabled:agent?.enabled??true,prompt_source:prompt.source,prompt_version:prompt.version,agent_hash:digest(agent),prompt_hash:digest([prompt.template,hostProtocol(role)]),tools_hash:digest(tools),resources_hash:digest([resources,skills]),
+ return {planner_context_budget_tokens:role==='planner'?await db.platform().getSetting('planner_context_budget_tokens'):undefined,
+  worker_context_budget_tokens:role==='worker'?await db.platform().getSetting('worker_context_budget_tokens'):undefined,
+  platform_policy:await platformPolicy(db,role),enabled:agent?.enabled??true,prompt_source:prompt.source,prompt_version:prompt.version,agent_hash:digest(agent),prompt_hash:digest([prompt.template,hostProtocol(role)]),tools_hash:digest(tools),resources_hash:digest([resources,skills]),
   model_hash:digest(resolved.profiles),model:resolved.resolution};
 }
 
@@ -82,10 +84,11 @@ export async function createTrackedRunner(db:Database,taskID:number,role:string,
    if(!allowed.rowCount)throw new Error('MCP 服务或工具已禁用或解除角色绑定');
    await options.mcpGuard?.(server,method,tool);
   }});
- Object.assign(effective,{active_tools:runner.activeToolNames,prompt_diagnostics:runner.promptDiagnostics,prompt_source:configured.prompt_source,prompt_version:configured.prompt_version});
+ Object.assign(effective,{context_policy:options.contextPolicy,active_tools:runner.activeToolNames,prompt_diagnostics:runner.promptDiagnostics,prompt_source:configured.prompt_source,prompt_version:configured.prompt_version});
  try{await db.query('INSERT INTO runtime_role_configs(id,task_id,conversation_id,role,configured,effective,expires_at) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,now()+interval \'20 seconds\')',[id,taskID||null,conversationID??null,role,JSON.stringify(configured),JSON.stringify(effective)]);}
  catch(error){await runner.dispose();throw error;}
- const heartbeat=setInterval(()=>{void db.query("UPDATE runtime_role_configs SET expires_at=now()+interval '20 seconds' WHERE id=$1 AND finished_at IS NULL AND expires_at>clock_timestamp() RETURNING id",[id]).then(r=>{if(!r.rowCount)controller.abort('执行器已过期');}).catch(()=>{});},5000);heartbeat.unref();
+ let renewing=false;
+ const heartbeat=setInterval(()=>{if(renewing)return;renewing=true;void db.control().query("UPDATE runtime_role_configs SET expires_at=now()+interval '20 seconds' WHERE id=$1 AND finished_at IS NULL AND expires_at>clock_timestamp() RETURNING id",[id]).then(r=>{if(!r.rowCount)controller.abort('执行器已过期');}).catch(()=>{}).finally(()=>{renewing=false;});},5000);heartbeat.unref();
  const dispose=runner.dispose.bind(runner);
  const prompt=runner.prompt.bind(runner);
  runner.prompt=async(...args:Parameters<typeof runner.prompt>)=>{

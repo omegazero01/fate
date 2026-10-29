@@ -118,20 +118,21 @@ function TaskDetailInner() {
   const [findingCount, setFindingCount] = React.useState<number | null>(null);
   const [controlling, setControlling] = React.useState(false);
   React.useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api
+    let alive = true,busy=false;
+    const load = () => {if(busy||document.hidden)return;busy=true;return api
         .taskFindingsPage(id, 1, 1, "desc")
         .then((r) => {
           if (alive) setFindingCount(r.total);
         })
         .catch(() => {
           if (alive) setFindingCount(null);
-        });
+        }).finally(()=>{busy=false;});};
     void load();
+    document.addEventListener("visibilitychange",load);
     const timer = setInterval(load, 5000);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange",load);
       clearInterval(timer);
     };
   }, [id]);
@@ -193,6 +194,7 @@ function TaskDetailInner() {
       });
   }, [id]);
   const load = React.useCallback(() => {
+    if(document.hidden)return;
     loadTask();
     loadStats();
   }, [loadStats, loadTask]);
@@ -201,9 +203,11 @@ function TaskDetailInner() {
     setLoaded(false);
     latestStats.current = null;
     load();
+    document.addEventListener("visibilitychange",load);
     const timer = setInterval(load, 5000);
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange",load);
       taskLoadInFlight.current = null;
       statsLoadInFlight.current = null;
     };

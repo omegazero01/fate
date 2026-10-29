@@ -1,5 +1,6 @@
 import {plannerReadCoverage,plannerGrounding,projectPlannerReceipts} from './planner-grounding.js';
 import {proveGoalTool} from '../tools/findings.js';
+import {addIntentTool} from '../tools/intents.js';
 import {beforeAll,afterAll,it,expect} from 'vitest';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';import path from 'node:path';import pg from 'pg';
@@ -119,7 +120,7 @@ it('delivers asset invalidations and deleted-node notices without pretending the
 });
 
 it('preserves corrupted sessions and excludes simultaneous writers',async()=>{
-  const file=path.join(dir,'broken.jsonl');writeFileSync(file,'invalid original');expect(()=>validatePlannerSession(file)).toThrow('保留原文');expect(readFileSync(file,'utf8')).toBe('invalid original');
+  const file=path.join(dir,'broken.jsonl');writeFileSync(file,'invalid original');await expect(validatePlannerSession(file)).rejects.toThrow('保留原文');expect(readFileSync(file,'utf8')).toBe('invalid original');
   const x=await fixture(),release=await lockPlannerSession(db,x.task.exploration_id);
   try{await expect(runPlannerRound(x.input)).rejects.toThrow('已有运行者');expect(x.f.state.callCount).toBe(0);}finally{await release();}
 });
@@ -127,9 +128,16 @@ it('preserves corrupted sessions and excludes simultaneous writers',async()=>{
 it('aborts the session when its database writer lock is lost',async()=>{
   const x=await fixture(),release=await lockPlannerSession(db,x.task.exploration_id);
   try{
-    const row=(await db.query("SELECT pid FROM pg_stat_activity WHERE datname=$1 AND query LIKE 'SELECT pg_try_advisory_lock%'",[name])).rows[0];
+    // Released pool clients retain their previous query text. Target the actual
+    // granted lock, not an arbitrary idle connection that once requested one.
+    const rows=(await db.query(`SELECT l.pid FROM pg_locks l JOIN pg_database d ON d.oid=l.database
+      WHERE d.datname=$1 AND l.locktype='advisory' AND l.granted AND l.objsubid=1
+      AND l.classid=((hashtextextended($2,0)>>32)&4294967295)::oid
+      AND l.objid=(hashtextextended($2,0)&4294967295)::oid`,[name,`fate:planner-session:${x.task.exploration_id}`])).rows;
+    expect(rows).toHaveLength(1);const row=rows[0];
     expect(row).toBeDefined();
-    const aborted=new Promise<void>(resolve=>release.signal.addEventListener('abort',()=>resolve(),{once:true}));
+    const wait=AbortSignal.any([release.signal,AbortSignal.timeout(5000)]);
+    const aborted=new Promise<void>(resolve=>wait.addEventListener('abort',()=>resolve(),{once:true}));
     await db.query('SELECT pg_terminate_backend($1)',[row.pid]);await aborted;
     expect(release.signal.aborted).toBe(true);
   }finally{await release();}
@@ -196,7 +204,9 @@ it('delivers and acknowledges a newly compacted graph in the same planning round
   const engine=new Engine(db,{...defaultEngineConfig(),heartbeatMs:600000,debounceMs:1},async()=>x.input.model,dir);
   try{
     await engine.run(x.task.id);
-    const deadline=Date.now()+10000;let completed=false;
+    // This checks durable ordering, not a latency SLO; allow database fsync and
+    // lease setup on a loaded local PostgreSQL instance without weakening assertions.
+    const deadline=Date.now()+30000;let completed=false;
     while(Date.now()<deadline){
       try{completed=plannerDeliveries(x.entries()).completed.size===1;}catch{/* First file has not yet been flushed. */}
       if(completed)break;await new Promise(r=>setTimeout(r,20));
@@ -273,4 +283,44 @@ it('does not reuse complete coverage of a revoked or updated node',async()=>{
   expect((await plannerGrounding(x.ctx,entries)).reads).toHaveLength(1);
   await db.query('UPDATE exploration_nodes SET content_version=content_version+1 WHERE id=$1',[id]);
   expect((await plannerGrounding(x.ctx,entries)).reads).toHaveLength(0);
+});
+
+it.each([false,true])('bounds restored Planner history using native compaction without replay (failure=%s)',async fail=>{
+  const x=await fixture();let toolCalls=0;
+  const original='LOCAL_NEGATIVE node:7 v2; only port 8000 tested; pending node:9. '+' evidence '.repeat(28000);
+  const seed=await AgentRunner.create({...x.input.model,cwd:path.join(dir,'budget-seed'),agentDir:path.join(dir,'agent'),
+    resumeSessionPath:x.file,systemPrompt:'LOCAL test',toolAllowlist:['local_fixture'],
+    customTools:[{name:'local_fixture',label:'LOCAL fixture',description:'Read local synthetic evidence',parameters:{type:'object',properties:{}},
+      async execute(){toolCalls++;return {content:[{type:'text',text:original}],details:{}};}}]});
+  x.f.setResponses([fauxAssistantMessage([fauxToolCall('local_fixture',{})]),fauxAssistantMessage('Read synthetic evidence.')]);
+  try{await seed.prompt('Read the LOCAL synthetic evidence once.');}finally{await seed.dispose();}
+  const before=readFileSync(x.file,'utf8'),raw=x.entries().find(e=>e.type==='message'&&e.message.role==='toolResult')!;
+  const submitted=await call(addIntentTool(x.ctx),{intents:[{summary:'LOCAL one unchanged direction',asset_ids:[]}]});
+  const intentID=submitted.intents[0].intent_id;
+  const startCalls=x.f.state.callCount;let summaries=0,conversations=0,afterBytes=0;
+  x.f.setResponses(Array.from({length:8},()=>((context,options)=>{
+    if(options?.maxTokens){
+      summaries++;expect(options.maxTokens).toBeLessThanOrEqual(2048);
+      expect(JSON.stringify(context.messages)).toContain('LOCAL_NEGATIVE');
+      return fauxAssistantMessage(fail?'':'LOCAL_NEGATIVE node:7 v2 port 8000 only; pending node:9; originals recallable.');
+    }
+    conversations++;const text=JSON.stringify(context.messages);afterBytes=Buffer.byteLength(text);
+    expect(text).toContain('LOCAL_NEGATIVE');expect(text).toContain('宿主当前状态');
+    expect(text.length).toBeLessThan(original.length/2);
+    return fauxAssistantMessage('Review retained evidence before any dispatch.');
+  })));
+  if(fail){await expect(runPlannerRound(x.input)).rejects.toThrow();expect(conversations).toBe(0);expect(x.entries().filter(e=>e.type==='compaction')).toHaveLength(0);}
+  else{
+    await runPlannerRound(x.input);expect(conversations).toBe(1);expect(afterBytes).toBeLessThan(Buffer.byteLength(original)/2);
+    expect(x.entries().filter(e=>e.type==='compaction').length).toBeGreaterThan(0);
+    const r=await call(contextGetTool(x.ctx),{items:[{ref:`session:${raw.id}`,field:'/content'}],max_chars:500});
+    expect(r.items[0].content).toContain('LOCAL_NEGATIVE');expect(r.items[0].next_offset).toBeGreaterThan(0);
+    const runtime=(await db.query("SELECT effective FROM runtime_role_configs WHERE task_id=$1 AND role='planner' ORDER BY started_at DESC LIMIT 1",[x.task.id])).rows[0]!;
+    expect(runtime.effective.context_policy).toMatchObject({version:'planner-context-v2',thresholdTokens:48000});
+    expect(runtime.effective.compaction.requests).toBe(summaries);
+    const duplicate=await call(addIntentTool(x.ctx),{intents:[{summary:'LOCAL one unchanged direction',asset_ids:[]}]});
+    expect(duplicate.intents[0]).toMatchObject({intent_id:intentID,created:false});
+  }
+  expect(summaries).toBeGreaterThan(0);expect(x.f.state.callCount-startCalls).toBe(summaries+conversations);
+  expect(toolCalls).toBe(1);expect(readFileSync(x.file,'utf8').startsWith(before)).toBe(true);
 });

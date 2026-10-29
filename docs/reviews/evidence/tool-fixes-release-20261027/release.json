@@ -1,0 +1,104 @@
+{
+  "source_commit": "c5795437adc2cc2ddf176202fedb04d8b7ecc776",
+  "included_fixes": [
+    "925ded1a",
+    "c5795437"
+  ],
+  "runtime_version": "series-c5795437-production",
+  "release": "/Users/pphua/.local/share/fate/releases/20261027-113639-c5795437",
+  "backend_pid": 3067,
+  "frontend_pid": 19541,
+  "shutdown": {
+    "requested_at": "2026-10-27T03:41:18.134Z",
+    "exited_at": "2026-10-27T03:41:19.491Z",
+    "remaining_leases_and_slots": {
+      "task": 0,
+      "session": 0,
+      "role": 0,
+      "worker_slots": 0
+    },
+    "used_sigkill": false
+  },
+  "backup": {
+    "directory": "/Users/pphua/.local/share/fate/backups/20261027-113639-c5795437",
+    "database_dump_bytes": 23938739,
+    "completed_at": "2026-10-27T03:41:25.397Z",
+    "contents": [
+      "database",
+      "data including sessions and evidence",
+      "config",
+      "JWT key"
+    ],
+    "sensitive_files_outside_git": true
+  },
+  "started_at": "2026-10-27T03:41:34.167Z",
+  "task_state_policy": "preserve current states; do not resume paused tasks or restart completed tasks",
+  "paused_preserved": [
+    4855
+  ],
+  "frontend_rebuilt": false,
+  "validation": {
+    "ready": true,
+    "backend_build": true,
+    "regression_passed": 57,
+    "graceful_shutdown_passed": 2,
+    "filtered_tests_not_counted": true,
+    "initial_shutdown_fixture_config_issue": "rerun with explicit isolated PostgreSQL configuration passed"
+  },
+  "production_asset_search": {
+    "task_id": 4856,
+    "total": 46,
+    "returned": 46,
+    "forms_equal": true
+  },
+  "tool_acceptance": {
+    "verified_at": "2026-10-27T03:41:46.586Z",
+    "artifact": "/Users/pphua/.local/share/fate/releases/20261027-113639-c5795437",
+    "model_requests": 0,
+    "external_target_requests": 0,
+    "asset_search": {
+      "dsl_type": true,
+      "top_level_type": true,
+      "matching": 2,
+      "pagination": true,
+      "actual_planner_binding": true
+    },
+    "http_request": {
+      "default_redirect_status": 200,
+      "first_hop_status": 302,
+      "first_hop_requests": 1,
+      "failure_code": "UND_ERR_SOCKET",
+      "failure_hop": 2,
+      "failure_port_recorded": true,
+      "preserved_response_status": 302,
+      "persisted_evidence": true,
+      "actual_worker_binding": true
+    }
+  },
+  "browser_check": {
+    "checked_at": "2026-10-27T03:43:27.732Z",
+    "url": "http://localhost:5173/function/tasks/detail?id=4855&tab=sessions&section=chat",
+    "task_remained_paused": true,
+    "connection": "实时连接",
+    "console_errors": 0
+  },
+  "artifact_hashes": {
+    "db/asset-dsl.js": "92f7d37f96159202482a7239b0e2bddc80689c980026ef5950faa09d816ef1ad",
+    "tools/assets.js": "585f76cb5acdd0f231519633268190558b33824d80d8629d9f8bc806210ed13a",
+    "evidence/http.js": "ca4f0ef30d3184e62ab219569ef94ac50396aecb849e85f18ab82bb417c165ef",
+    "evidence/target-transport.js": "ee2ffc082a529957daadfcedb0235304479a3d94d4e3941b2dfa57e67d85d109",
+    "tools/evidence.js": "53d6b8d27fa7cdbfdecfe7c876621a45a9cd982d7c8c60576e499c804dd3cad5",
+    "tools/errors.js": "b7bf0160a551e150fe07c1bc8b8a592d70c35ba5deefd8613f0c7776bf30e94b",
+    "tools/define.js": "47d400b126cd84042a471a4bb231ed00d1645b53cfa7a60a5bd11345458b397c"
+  },
+  "limitations": [
+    "HTTP runtime acceptance used local servers and an isolated database with the deployed artifact; no external target was retried.",
+    "ETIMEDOUT redirect case was verified with a deterministic fault fixture; real local socket failure was also verified.",
+    "Only the 2 selected graceful shutdown tests ran; 29 unselected tests are not counted as passed."
+  ],
+  "rollback": {
+    "previous_backend_release": "/Users/pphua/.local/share/fate/releases/20261026-232203-91296117",
+    "preserve_database_and_evidence": true,
+    "requires_graceful_executor_exit": true
+  }
+}

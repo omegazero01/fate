@@ -1,3 +1,4 @@
+import {plannerTitle} from './planner-title.js';
 import {createHash} from 'node:crypto';
 import type {SessionEntry} from '@earendil-works/pi-coding-agent';
 import type {ToolRunContext} from '../tools/context.js';
@@ -74,7 +75,7 @@ export async function plannerGrounding(ctx:ToolRunContext,entries:readonly Sessi
 export type PlannerGrounding=Awaited<ReturnType<typeof plannerGrounding>>;
 export interface PlannerReceipt {
   version:1;delivery_id:string;raw_ref?:string;raw_message_hash?:string;summary:string;grounding:PlannerGrounding;
-  submitted_intent_ids:number[];goals:Array<{id:number;state:string}>;
+  planning_title?:string|null;submitted_intent_ids:number[];goals:Array<{id:number;state:string}>;
 }
 export async function plannerReceipt(ctx:ToolRunContext,entries:readonly SessionEntry[],deliveryID:string,status:string):Promise<PlannerReceipt>{
   const grounding=await plannerGrounding(ctx,entries);
@@ -99,6 +100,7 @@ export async function plannerReceipt(ctx:ToolRunContext,entries:readonly Session
       `原文读取：${grounding.read_total} 个字段/页有可核验的返回记录；不据此声称历史全文或整图已读。`,
     `模型原始总结保留${raw?`于 session:${raw.id}`:''}，供追溯；此回执只确认宿主记录，不为模型自由文本作语义背书。`].join('\n');
   return {version:1,delivery_id:deliveryID,raw_ref:raw?`session:${raw.id}`:undefined,raw_message_hash:raw?.type==='message'?hash(raw.message):undefined,
+    planning_title:raw?.type==='message'&&raw.message.role==='assistant'?plannerTitle(raw.message.content.filter(b=>b.type==='text').map(b=>b.text).join('\n')):null,
     summary:text,grounding,submitted_intent_ids:intents.map(n=>n.id),goals};
 }
 /** Project checked host receipts for subsequent requests. Never rewrite the JSONL.

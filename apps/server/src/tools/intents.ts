@@ -27,7 +27,7 @@ const intentFields = {
                 priority: { type: "integer", minimum: 0, maximum: 10, description: "省略或 0 按 5 处理" },
                 contract: {type:'object',description:'可选边界补充，不要求填写细化验收表。objective/acceptance 省略时沿用 summary；work 仅在已有稳定方向标识时使用。',properties:{
                   objective:{type:'string'},acceptance:{type:'array',minItems:1,maxItems:10,items:{type:'string'}},out_of_scope:{type:'array',maxItems:20,items:{type:'string'}},
-                  basis:{type:'array',description:'仅引用已读取的 fact/finding 及其实际版本，可引用任务根 fact；goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer'},version:{type:'integer',minimum:0}},required:['node_id','version']}},
+                  basis:{type:'array',description:'可省略：parent_ids 由宿主绑定实际版本。显式填写时仅用已读取 fact/finding 的顶层 version/content_version，可为 0；read_receipt.version、writeback.version 是格式版本，不能作为依据版本。goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer'},version:{type:'integer',minimum:0,description:'节点内容版本，不是读取回执或写回格式版本'}},required:['node_id','version']}},
                   work:{type:'object',properties:{resource:{type:'string'},question_key:{type:'string'},method_class:{type:'string'},identity:{type:'string'}},required:['resource','question_key','method_class','identity']},
                   allowed_tools:{type:'array',items:{type:'string'},maxItems:50,description:'精确工具名，见 graph_overview.worker_capabilities；HTTP GET 使用 http_request，不能编造 http_get 等别名。内部事实/进度/结果写回不受此执行工具清单限制。'},
                 }},

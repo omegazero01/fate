@@ -9,6 +9,7 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-card text-card-foreground",
+        notice: "border-[color-mix(in_oklch,var(--status-info)_40%,transparent)] border-l-4 bg-[color-mix(in_oklch,var(--status-info)_8%,var(--card))] text-foreground [&_[data-slot=marker]]:text-[var(--status-info)]",
         destructive:
           "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
       },

@@ -1,3 +1,7 @@
+import {PLANNER_TITLE_PROTOCOL} from './planner-title.js';
+import {plannerContextPolicy} from './planner-context-policy.js';
+import {roleContextPolicy} from './context-policy.js';
+import {beginPlannerDisplayRound,finishPlannerDisplayRound} from '../db/planner-rounds.js';
 import {goalsBootstrap,activeBootstrap,saveBootstrapGoals,type GoalsPhase} from '../db/goals-bootstrap.js';
 import {GOALS_STAGE_TOOLS,GOALS_STAGE_PROTOCOL,goalsStageVariables} from './goals-policy.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
@@ -241,6 +245,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
   const tools = await applyToolBindings(db, "worker", workerTools(ctx));
   const disabledBuiltin = await disabledBuiltinTools(db);
   const rc = await agentRunConfig(db, "worker");
+  const contextPolicy=roleContextPolicy('worker',model.model.contextWindow,await db.platform().getSetting('worker_context_budget_tokens'));
 
   // Keep role/Skill/tool prefixes stable. The host supplies the immutable mandate
   // at every request boundary, including after compaction and session recovery.
@@ -273,6 +278,9 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     stopOnRecoveryBlock:()=>journal.recoveryBlocked,
     contextLayout: CONTEXT_LAYOUT_VERSION,
     taskContext,
+    contextPolicy,
+    compactionSettings:contextPolicy.compactionSettings,
+    summaryMaxTokens:contextPolicy.summaryMaxTokens,
     reserveSettlementTurns: 2,
     boundaryContext: async()=>constraintBlock(await loadConstraints(db,expID))+'\n'+await contextNeedBoundary(ctx),
     compactionInstructions:CONTEXT_RETENTION_RULES,
@@ -360,6 +368,7 @@ export interface PlannerRoundInput {
 }
 
 export interface PlannerRoundResult {
+  planningTitle?:string|null;
   aborted: boolean;
   stopReason?: "completed" | "aborted" | "budget";
   lastAssistantText: string | undefined;
@@ -374,8 +383,17 @@ export async function runPlannerRound(input: PlannerRoundInput): Promise<Planner
   const unlock=await lockPlannerSession(input.db,input.expID,input.signal);
   try{
     await input.hooks.assertOwnership?.(input.db);
-    validatePlannerSession(plannerSessionFile(input.dataDir,input.expID));
-    return await runPlannerSession({...input,signal:unlock.signal});
+    await validatePlannerSession(plannerSessionFile(input.dataDir,input.expID));
+    const planningRoundID=input.planningRoundID??randomUUID();
+    await beginPlannerDisplayRound(input.db,input.expID,planningRoundID);
+    try {
+      const result=await runPlannerSession({...input,planningRoundID,signal:unlock.signal});
+      await finishPlannerDisplayRound(input.db,input.expID,planningRoundID,result.planningTitle??null);
+      return result;
+    } catch(error) {
+      await finishPlannerDisplayRound(input.db,input.expID,planningRoundID,null);
+      throw error;
+    }
   }finally{await unlock();}
 }
 
@@ -387,12 +405,13 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
   const disabled = await disabledBuiltinTools(db, "planner");
   const prc = await agentRunConfig(db, "planner");
   const plannerBudget = agentBudgets(prc,{maxTurns:input.maxTurns,maxDurationMs:120_000});
+  const contextPolicy=plannerContextPolicy(model.model.contextWindow,await db.platform().getSetting('planner_context_budget_tokens'));
   // A task already past its deadline only permits the host's bounded final review.
   if(input.terminalOnly){
     plannerBudget.maxTurns=plannerBudget.maxTurns>0?Math.min(plannerBudget.maxTurns,input.maxTurns):input.maxTurns;
     plannerBudget.maxDurationMs=plannerBudget.maxDurationMs>0?Math.min(plannerBudget.maxDurationMs,120_000):120_000;
   }
-  const system = await systemRolePrompt(db, "planner", { Goal: goal }, input.terminalOnly, input.terminalOnly ? input.wrapupPromptOverride : undefined)+'\n\n'+PLANNER_READING_RULES;
+  const system = await systemRolePrompt(db, "planner", { Goal: goal }, input.terminalOnly, input.terminalOnly ? input.wrapupPromptOverride : undefined)+'\n\n'+PLANNER_READING_RULES+'\n'+PLANNER_TITLE_PROTOCOL;
 
   const overview = await buildGraphOverview(ctx);
   overview.asset_readers=tools.filter(t=>['asset_search','asset_get'].includes(t.name)).map(t=>t.name);
@@ -434,6 +453,9 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
     signal: input.signal, ...plannerBudget,
     toolAllowlist: ["read",...(!input.terminalOnly?["write","edit","bash","mcp__*",...execution.names]:[]), ...tools.map((t) => t.name)].filter((name) => !disabled.has(name)),
     resumeSessionPath:plannerSessionFile(dataDir,expID),
+    contextPolicy,
+    compactionSettings:contextPolicy.compactionSettings,
+    summaryMaxTokens:contextPolicy.summaryMaxTokens,
     compactionInstructions:PLANNER_COMPACTION_RULES+'\n'+CONTEXT_RETENTION_RULES,
     wrapup: ({reason}) => reason==='settled'?undefined:{prompt:input.wrapupPromptOverride??(input.terminalOnly?PLANNER_TASK_TIMEOUT_WRAPUP:prc.wrapupPrompt||'预算将尽，停止新探测，保存已确定的规划并简述结果。')},
     maxWrapupTurns: prc.wrapupMaxTurns || 1,
@@ -465,7 +487,7 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
       const saved=prior?.type==='custom'?prior.data as Awaited<ReturnType<typeof plannerReceipt>>:
         await plannerReceipt(ctx,runner.sessionEntries,delivery.id,recovered.stopReason??'completed');
       if(!prior)runner.appendSessionEntry('planner_grounded_result',saved);
-      return {...recovered,lastAssistantText:saved.summary,...receipt,usage:plannerCounter.usage()};
+      return {...recovered,lastAssistantText:saved.summary,planningTitle:saved.planning_title??null,...receipt,usage:plannerCounter.usage()};
     }
     await runner.appendContextOnce(`planner:${delivery.id}`,delivery.input);
     const res = await runner.prompt('处理本轮已交付的变化。以宿主当前状态为准，需要时读取图谱和历史原文，完成规划后直接总结。');
@@ -477,7 +499,7 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
       await input.hooks.assertOwnership?.(db);
       runner.appendSessionEntry('planner_delivery_completed',{deliveryID:delivery.id,result:{aborted:res.aborted,stopReason:res.stopReason,lastAssistantText:res.lastAssistantText}});
     }
-    return { ...res,...receipt,usage: plannerCounter.usage() };
+    return { ...res,...receipt,planningTitle:checked.planning_title??null,usage: plannerCounter.usage() };
   } finally { await runner.dispose(); }
 }
 

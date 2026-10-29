@@ -7,6 +7,7 @@ import {roleToolDescription,roleToolParameters} from '../agent/tool-description-
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { ToolRunContext } from "./context.js";
 import {saveToolOutput} from '../evidence/tool-outputs.js';
+import {ToolResultError} from './errors.js';
 
 export const MAX_TOOL_OUTPUT = 20 * 1024;
 
@@ -102,7 +103,7 @@ export function domainTool<T>(spec: DomainToolSpec<T>, ctx: ToolRunContext) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return {
-          content: [{ type: "text" as const, text: clampOutput(JSON.stringify({ error: msg })) }],
+          content: [{ type: "text" as const, text: clampOutput(JSON.stringify({ ...(err instanceof ToolResultError ? err.details : {}), error: msg })) }],
           isError: true,
           details: undefined,
         };
