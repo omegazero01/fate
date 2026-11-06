@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { PageHeading, WorkspaceToolbar, WorkspaceEmpty, WorkspaceError } from "@/components/workspace";
+import { WorkspaceToolbar, WorkspaceEmpty, WorkspaceError } from "@/components/workspace";
 import { toast } from "sonner";
 export function FilesTab({ taskId }: { taskId: string }) {
   const [directory, setDirectory] = React.useState(""),
@@ -78,17 +78,11 @@ export function FilesTab({ taskId }: { taskId: string }) {
   const parent = directory.includes("/") ? directory.slice(0, directory.lastIndexOf("/")) : "";
   return (
     <div className="flex flex-col gap-6">
-      <PageHeading
-        title="文件"
-        description="任务附件与工作产出。工作文件不等同于已发布的事实或证据。"
-        actions={
-          <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
-            <RefreshCw />
-            刷新
-          </Button>
-        }
-      />
       <WorkspaceToolbar>
+        <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
+          <RefreshCw />
+          刷新
+        </Button>
         {directory && (
           <Button variant="ghost" size="icon-sm" aria-label="返回上级目录" onClick={() => setDirectory(parent)}>
             <ArrowLeft />

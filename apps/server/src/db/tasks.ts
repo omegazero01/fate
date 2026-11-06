@@ -250,7 +250,7 @@ export class TaskStore {
       );
       const row = ins.rows[0]!;
       const taskID = Number(row.id);
-      if(opts.initializeGoals)await tx.query("INSERT INTO goals_bootstrap(task_id,goal,description) VALUES($1,$2,$3)",[taskID,goal,description]);
+      if(opts.initializeGoals)await tx.query("INSERT INTO goals_bootstrap(task_id,goal,description,policy) VALUES($1,$2,$3,'series-single-session-v1')",[taskID,goal,description]);
       await insertTaskRelations(tx, taskID, sourceTaskIDs);
       await insertTaskLLMProfiles(tx, taskID, llmProfileIDs);
       const scoped = new Database(this.db.pool, client);

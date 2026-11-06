@@ -1,4 +1,5 @@
 "use client";
+import {FindingReproductionPanel} from "@/components/finding-reproduction";
 
 import * as React from "react";
 
@@ -273,6 +274,7 @@ export function FindingDetailContent({
               )}
             </div>
           </div>
+          <details open={!finding.reproduction}><summary>原始证据与历史报告</summary>
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-medium">证据 / PoC</h3>
@@ -300,8 +302,10 @@ export function FindingDetailContent({
               )}
             </div>
           </div>
+          </details>
         </CardContent>
       </Card>
+      {id&&<FindingReproductionPanel key={`${id}:${contextTask??""}`} finding={finding} contextTask={contextTask} readOnly={readOnly} onChanged={onRefresh}/>}
       {id ? <FindingEvidencePanel finding={finding} contextTask={contextTask} readOnly={readOnly} /> : (
         <Alert>
           <AlertDescription>

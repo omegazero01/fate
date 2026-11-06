@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
-import type { Asset, CoverageAssetRef, CoverageAssetRefs, CoverageGraphEdge, CoverageGraphNode } from "@/lib/types";
+import type { Asset, CoverageAssetRef, CoverageAssetRefs, CoverageGraphEdge, CoverageGraphNode, CoverageGraphData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // 每个父节点下、同一类型的子节点默认展示的数量；超出折叠，"展示更多"每次再拉这么多。
@@ -299,7 +299,9 @@ function AssetSheet({
   node,
   taskId,
   onOpenChange,
+  onBrowse,
 }: {
+  onBrowse: (key:string) => void;
   node: CoverageGraphNode | null;
   taskId: string;
   onOpenChange: (open: boolean) => void;
@@ -359,6 +361,8 @@ function AssetSheet({
             </SheetHeader>
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex w-full min-w-0 flex-col gap-4 p-4">
+                <Button variant="outline" onClick={()=>onBrowse(node.key)}>浏览此节点的下级资产</Button>
+                <p className="text-xs text-muted-foreground">图中属性为摘要，较长内容可能省略；完整属性见下方原始数据。</p>
                 <section>
                   <h4 className="text-muted-foreground mb-1 text-xs font-medium">属性</h4>
                   <DetailRow label="类型">{meta.label}</DetailRow>
@@ -508,10 +512,12 @@ function FoldSheet({
 
 // ---------------------------------------------------------------------------
 function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; coverageEnabled?: boolean }) {
-  const [data, setData] = React.useState<{
-    nodes: CoverageGraphNode[];
-    edges: CoverageGraphEdge[];
-  } | null>(null);
+  const searchParams = useSearchParams();
+  const assetFocus = searchParams.get("asset");
+  const [view,setView]=React.useState<{page:number;focus?:string;revision?:string}>({page:1,...(assetFocus?{focus:`a:${assetFocus}`}:{})});
+  const [data,setData]=React.useState<CoverageGraphData|null>(null);
+  const request=React.useRef<AbortController|null>(null);
+  React.useEffect(()=>{setView({page:1,...(assetFocus?{focus:`a:${assetFocus}`}:{})});setSelectedAsset(null);},[taskId,assetFocus]);
   const [expanded, setExpanded] = React.useState<Map<string, number>>(new Map());
   const [selectedAsset, setSelectedAsset] = React.useState<CoverageGraphNode | null>(null);
   const [selectedFoldId, setSelectedFoldId] = React.useState<string | null>(null);
@@ -520,6 +526,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const graphRef = React.useRef<G6Graph | null>(null);
+  const renderState=React.useRef<{graph:G6Graph;ready:boolean}|null>(null);
   // click 处理需要最新的 key→RenderNode 映射（G6 事件回调闭包外读 ref）。
   const renderMapRef = React.useRef<Map<string, RenderNode>>(new Map());
   const gDataRef = React.useRef<{ nodes: G6NodeDatum[]; edges: { source: string; target: string }[] }>({
@@ -527,26 +534,15 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     edges: [],
   });
 
-  const fetchGraph = React.useCallback(() => {
-    setLoading(true);
-    api
-      .taskCoverageGraph(taskId)
-      .then((g) => {
-        // 资产覆盖度功能关闭(B1)：仍出图(范围内资产/company 关联依旧可见)，但抹平
-        // tested 状态——不显示测试进度、不做已测高亮。
-        const nodes = coverageEnabled ? (g.nodes ?? []) : (g.nodes ?? []).map((n) => ({ ...n, tested: false }));
-        setData({ nodes, edges: g.edges ?? [] });
-        setLoadError("");
-      })
-      .catch((error) => {
-        setLoadError(String(error?.message ?? error));
-      })
-      .finally(() => setLoading(false));
-  }, [taskId, coverageEnabled]);
-
-  React.useEffect(() => {
-    fetchGraph();
-  }, [fetchGraph]);
+  const fetchGraph = React.useCallback(async () => {
+    request.current?.abort();const c=new AbortController();request.current=c;setLoading(true);setLoadError('');
+    try {
+      const g=await api.taskCoverageGraph(taskId,view,c.signal);if(c.signal.aborted)return;
+      setData({...g,nodes:coverageEnabled?g.nodes:g.nodes.map(n=>({...n,tested:false}))});setExpanded(new Map());
+    }catch(error){if(!c.signal.aborted){setData(null);setSelectedAsset(null);setLoadError(error instanceof Error?error.message:String(error));}}
+    finally{if(!c.signal.aborted)setLoading(false);}
+  }, [taskId, coverageEnabled, view]);
+  React.useEffect(() => {void fetchGraph();return()=>request.current?.abort();}, [fetchGraph]);
 
   const { renderNodes, renderEdges } = React.useMemo(
     () =>
@@ -560,7 +556,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
   const sig = React.useMemo(
     () =>
       `${renderNodes
-        .map((n) => `${n.key}:${n.fold ? "f" : n.node.tested ? "t" : "u"}`)
+        .map((n) => `${n.key}:${n.fold ? "f" : `${n.node.tested}:${n.node.label}`}`)
         .sort()
         .join(",")}|${renderEdges.length}`,
     [renderNodes, renderEdges],
@@ -581,6 +577,11 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     const container = containerRef.current;
     if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
     graph.resize(container.clientWidth, container.clientHeight);
+    if(renderState.current?.graph===graph){
+      if(renderState.current.ready)void graph.fitView({when:"always"},false);
+      return;
+    }
+    renderState.current={graph,ready:false};
     graph.setData(gDataRef.current);
     // render() 异步跑 d3-force 布局;若组件在布局落地前被卸载/销毁,g6 会在已清空的
     // context 上访问 transform 抛错(见 runtime/layout transformDataAfterLayout)。这是纯
@@ -588,14 +589,17 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     void graph
       .render()
       .then(async () => {
-        if (!graph.destroyed) await graph.fitView({ when: "always" }, false);
+        if (!graph.destroyed) {
+          if(renderState.current?.graph===graph)renderState.current.ready=true;
+          await graph.fitView({ when: "always" }, false);
+        }
       })
       .catch((err) => {
         if (!graph.destroyed) console.error("[coverage-graph] render:", err);
       });
   }, []);
 
-  // 建图（一次）。动态 import 避开 SSR/静态导出期的 window 依赖。
+  // Each bounded page owns its layout. Dispose the previous simulation before replacing node IDs.
   React.useEffect(() => {
     let destroyed = false;
     let graph: G6Graph | null = null;
@@ -683,13 +687,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
       graph?.destroy();
       graphRef.current = null;
     };
-  }, [applyData]);
-
-  // 可见集合变化 → 重新灌数据 + 布局。sig 只作为重排触发器（applyData 读 gDataRef）。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: sig 是刻意的重排触发依赖
-  React.useEffect(() => {
-    applyData();
-  }, [sig, applyData]);
+  }, [applyData,sig]);
 
   const showMore = React.useCallback((groupId: string) => {
     setExpanded((prev) => {
@@ -707,8 +705,6 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     if (selectedFoldId != null && !selectedFold) setSelectedFoldId(null);
   }, [selectedFoldId, selectedFold]);
 
-  const searchParams = useSearchParams();
-  const assetFocus = searchParams.get("asset");
   const lastAssetFocus = React.useRef("");
   React.useEffect(() => {
     if (!assetFocus) {
@@ -724,9 +720,9 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     }
   }, [assetFocus, data, taskId]);
 
-  const total = data?.nodes.length ?? 0;
-  const tested = data?.nodes.filter((n) => n.in_scope && n.tested).length ?? 0;
-  const inScope = data?.nodes.filter((n) => n.in_scope).length ?? 0;
+  const total = data?.total_assets ?? 0;
+  const tested = data?.tested ?? 0;
+  const inScope = total;
 
   return (
     <div className="relative h-full w-full">
@@ -737,7 +733,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
         {loadError && (
           <Alert variant="destructive">
             <AlertTitle>资产图读取失败</AlertTitle>
-            <AlertDescription>{loadError}。保留上次成功结果，请刷新重试。</AlertDescription>
+            <AlertDescription>{loadError}。请刷新第一页重试。</AlertDescription>
           </Alert>
         )}
         <div className="flex items-center justify-between gap-3">
@@ -755,10 +751,18 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
           ) : (
             <span className="text-muted-foreground">{loading ? "加载中…" : "暂无范围内资产（先锚定任务范围）"}</span>
           )}
-          <Button variant="ghost" size="icon" className="size-6" onClick={fetchGraph} title="刷新">
+          <Button variant="ghost" size="icon" className="size-6" disabled={loading} onClick={()=>setView(v=>({page:1,focus:v.focus}))} title="刷新">
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </Button>
         </div>
+        {data&&<div className="flex flex-col gap-2">
+          <p className="text-muted-foreground">{view.focus?'当前节点下级':'范围内资产'}：第 {data.page} / {Math.max(1,Math.ceil(data.total/data.page_size))} 页 · 本页 {data.seed_keys.length} / 共 {data.total}；连接父节点另行显示。</p>
+          <div className="flex flex-wrap gap-2">
+            {view.focus&&<Button size="sm" variant="outline" disabled={loading} onClick={()=>setView({page:1})}>全部范围资产</Button>}
+            {data.page>1&&<Button size="sm" variant="outline" disabled={loading} onClick={()=>setView(v=>({...v,page:data.page-1,revision:data.revision}))}>上一页资产图</Button>}
+            {data.next_page!==null&&<Button size="sm" variant="outline" disabled={loading} onClick={()=>setView(v=>({...v,page:data.next_page!,revision:data.revision}))}>下一页资产图</Button>}
+          </div>
+        </div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1.5">
           {(Object.keys(kindMeta) as Kind[]).map((k) => {
             const m = kindMeta[k];
@@ -789,11 +793,11 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
           </span>
         </div>
         <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-          力导向布局，可拖拽节点、滚轮缩放；灰色「⋯」是折叠节点，点开可展开更多。
+          当前页保留父节点层级；点击节点可浏览下级。灰色「⋯」仅折叠本页内容，不改变总数。
         </p>
       </div>
 
-      <AssetSheet node={selectedAsset} taskId={taskId} onOpenChange={(o) => !o && setSelectedAsset(null)} />
+      <AssetSheet node={selectedAsset} taskId={taskId} onOpenChange={(o) => !o && setSelectedAsset(null)} onBrowse={focus=>{setSelectedAsset(null);setView({page:1,focus});}} />
       <FoldSheet
         fold={selectedFold}
         onOpenChange={(o) => !o && setSelectedFoldId(null)}

@@ -384,7 +384,7 @@ function TaskDetailInner() {
                 <TabsTrigger value="assets">测试资产</TabsTrigger>
               </TabsList>
               <TabsContent value="graph" forceMount hidden={explore !== "graph"}>
-                <GraphTab taskId={id} />
+                <GraphTab taskId={id} active={tab === 'graph' && explore === 'graph'} />
               </TabsContent>
               <TabsContent value="coverage" forceMount hidden={explore !== "coverage"}>
                 <CoverageGraphTab taskId={id} coverageEnabled={task.coverage_enabled !== false} />

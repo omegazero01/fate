@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import {ConstraintSource} from "@/components/constraint-source";
+import {Badge} from "@/components/ui/badge";
 
 import {
   ActivityIcon,
@@ -565,15 +567,13 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           )}
         </CardContent>
       </Card>
-      {/* 操作约束管理：allow=允许 / deny=禁止。约束会在下一轮规划时注入 planner/worker 的系统
-          提示以框定探索边界（注入范围可在 系统设置 里按 planner/worker 开关）。改动不即时打断，
-          下一轮规划自然读到。 */}
+      {/* 最新约束在模型请求边界刷新，旧版本生成的新目标操作在执行前拒绝。 */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ShieldAlertIcon className="size-4 text-amber-500" /> 操作约束
+          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+            <span className="flex shrink-0 items-center gap-2"><ShieldAlertIcon className="size-4 text-amber-500" /> 操作约束</span>
             <span className="text-muted-foreground text-xs font-normal">
-              （框定 planner/worker 的探索边界，共 {constraints.length} 条；改动下一轮规划生效）
+              （框定 planner/worker 的探索边界，共 {constraints.length} 条；改动将在下一次模型请求中读取；旧版本的新操作会被拒绝）
             </span>
           </CardTitle>
         </CardHeader>
@@ -585,8 +585,8 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               value={conKind}
               onChange={(e) => setConKind(e.target.value as TaskConstraint["kind"])}
             >
-              <NativeSelectOption value="deny">禁止</NativeSelectOption>
-              <NativeSelectOption value="allow">允许</NativeSelectOption>
+              <NativeSelectOption value="deny">限制／注意事项</NativeSelectOption>
+              <NativeSelectOption value="allow">允许／限定</NativeSelectOption>
             </NativeSelect>
             <Input
               className="h-7 min-w-56 flex-1 text-sm"
@@ -619,8 +619,8 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                       value={editConKind}
                       onChange={(e) => setEditConKind(e.target.value as TaskConstraint["kind"])}
                     >
-                      <NativeSelectOption value="deny">禁止</NativeSelectOption>
-                      <NativeSelectOption value="allow">允许</NativeSelectOption>
+                      <NativeSelectOption value="deny">限制／注意事项</NativeSelectOption>
+                      <NativeSelectOption value="allow">允许／限定</NativeSelectOption>
                     </NativeSelect>
                     <Input
                       className="h-7 min-w-56 flex-1 text-sm"
@@ -653,21 +653,16 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                     </Button>
                   </div>
                 ) : (
-                  <div key={c.id} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
-                    <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
-                        c.kind === "allow"
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                          : "bg-red-500/15 text-red-600 dark:text-red-400"
-                      }`}
-                    >
-                      {c.kind === "allow" ? "允许" : "禁止"}
-                    </span>
-                    <span className="min-w-0 flex-1 break-words">{c.text}</span>
+                  <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm sm:flex">
+                    <Badge className="w-fit" variant="outline">{c.kind === "allow" ? "允许／限定" : "限制／注意事项"}</Badge>
+                    <div className="col-span-3 row-start-2 min-w-0 flex-1 break-words">
+                      <p className="whitespace-pre-wrap">{c.text}</p>
+                      <ConstraintSource source={c.source} />
+                    </div>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 shrink-0 px-1.5"
+                      className="col-start-2 row-start-1 h-6 shrink-0 px-1.5"
                       disabled={conBusy}
                       onClick={() => startEditConstraint(c)}
                     >
@@ -676,7 +671,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 shrink-0 px-1.5"
+                      className="col-start-3 row-start-1 h-6 shrink-0 px-1.5"
                       disabled={conBusy}
                       onClick={() => void removeConstraint(c)}
                     >
@@ -688,7 +683,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">
-              暂无操作约束。建任务时会自动从描述/目标抽取；也可在此手动增删改，用来框定「允许/禁止做哪些操作」。
+              暂无操作约束。建任务时会自动从描述/目标抽取；也可在此手动增删改，按原文保留允许、限制、注意事项与例外。
             </p>
           )}
         </CardContent>

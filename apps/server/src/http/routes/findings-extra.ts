@@ -1,3 +1,6 @@
+import {assembleReport} from '../../evidence/reproduction.js';
+import {readBlob} from '../../evidence/blobs.js';
+import {reportZip} from '../../evidence/report-zip.js';
 import {READABLE_FINDINGS} from "./finding-projection.js";
 // 批次 C6：发现页增强——真资产树 / 导出（md/csv）/ 漏洞深挖。
 // 对齐前端 web/src/lib/api.ts 的 findingAssetTree/exportFindings/deepenFinding 与
@@ -334,6 +337,11 @@ export function makeFindingsExportHandler(app: FastifyInstance) {
        FROM ${READABLE_FINDINGS} f${where} ORDER BY f.created_at DESC LIMIT 5000`,
       params,
     );
+    const currentIDs=rows.rows.filter(r=>Number(r.id)>0).map(r=>Number(r.id));
+    const details=new Map((await db().query('SELECT id,reproduction,report,report_sections,evidence_version,report_evidence_version FROM findings WHERE id=ANY($1::bigint[]) AND finding_readable(id)',[currentIDs])).rows.map(r=>[String(r.id),r]));
+    const imageRows=(await db().query('SELECT finding_id,id,step_id,caption,mime,position,blob_hash FROM finding_step_images WHERE finding_id=ANY($1::bigint[]) ORDER BY finding_id,position,id',[currentIDs])).rows;
+    const imagesByFinding=new Map<string,typeof imageRows>();for(const image of imageRows){const key=String(image.finding_id),list=imagesByFinding.get(key)??[];list.push(image);imagesByFinding.set(key,list);}
+    for(const row of rows.rows)Object.assign(row,details.get(String(row.id)));
     const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v ?? ""));
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 
@@ -373,6 +381,7 @@ export function makeFindingsExportHandler(app: FastifyInstance) {
           task_id: r["task_id"] === null ? null : String(r["task_id"]),
           summary: String(r["summary"]),
           evidence: String(r["evidence"]),
+          reproduction:r.reproduction??null,report_sections:r.report_sections??null,images:(imagesByFinding.get(String(r.id))??[]).map(({blob_hash,...meta})=>meta),
           created_at: iso(r["created_at"]),
         })),
         null,
@@ -380,22 +389,21 @@ export function makeFindingsExportHandler(app: FastifyInstance) {
       );
     }
 
-    // md / md-single / md-zip：单文件 Markdown（zip 打包延后为 md 单文件，简报注明）。
-    const lines = ["# 发现导出", "", `共 ${rows.rows.length} 条（scope=${scope}，导出时间 ${new Date().toISOString()}）`, ""];
-    for (const r of rows.rows) {
-      const title = String(r["name"]) !== "" ? String(r["name"]) : String(r["vulnclass"]) || `漏洞 #${String(r["id"])}`;
-      lines.push(
-        `## [${String(r["severity"]) || "-"}] ${title}（${String(r["status"]) || "pending"}）`,
-        "",
-        `- 漏洞类目：${String(r["vulnclass"]) || "-"}`,
-        `- 任务：${r["task_id"] === null ? "-" : `#${String(r["task_id"])}`}`,
-        `- 发现时间：${iso(r["created_at"])}`,
-        "",
-        String(r["summary"]) || "（无摘要）",
-        "",
-      );
-      if (String(r["evidence"]) !== "") lines.push("### 证据", "", String(r["evidence"]), "");
+    const lines=['# 发现导出',''],files:Array<{name:string;bytes:Buffer}>=[];
+    let imageBytes=0;
+    for(const f of rows.rows){
+      const images=imagesByFinding.get(String(f.id))??[];
+      const available:typeof images=[];
+      for(const image of images){
+        if(format==='md-zip'){
+          try{const bytes=await readBlob(db(),String(image.blob_hash));imageBytes+=bytes.length;if(imageBytes>120*1024*1024)throw Object.assign(new Error('截图总量过大，请缩小导出范围'),{statusCode:413});files.push({name:`assets/${image.id}.${String(image.mime).split('/')[1]}`,bytes});available.push(image);}
+          catch(e){if((e as {statusCode?:number}).statusCode===413)throw e;lines.push(`> 截图 ${image.id} 不可用。`);}
+        }else available.push(image);
+      }
+      lines.push(assembleReport(f,available as never,format==='md-zip'?id=>`assets/${id}.${String(images.find(i=>i.id===id)?.mime).split('/')[1]}`:undefined),'');
     }
+    if(format==='md-zip')return reply.type('application/zip').header('Content-Disposition',`attachment; filename="findings-export-${stamp}.zip"`).send(reportZip([{name:'report.md',bytes:Buffer.from(lines.join('\n'))},...files]));
+    lines.push('> Markdown 单文件未打包截图；离线交付请选择 Markdown ZIP。');
     reply.header("Content-Type", "text/markdown; charset=utf-8");
     reply.header("Content-Disposition", `attachment; filename="findings-export-${stamp}.md"`);
     return lines.join("\n");

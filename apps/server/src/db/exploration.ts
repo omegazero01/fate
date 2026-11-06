@@ -1,4 +1,5 @@
-import {workIdentity,storedWorkIdentity,overlappingWork,directionIdentity,type WorkAsset} from '../agent/work-identity.js';
+import {workIdentity,directionIdentity} from '../agent/work-identity.js';
+import {ensureIntentWorkIndex,workIndexKeys,workAssets,workResourceAsset} from './intent-work-index.js';
 // 探索图 store：节点/边/锚点、意图指纹去重、advisory-lock 队列领取、状态机、activity 写入。
 // 忠实平移自 Go 版 db/exploration.go + db/worker_queue.go 的核心路径；
 // 列表/统计类只读方法按需在后续模块补充。
@@ -330,52 +331,48 @@ export class ExplorationStore {
         if(Number(source.report_revision)>0)ref.report_revision=Number(source.report_revision);
         else delete ref.report_revision;
       }
-      const rows = await tx.query<{ id: string; state:string; payload: Record<string, unknown>; anchors: string }>(
-        `SELECT n.id, n.state, n.payload,
-                COALESCE((SELECT json_agg(a.asset_id ORDER BY a.asset_id) FROM exploration_anchors a WHERE a.node_id=n.id), '[]'::json)::text AS anchors
-         FROM exploration_nodes n
-         WHERE n.exploration_id=$1 AND n.kind='intent'
-         ORDER BY CASE WHEN n.state IN ('open','running','paused') THEN 0 ELSE 1 END,n.id DESC`,
-        [this.expID],
-      );
-      const allAssets=new Set(anchors);
-      const collectResource=(contract:unknown)=>{const match=/^asset:([1-9][0-9]*)$/.exec(String((contract as {work?:{resource?:string}}|undefined)?.work?.resource??''));if(match)allAssets.add(Number(match[1]));};
-      collectResource(contract);
-      for(const row of rows.rows){for(const id of JSON.parse(row.anchors) as number[])allAssets.add(id);collectResource(row.payload.contract);}
-      const assetRows=allAssets.size?(await tx.query('SELECT id,type,url,method,params,domain,ip,port FROM assets WHERE id=ANY($1::bigint[])',[[...allAssets]])).rows:[];
-      const assetMap=new Map<number,WorkAsset>(assetRows.map(a=>[Number(a.id),{...a,id:Number(a.id),type:String(a.type)} as WorkAsset]));
-      const identity=workIdentity(contract,summary,anchors,assetMap);
-      const rowIdentities=new Map(rows.rows.map(row=>[row.id,storedWorkIdentity(row.payload.work_identity)??workIdentity(normalizeContract(row.payload.contract,String(row.payload.summary??'')),String(row.payload.summary??''),(row.payload.dispatch_asset_ids??row.payload.asset_ids??JSON.parse(row.anchors)) as number[],assetMap)]));
-      const sameWork=(row:typeof rows.rows[number])=>{
-        const old=rowIdentities.get(row.id)!;
-        return old.key===identity.key || ((!contract.work || !(row.payload.contract as {work?:unknown}|undefined)?.work) &&
-          directionIdentity(String(row.payload.summary??''))===directionIdentity(summary) && JSON.stringify(old.targets)===JSON.stringify(identity.targets));
-      };
+      await ensureIntentWorkIndex(tx,this.expID);
+      const assetMap=await workAssets(tx,[...anchors,...workResourceAsset(contract)],true);
+      const identity=workIdentity(contract,summary,anchors,assetMap),keys=workIndexKeys(identity,summary);
+      type IndexedIntent={id:string;state:string;payload:Record<string,unknown>;identity_key:string;prose_key:string;has_work:boolean};
+      // Only dispatch/cancellation/retry fields are needed. A historical result
+      // or long report must never be materialized by the queue's identity check.
+      const projection=`n.id,n.state,jsonb_build_object('cancelled_by_user',n.payload->'cancelled_by_user',
+        'contract',jsonb_build_object('basis',n.payload->'contract'->'basis')) payload,
+        w.identity_key,w.prose_key,w.has_work`;
+      const sameWork=(row:IndexedIntent)=>row.identity_key===keys.identity_key||
+        ((!contract.work||!row.has_work)&&row.prose_key===keys.prose_key);
       if(payload.retry_of){
-        const previous=rows.rows.find(row=>Number(row.id)===Number(payload.retry_of));
+        const previous=(await tx.query<IndexedIntent>(`SELECT ${projection} FROM intent_work_index w JOIN exploration_nodes n ON n.id=w.intent_id
+          WHERE w.exploration_id=$1 AND w.intent_id=$2`,[this.expID,Number(payload.retry_of)])).rows[0];
         if(!previous||!sameWork(previous))throw new Error('retry_of 必须指向本任务的同一项工作');
       }
-      for (const row of rows.rows) {
-        const existing = row.payload ?? {};
-        if (sameWork(row)) {
-          if(payload.retry_of && existing.cancelled_by_user===true)throw new Error('用户已取消此意图，不能借重试绕过');
-          if(payload.retry_of && Number(payload.retry_of)===Number(row.id) && !['open','running','paused'].includes(row.state)){
-            const reason=payload.retry_reason;
-            if(typeof reason!=='string'||!reason.trim())throw new Error('重试必须说明原因');
-            if(payload.retry_kind==='transient_failure' && ['blocked','exhausted','stopped'].includes(row.state))break;
-            const oldBasis=(existing.contract as {basis?:{node_id:number;version:number;report_revision?:number}[]}|undefined)?.basis??[];
-            if(payload.retry_kind==='new_evidence' && contract.basis.some(ref=>!oldBasis.some(old=>old.node_id===ref.node_id&&old.version-(old.report_revision??0)===ref.version-(ref.report_revision??0))))break;
-            throw new Error('重试需可恢复故障或新的有效事实依据');
-          }
-          await tx.commit();
-          return { id: Number(row.id), created: false, dedup:{version:3,strength:identity.strength,match:"equivalent_work"} };
+      const existingRow=(await tx.query<IndexedIntent>(`SELECT ${projection}
+        FROM intent_work_index w JOIN exploration_nodes n ON n.id=w.intent_id
+        WHERE w.exploration_id=$1 AND (w.identity_key=$2 OR (($4::boolean OR NOT w.has_work) AND w.prose_key=$3))
+        ORDER BY CASE WHEN n.state IN ('open','running','paused') THEN 0 ELSE 1 END,n.id DESC LIMIT 1`,
+        [this.expID,keys.identity_key,keys.prose_key,!contract.work])).rows[0];
+      if(existingRow){
+        const row=existingRow,existing=row.payload;
+        if(payload.retry_of&&existing.cancelled_by_user===true)throw new Error('用户已取消此意图，不能借重试绕过');
+        if(payload.retry_of&&Number(payload.retry_of)===Number(row.id)&&!['open','running','paused'].includes(row.state)){
+          const reason=payload.retry_reason;
+          if(typeof reason!=='string'||!reason.trim())throw new Error('重试必须说明原因');
+          const oldBasis=(existing.contract as {basis?:{node_id:number;version:number;report_revision?:number}[]}|undefined)?.basis??[];
+          const transient=payload.retry_kind==='transient_failure'&&['blocked','exhausted','stopped'].includes(row.state);
+          const changed=payload.retry_kind==='new_evidence'&&contract.basis.some(ref=>!oldBasis.some(old=>old.node_id===ref.node_id&&old.version-(old.report_revision??0)===ref.version-(ref.report_revision??0)));
+          if(!transient&&!changed)throw new Error('重试需可恢复故障或新的有效事实依据');
+        }else{
+          await tx.commit();return {id:Number(row.id),created:false,dedup:{version:3,strength:identity.strength,match:'equivalent_work'}};
         }
       }
-
-      if(payload.retry_of && !rows.rows.some(row=>Number(row.id)===Number(payload.retry_of)))throw new Error('retry_of 必须属于本任务');
-
-      const related=rows.rows.filter(row=>(['open','running','paused'].includes(row.state)||row.payload.cancelled_by_user===true)&&overlappingWork(identity,rowIdentities.get(row.id)!));
-      const stopped=related.find(row=>row.state==='paused'||row.payload.cancelled_by_user===true);
+      const related=identity.strength!=='structured'||!keys.target_hashes.length?[]:(await tx.query<{id:string;state:string;cancelled:boolean}>(
+        `SELECT n.id,n.state,n.payload->'cancelled_by_user'='true'::jsonb cancelled FROM intent_work_index w JOIN exploration_nodes n ON n.id=w.intent_id
+         WHERE w.exploration_id=$1 AND w.strength='structured' AND w.family=$2 AND w.resource_hash=$3 AND w.identity_key<>$4
+           AND w.target_hashes && $5::text[] AND (n.state IN ('open','running','paused') OR n.payload->'cancelled_by_user'='true'::jsonb)
+         ORDER BY CASE WHEN n.state IN ('open','running','paused') THEN 0 ELSE 1 END,n.id DESC`,
+        [this.expID,keys.family,keys.resource_hash,keys.identity_key,keys.target_hashes])).rows;
+      const stopped=related.find(row=>row.state==='paused'||row.cancelled);
       if(stopped)throw new Error(`方向与用户暂停或取消的意图 #${stopped.id} 重叠，不能借新意图绕过；先读取原意图及用户限制。`);
       const stored: Record<string, unknown> = { ...payload, fingerprint,work_identity:identity,dispatch_asset_ids:[...new Set(anchors)].sort((a,b)=>a-b) };
       const cleanAnchors = [...new Set(anchors.filter((a) => a > 0))].sort((a, b) => a - b);
@@ -390,6 +387,8 @@ export class ExplorationStore {
       for (const assetID of cleanAnchors) {
         await tx.query(`INSERT INTO exploration_anchors(node_id, asset_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [id, assetID]);
       }
+      // Publish the node, anchors and host identity projection atomically.
+      await ensureIntentWorkIndex(tx,this.expID);
       await tx.commit();
       return { id, created: true, dedup:{version:3,strength:identity.strength,...(related.length?{related_intent_ids:related.map(row=>Number(row.id))}:{})} };
     } catch (err) {
@@ -691,8 +690,33 @@ export class ExplorationStore {
   async claimNextWorker(owner: string, eligible?: (n: Node) => boolean): Promise<Node | null> {
     const { tx, release } = await this.beginQueue();
     try {
-      const q = await this.queueSnapshot(tx);
-      for (const n of q.items) {
+      const meta=(await tx.query<{manual:boolean;mode:string;met:boolean}>(`SELECT e.worker_queue_manual manual,
+        EXISTS(SELECT 1 FROM exploration_nodes WHERE exploration_id=e.id AND kind='goal') AND
+        NOT EXISTS(SELECT 1 FROM exploration_nodes WHERE exploration_id=e.id AND kind='goal' AND state<>'met') met,
+        COALESCE((SELECT execution_mode FROM tasks WHERE exploration_id=e.id AND deleted_at IS NULL),'managed') mode
+        FROM explorations e WHERE e.id=$1`,[this.expID])).rows[0];
+      if(!meta){await tx.commit();return null;}
+      const q={executionMode:meta.mode};
+      // Keep UI reordering's complete snapshot separate from execution. Keyset
+      // pages cap decoded payloads; all eligibility/fencing predicates still run
+      // in the original queue transaction. Production stops after a stale page
+      // so another task can use the dispatcher before the next pass.
+      let cursor:{rank:number;id:number}|undefined;
+      for(;;){
+      const rank=meta.manual?'queue_position':'-priority';
+      const page=await tx.query<Record<string,unknown>>(`SELECT ${NODE_COLS},${rank} AS claim_rank
+        FROM exploration_nodes WHERE exploration_id=$1 AND kind='intent' AND state='open'
+        AND payload->>'cancelled_by_user' IS DISTINCT FROM 'true'
+        AND payload->>'needs_replanning' IS DISTINCT FROM 'true'
+        AND (NOT $4::boolean OR origin IS DISTINCT FROM 'planner' OR payload->>'resume_requested'='true' OR payload->>'dispatch_source'='mainagent')
+        AND ($2::bigint IS NULL OR (${rank},id)>($2::bigint,$3::bigint))
+        AND NOT EXISTS (SELECT 1 FROM exploration_anchors ea JOIN tasks t ON t.exploration_id=exploration_nodes.exploration_id AND t.deleted_at IS NULL
+          WHERE ea.node_id=exploration_nodes.id AND NOT ${intentAssetAllowedSQL("t.id","ea.asset_id","exploration_nodes")})
+        ${INTENT_DISPATCH_PREDICATE}
+        ORDER BY ${rank},id LIMIT 64`,[this.expID,cursor?.rank??null,cursor?.id??null,meta.mode!==EXECUTION_MANUAL&&meta.met]);
+      if(!page.rows.length)break;
+      for (const row of page.rows) {
+        const n=this.mapNode(row);cursor={rank:Number(row.claim_rank),id:n.id};
         if (q.executionMode === EXECUTION_MANUAL && !nodeDispatchRequested(n)) continue;
         if (eligible && !eligible(n)) continue;
         if(n.payload.needs_replanning===true)continue;
@@ -723,6 +747,8 @@ export class ExplorationStore {
           return n;
         }
       }
+      if(!eligible||page.rows.length<64)break;
+      }
       await tx.commit();
       return null;
     } catch (err) {
@@ -741,8 +767,8 @@ export class ExplorationStore {
     const tokens = a.kind === "result";
     const res = await this.db.query<{ id: string }>(
       `INSERT INTO activity(exploration_id, node_id, worker, kind, tool, tool_use_id, is_error, summary, detail, metadata,
-                            input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, main_seg)
-       VALUES ($1,$2,NULLIF($3,''),$4,NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),$9,$10::jsonb,$11,$12,$13,$14,$15)
+                            input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, main_seg, created_at)
+       VALUES ($1,$2,NULLIF($3,''),$4,NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),$9,$10::jsonb,$11,$12,$13,$14,$15,COALESCE($16::timestamptz,now()))
        RETURNING id`,
       [
         this.expID,
@@ -760,6 +786,7 @@ export class ExplorationStore {
         tokens ? (a.cache_read_tokens ?? null) : null,
         tokens ? (a.cache_write_tokens ?? null) : null,
         a.main_seg ?? null,
+        a.created_at ?? null,
       ],
     );
     return Number(res.rows[0]!.id);

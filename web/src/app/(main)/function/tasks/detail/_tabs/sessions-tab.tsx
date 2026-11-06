@@ -606,7 +606,7 @@ export function SessionsTab({
   }
 
   const patchIntentState = React.useCallback(
-    (intentId: string, state?: string, cancelled?: boolean, reason?: string, executorActive?: boolean) => {
+    (intentId: string, state?: string, cancelled?: boolean, reason?: string, executorActive?: boolean, resumePending?: boolean) => {
       const patch = (rows: TaskNode[]) =>
         state
           ? rows.map((row) => {
@@ -624,7 +624,7 @@ export function SessionsTab({
                   /* Refreshed server rows will reconcile malformed legacy payloads. */
                 }
               }
-              return { ...row, state, payload, ...(executorActive === undefined ? {} : { executor_active: executorActive }) };
+              return { ...row, state, payload, ...(executorActive === undefined ? {} : { executor_active: executorActive }), ...(resumePending === undefined ? {} : { resume_pending: resumePending }) };
             })
           : rows.filter((row) => row.id !== intentId);
       setIntents(patch);
@@ -640,21 +640,25 @@ export function SessionsTab({
       if (!session.intent_id || session.inherited || controllingIntent) return;
       setControllingIntent(session.intent_id);
       if (action === "pause") setPausingIntent(session.intent_id);
+      // Keep notifications clear of the pause/resume controls at the pane foot.
+      const notice = { position: "top-right" as const };
       try {
         const result = await api.controlIntent(taskId, session.intent_id, action, reason);
-        patchIntentState(session.intent_id, result.state, result.cancelled_by_user, result.cancel_reason, result.state === "running" || result.execution_confirmed === false);
+        patchIntentState(session.intent_id, result.state, result.cancelled_by_user, result.cancel_reason, result.state === "running" || result.status === "waiting_for_executor", result.status === "resume_requested");
         if (action === "pause") {
-          if(result.execution_confirmed===false)toast.info(`Worker #${session.intent_id} 正在停止，等待执行器退出`);
-          else toast.success(`Worker #${session.intent_id} 已暂停`);
+          if(result.execution_confirmed===false)toast.info(`Worker #${session.intent_id} 正在停止，等待执行器退出`, notice);
+          else toast.success(`Worker #${session.intent_id} 已暂停`, notice);
         } else if (action === "resume") {
-          toast.success(`Worker #${session.intent_id} 已恢复执行`);
+          if(result.status === "resume_requested")toast.info(`Worker #${session.intent_id} 正在恢复，等待执行器领取`, notice);
+          else if(result.state === "running")toast.success(`Worker #${session.intent_id} 已恢复执行`, notice);
+          else toast.info(`Worker #${session.intent_id} 状态已更新`, notice);
         } else {
           // 取消 = 停止意图并附原因（不销毁意图与产出）；保留会话，状态置为 stopped。
-          toast.success(`Worker #${session.intent_id} 已取消执行`);
+          toast.success(`Worker #${session.intent_id} 已取消执行`, notice);
           setCancelReason("");
         }
       } catch (error) {
-        toast.error(`Worker 操作失败：${(error as Error).message}`);
+        toast.error(`Worker 操作失败：${(error as Error).message}`, notice);
       } finally {
         setControllingIntent(null);
         setPausingIntent(null);
@@ -673,14 +677,14 @@ export function SessionsTab({
       for (const id of ids) {
         try {
           const result = await api.controlIntent(taskId, id, action, reason);
-          patchIntentState(id, result.state, result.cancelled_by_user, result.cancel_reason, result.state === "running" || result.execution_confirmed === false);
+          patchIntentState(id, result.state, result.cancelled_by_user, result.cancel_reason, result.state === "running" || result.status === "waiting_for_executor", result.status === "resume_requested");
           succeeded.add(id);
         } catch (error) {
           failures.push(`#${id}：${(error as Error).message}`);
         }
       }
       setSelectedWorkers((previous) => new Set([...previous].filter((id) => !succeeded.has(id))));
-      const label = action === "cancel" ? "取消执行" : "开启执行";
+      const label = action === "cancel" ? "取消执行" : "提交恢复请求";
       if (succeeded.size) toast.success(`${succeeded.size} 个 Worker 已${label}`);
       if (failures.length)
         toast.error(`${failures.length} 个 Worker 操作失败，已保留选择`, { description: failures.join("；") });
@@ -898,9 +902,9 @@ export function SessionsTab({
   }, [taskId]);
 
   // Re-render on a timer so "streaming" liveness recomputes as activity goes stale.
-  const [, setTick] = React.useState(0);
+  const [tick, setTick] = React.useState(() => Date.now());
   React.useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1500);
+    const id = setInterval(() => setTick(Date.now()), 1500);
     return () => clearInterval(id);
   }, []);
 
@@ -1352,7 +1356,7 @@ export function SessionsTab({
     ["pending", "running", "paused"].includes(worker.status),
   );
   const batchResumable = selectedVisibleWorkers.filter(
-    (worker) => worker.status === "paused" && workerExecutionAllowed && !allIntents.some(n => n.id === worker.intent_id && n.executor_active),
+    (worker) => worker.status === "paused" && workerExecutionAllowed && !allIntents.some(n => n.id === worker.intent_id && (n.executor_active || n.resume_pending)),
   );
   const batchDeletable = selectedVisibleWorkers.filter(
     (worker) => worker.status === "pending" || sessionMeta.get(worker.id)?.executionCancelled,
@@ -1477,7 +1481,9 @@ export function SessionsTab({
   const mainBusy=sending||(mainChatRunning??recentLive(mainKey));
   React.useEffect(()=>{if(isMain)setViewedMainSeg(active.seg??currentSeg);},[isMain,active.seg,currentSeg]);
   React.useEffect(()=>{loadSession(mainKey);},[mainKey,loadSession]);
-  React.useEffect(()=>{if(focused)onProcessOpenChange(!isMain);},[focused,isMain,onProcessOpenChange]);
+  React.useEffect(()=>{
+    if(focused)onProcessOpenChange(!isMain&&(active.role!=="worker"||window.matchMedia("(min-width:1280px)").matches));
+  },[focused,isMain,active.role,onProcessOpenChange]);
   // 折叠态（手机端）标题栏要替代整张列表：显示当前会话名 + 其它会话的未读合计，
   // 否则收起后既不知道自己在看哪个会话，也看不到别处有新消息。
   const activeDisplayTitle = (active.role === "worker" ? sessionMeta.get(active.id)?.title : "") || active.title;
@@ -1561,9 +1567,9 @@ export function SessionsTab({
       0,
   };
 
-  // Run duration = span from this session's first step to its last (for a live
-  // session, "now" so it ticks up — the 1.5s setTick above re-renders it).
-  const runDuration = React.useMemo(() => {
+  const workerExiting=allIntents.some(n=>n.id===active.intent_id&&n.executor_active===true&&n.state!=="running");
+  // Cache the loaded record span, but keep elapsed time moving until actual exit.
+  const runSpan = React.useMemo(() => {
     let min = Infinity,
       max = 0;
     for (const a of activity) {
@@ -1573,9 +1579,9 @@ export function SessionsTab({
       if (t > max) max = t;
     }
     if (!Number.isFinite(min) || max === 0) return null;
-    const end = active.live ? Date.now() : max;
-    return Math.max(0, end - min);
-  }, [activity, active.live]);
+    return { min, max };
+  }, [activity]);
+  const runDuration = runSpan ? Math.max(0, (active.live || workerExiting ? tick : runSpan.max) - runSpan.min) : null;
 
   // ---- transcript auto-scroll (open → bottom; stick to bottom unless scrolled up) ----
   const contentRef = React.useRef<HTMLDivElement | null>(null);
@@ -1632,7 +1638,7 @@ export function SessionsTab({
       .finally(() => setSending(false));
   }
 
-  const workerExiting=allIntents.some(n=>n.id===active.intent_id&&n.executor_active===true&&n.state!=="running");
+  const workerResuming=allIntents.some(n=>n.id===active.intent_id&&n.resume_pending===true);
   const mainLoaded = !!store[currentMainKey]?.loaded;
   // 发送键位由系统设置决定（localStorage），默认 Enter 发送。
   const sendMode = useChatSendMode();
@@ -1958,8 +1964,9 @@ export function SessionsTab({
                           unread={store[keyForSession(s)]?.unread}
                           onClick={() => {
                             if (focused || invalidFocus) clearFocus();
+                            setRelatedSession(null);
                             setActiveId(s.id);
-                            onProcessOpenChange(true);
+                            onProcessOpenChange(s.role !== "worker" || window.matchMedia("(min-width:1280px)").matches);
                           }}
                           controlling={controllingIntent !== null}
                           selected={selectedWorkers.has(s.intent_id ?? "")}
@@ -2208,14 +2215,14 @@ export function SessionsTab({
               (active.status === "running" || active.status === "paused") ? (
               <div className="flex items-center justify-between gap-3 border-t p-3">
                 <span className="text-sm text-muted-foreground" role="status">
-                  {workerExiting || pausingIntent === active.intent_id ? "正在暂停 Worker…" : controllingIntent === active.intent_id ? "正在恢复 Worker…" : active.status === "paused" ? "Worker 已暂停" : "Worker 正在执行"}
+                  {workerExiting || pausingIntent === active.intent_id ? "正在暂停 Worker…" : controllingIntent === active.intent_id || workerResuming ? "正在恢复 Worker…" : active.status === "paused" ? "Worker 已暂停" : "Worker 正在执行"}
                 </span>
                 <Button size="sm" variant="outline"
-                  disabled={controllingIntent !== null || workerExiting || (active.status === "paused" && !workerExecutionAllowed)}
+                  disabled={controllingIntent !== null || workerExiting || workerResuming || (active.status === "paused" && !workerExecutionAllowed)}
                   onClick={() => void controlWorker(active, active.status === "running" ? "pause" : "resume")}
                   aria-label={active.status === "running" ? "暂停当前 Worker" : "恢复当前 Worker"}>
-                  {controllingIntent === active.intent_id || workerExiting ? <Spinner data-icon="inline-start" /> : active.status === "running" ? <SquareIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
-                  {workerExiting || pausingIntent === active.intent_id ? "正在暂停" : active.status === "running" ? "暂停" : "恢复"}
+                  {controllingIntent === active.intent_id || workerExiting || workerResuming ? <Spinner data-icon="inline-start" /> : active.status === "running" ? <SquareIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+                  {workerExiting || pausingIntent === active.intent_id ? "正在暂停" : workerResuming ? "正在恢复" : active.status === "running" ? "暂停" : "恢复"}
                 </Button>
               </div>
             ) : (
@@ -2230,9 +2237,11 @@ export function SessionsTab({
 
   );
   const mainItems=withLiveStreams(mainState?.items??[],streaming.filter(stream=>sessionKeyOf({...stream,seq:-1,kind:stream.channel,summary:stream.text})===mainKey));
+  const workerInMain=active.role==='worker'&&!relatedSession;
   return <TooltipProvider delayDuration={300}>
-    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={!isMain||!!relatedSession} onBack={()=>{setRelatedSession(null);clearFocus();setActiveId(mainSessionId(mainSeg));}}
-      list={agentList} detail={relatedSession?<RelatedSessionDetail key={relatedSession.id} row={relatedSession}/>:isMain?null:processDetail} main={<MainConversation key={mainKey} taskId={taskId} items={mainItems} live={!!mainBusy} stopping={stopping} loading={mainState?.loading} error={mainState?.error} hasMore={mainState?.hasMore}
+    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={(!isMain&&!workerInMain)||!!relatedSession} onBack={()=>{setRelatedSession(null);clearFocus();setActiveId(mainSessionId(mainSeg));}}
+      primaryDetail={workerInMain?processDetail:undefined} primaryDetailKey={workerInMain?`${taskId}:${activeKey}`:undefined}
+      list={agentList} detail={relatedSession?<RelatedSessionDetail key={relatedSession.id} row={relatedSession}/>:isMain||workerInMain?null:processDetail} main={<MainConversation key={mainKey} taskId={taskId} items={mainItems} live={!!mainBusy} stopping={stopping} loading={mainState?.loading} error={mainState?.error} hasMore={mainState?.hasMore}
         onEarlier={()=>loadEarlier(mainKey,()=>null)} onRetry={()=>loadSession(mainKey)} composer={composer}
         heading={<><span>主 Agent · {mainSeg===currentSeg?'当前会话':`历史会话 ${mainSeg}`}</span><span className="text-xs">{sseLive?'实时连接':'正在重连，已保留内容'}</span></>}
         focused={isMain&&(focused||invalidFocus)?processDetail:undefined}/>} />

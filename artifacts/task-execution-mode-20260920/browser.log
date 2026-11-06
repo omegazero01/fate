@@ -1,5 +1,0 @@
-PASS: switch persists without resuming paused task
-PASS: only selected intent dispatched
-PASS: switching back resets unclaimed selections
-PASS: failed switch preserves mode
-PASS: finish preserves intents; no browser errors

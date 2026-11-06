@@ -16,6 +16,10 @@ CREATE INDEX IF NOT EXISTS usage_ledger_task ON llm_usage_ledger(task_id,created
 CREATE INDEX IF NOT EXISTS usage_ledger_conversation ON llm_usage_ledger(conversation_id,created_at);
 CREATE INDEX IF NOT EXISTS usage_ledger_runtime ON llm_usage_ledger(runtime_id);
 CREATE INDEX IF NOT EXISTS usage_ledger_scope ON llm_usage_ledger(scope_key,source);
+CREATE INDEX IF NOT EXISTS usage_ledger_task_turn ON llm_usage_ledger(task_id,turn_id);
+CREATE INDEX IF NOT EXISTS usage_ledger_conversation_turn ON llm_usage_ledger(conversation_id,turn_id);
+CREATE INDEX IF NOT EXISTS usage_ledger_task_legacy_role ON llm_usage_ledger(task_id,role) WHERE source='legacy_results';
+CREATE INDEX IF NOT EXISTS usage_ledger_conversation_legacy_role ON llm_usage_ledger(conversation_id,role) WHERE source='legacy_results';
 CREATE INDEX IF NOT EXISTS usage_ledger_date ON llm_usage_ledger(created_at);
 ALTER TABLE llm_request_attempts ADD COLUMN IF NOT EXISTS request_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS llm_attempt_request_id ON llm_request_attempts(request_id) WHERE request_id IS NOT NULL;

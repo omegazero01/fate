@@ -3,9 +3,9 @@ export const PLANNER_TITLE_PROTOCOL = '展示约定：本轮最终总结首行�
 
 export function plannerTitle(text: string | undefined): string | null {
   if (!text) return null;
-  const lines = text.trim().split(/\r?\n/);
-  const match = /^<planning_title>([^<>\r\n]+)<\/planning_title>$/.exec(lines[0]!);
-  if (!match || (text.match(/<planning_title>/g)?.length ?? 0) !== 1) return null;
+  const trimmed=text.trim(),lineEnd=trimmed.indexOf('\n');
+  const match = /^<planning_title>([^<>\r\n]+)<\/planning_title>$/.exec(lineEnd<0?trimmed:trimmed.slice(0,lineEnd).replace(/\r$/,''));
+  if (!match || trimmed.indexOf('<planning_title>',1)!==-1) return null;
   const title = match[1]!.trim();
   return title && Array.from(title).length <= 40 && !/[\x00-\x1f\x7f]/.test(title) ? title : null;
 }

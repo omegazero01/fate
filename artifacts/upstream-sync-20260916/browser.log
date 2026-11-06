@@ -1,4 +1,0 @@
-asset source URL http://127.0.0.1:3124/function/tasks/detail?id=1&tab=sessions&session=main%3A0&activity=1410
-asset default/sort/source/back PASS
-action approval source/center PASS 0.03125
-browser errors []

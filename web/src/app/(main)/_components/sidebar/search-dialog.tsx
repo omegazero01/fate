@@ -1,4 +1,5 @@
 "use client";
+import { legacySettingsSection, openSystemSettings } from "@/lib/system-settings";
 
 import * as React from "react";
 
@@ -104,7 +105,9 @@ export function SearchDialog() {
     if (item.newTab) {
       window.open(item.url, "_blank", "noopener,noreferrer");
     } else {
-      router.push(item.url);
+      const section = legacySettingsSection(item.url);
+      if (section) openSystemSettings(section);
+      else router.push(item.url);
     }
   };
 

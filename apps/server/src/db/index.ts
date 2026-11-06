@@ -1,3 +1,4 @@
+import {migrateReproduction} from '../agent/reproduction-migration.js';
 // PostgreSQL 数据源：连接、幂等 schema 迁移（advisory lock 钉专用连接）、简单查询协议多语句执行。
 // 平移自 Go 版 db/db.go 的 Open/withSchemaMigrationLock/applySchemaWithRetry；
 // seedBuiltins/backfillToolUsage 在 store 层（M1）引入。
@@ -16,6 +17,10 @@ import { prepareToolOutputAccessMigration } from "../evidence/tool-outputs.js";
 import {migrateOperationJournal} from './operation-journal.js';
 import {retireRetester} from './retire-retester.js';
 import {backfillUsageLedger} from './usage-ledger.js';
+import {backfillIntentWorkIndex} from './intent-work-index.js';
+import {graphProjectionMetrics,clearGraphProjectionCache} from './graph-projection.js';
+import {turnProjectionMetrics,clearTurnProjectionCache} from './turn-projection-cache.js';
+import {activityMetadataSQL} from './activity-content.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +28,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const schemaSQL = readFileSync(path.join(__dirname, "sql", "schema.sql"), "utf8");
 const retirementSQL = readFileSync(path.join(__dirname, 'sql', 'retire-approvals.sql'), 'utf8');
 const plannerRoundsSQL=readFileSync(path.join(__dirname,'sql','planner-rounds.sql'),'utf8');
+const reproductionSQL=readFileSync(path.join(__dirname,'sql','finding-reproduction.sql'),'utf8');
+const graphMaintenanceSQL=readFileSync(path.join(__dirname,'sql','graph-maintenance.sql'),'utf8');
+const intentWorkIndexSQL=readFileSync(path.join(__dirname,'sql','intent-work-index.sql'),'utf8');
+const plannerContextDeltasSQL=readFileSync(path.join(__dirname,'sql','planner-context-deltas.sql'),'utf8');
+const agentHistorySQL=readFileSync(path.join(__dirname,'sql','agent-history.sql'),'utf8');
+const plannerHistorySQL=readFileSync(path.join(__dirname,'sql','planner-history.sql'),'utf8');
+const graphProjectionSQL=readFileSync(path.join(__dirname,'sql','graph-projection.sql'),'utf8');
 const usageSQL=readFileSync(path.join(__dirname,'sql','usage-ledger.sql'),'utf8');
+const activityOutboxSQL=readFileSync(path.join(__dirname,'sql','activity-outbox.sql'),'utf8');
+const streamStorageSQL=readFileSync(path.join(__dirname,'sql','stream-storage.sql'),'utf8');
+const turnReadSQL=readFileSync(path.join(__dirname,'sql','turn-read-versions.sql'),'utf8');
+const usageRollupSQL=readFileSync(path.join(__dirname,'sql','usage-rollups.sql'),'utf8');
+const usageLegacySQL=readFileSync(path.join(__dirname,'sql','usage-legacy-intervals.sql'),'utf8');
+const activityRollupSQL=`CREATE OR REPLACE FUNCTION activity_presentation_metadata(source JSONB) RETURNS JSONB LANGUAGE plpgsql IMMUTABLE AS $$ BEGIN RETURN ${activityMetadataSQL('source')}; END $$;\n`+
+ readFileSync(path.join(__dirname,'sql','activity-rollups.sql'),'utf8');
+const nativeResponseRollupSQL=readFileSync(path.join(__dirname,'sql','native-response-rollups.sql'),'utf8');
+const nativeRangeRollupSQL=readFileSync(path.join(__dirname,'sql','native-range-rollups.sql'),'utf8');
 
 const SCHEMA_MIGRATION_LOCK_KEY = 7337741001;
 const DEADLOCK_RETRY_DELAYS_MS = [100, 250, 500, 1000];
@@ -70,7 +91,7 @@ export class Database {
   }
   runtimeMetrics(){
     const stats=(p?:pg.Pool)=>p?{total:p.totalCount,idle:p.idleCount,waiting:p.waitingCount}: {total:0,idle:0,waiting:0};
-    return {queries:this.pools.queries,query_errors:this.pools.queryErrors,pools:{primary:stats(this.pools.primary),control:stats(this.pools.control),planner_lock:stats(this.pools.planner)}};
+    return {queries:this.pools.queries,query_errors:this.pools.queryErrors,pools:{primary:stats(this.pools.primary),control:stats(this.pools.control),planner_lock:stats(this.pools.planner)},graph_projection:graphProjectionMetrics(this),turn_projection:turnProjectionMetrics(this)};
   }
 
   /** Domain operations share one connection; nested stores must not commit independently. */
@@ -121,6 +142,8 @@ export class Database {
   }
 
   async close(): Promise<void> {
+    clearGraphProjectionCache(this);
+    clearTurnProjectionCache(this);
     await Promise.all([...new Set([this.pools.primary,this.pools.control,this.pools.planner].filter((p):p is pg.Pool=>!!p))].map(p=>p.end()));
   }
 }
@@ -193,7 +216,7 @@ export async function openDatabase(): Promise<Database> {
     try {
       await prepareToolOutputAccessMigration(client);
       // 无参数的 query 走简单查询协议，支持单次执行整份多语句 schema。
-      const ddl = retirementSQL + "\n" + schemaSQL+'\n'+usageSQL+'\n'+plannerRoundsSQL;
+      const ddl = retirementSQL + "\n" + schemaSQL+'\n'+streamStorageSQL+'\n'+usageSQL+'\n'+turnReadSQL+'\n'+usageRollupSQL+'\n'+usageLegacySQL+'\n'+activityRollupSQL+'\n'+nativeResponseRollupSQL+'\n'+nativeRangeRollupSQL+'\n'+activityOutboxSQL+'\n'+plannerRoundsSQL+'\n'+reproductionSQL+'\n'+graphMaintenanceSQL+'\n'+intentWorkIndexSQL+'\n'+plannerContextDeltasSQL+'\n'+plannerHistorySQL+'\n'+agentHistorySQL+'\n'+graphProjectionSQL;
       for (let attempt = 0; ; attempt++) {
         try {
           await client.query(ddl);
@@ -207,8 +230,10 @@ export async function openDatabase(): Promise<Database> {
       await migrateOperationJournal(db);
       // 内置种子（agents/规则/MCP/技能可见性）在迁移锁内执行，与 Go 同构。
       await seedBuiltins(db);
+      await migrateReproduction(db);
       await retireRetester(db);
       await backfillUsageLedger(db);
+      await backfillIntentWorkIndex(db);
     } finally {
       await client.query("SELECT pg_advisory_unlock($1)", [SCHEMA_MIGRATION_LOCK_KEY]).catch(() => undefined);
     }

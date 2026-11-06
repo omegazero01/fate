@@ -53,10 +53,16 @@ export interface ToolRunContext {
   goalsPhase?: import('../db/goals-bootstrap.js').GoalsPhase;
   /** Current native transcript, supplied by the host for read receipts, never by tool arguments. */
   sessionEntries?:()=>readonly SessionEntry[];
+  /** Host-owned native session index for the current Worker/Main only. */
+  agentSessionState?:()=>Promise<import('../db/agent-history.js').AgentHistorySnapshot|undefined>;
   /** Actual current human request, bound by the host; never supplied in tool arguments. */
   userMessage?:string;
   /** Host-bound current Planner session; never supplied by a model or an HTTP parameter. */
-  plannerSession?: {identity:()=>string;entries:()=>readonly SessionEntry[]};
+  plannerSession?: {identity:()=>string;entries?:()=>readonly SessionEntry[];index?:import('../db/planner-history.js').PlannerHistorySnapshot};
+  /** Latest durable host metadata; distinct from the frozen historical search snapshot. */
+  plannerState?:()=>Promise<import('../db/planner-history.js').PlannerHistorySnapshot|undefined>;
+  plannerLeaf?:()=>string|null;
+  plannerDelivery?:{sessionID:string;deliveryID:string};
   collaborationPolicy?: "blackboard-v1";
   planningRoundID?: string;
   conversationID?: number;

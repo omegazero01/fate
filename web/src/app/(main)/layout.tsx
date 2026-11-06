@@ -16,6 +16,8 @@ import {
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { cn } from "@/lib/utils";
 
+import { SystemSettingsHost } from "@/components/system-settings/host";
+
 import { MainContent } from "./_components/main-content";
 
 // Reads a layout-critical preference from the browser cookie (falls back to the
@@ -64,7 +66,7 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
       defaultOpen={defaultOpen}
       style={
         {
-          "--sidebar-width": "256px",
+          "--sidebar-width": "264px",
         } as React.CSSProperties
       }
     >
@@ -81,6 +83,7 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
       >
         <MainContent>{children}</MainContent>
       </SidebarInset>
+      <SystemSettingsHost />
     </SidebarProvider>
   );
 }

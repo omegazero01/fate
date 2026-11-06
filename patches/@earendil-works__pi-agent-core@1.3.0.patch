@@ -1,0 +1,179 @@
+diff --git a/README.md b/README.md
+index 5cb3954e1f808c5eb2d91aa314038c854e04bd2d..74e63b066480e3caf05d551692b270381b56066d 100644
+--- a/README.md
++++ b/README.md
+@@ -562,3 +562,8 @@ These low-level streams are observational. They preserve event order, but they d
+ ## License
+ 
+ MIT
++
++
++### Fate compatibility patch: bounded aggregate run results
++
++`Agent.runHistoryMode` / `AgentOptions.runHistoryMode` / `AgentLoopConfig.runHistoryMode` defaults to `"all"`. The explicit `"last-turn"` mode retains only the current completed turn in the aggregate `agent_end.messages` (and low-level loop return value). `agent_end.runHistory` then states the mode and exact omitted message count. It does not change model context, queues, tool execution, per-message/per-turn events, requests, or persistence. A host choosing this mode must persist originals via the existing per-message lifecycle and use those originals for full-run audit; never interpret the event tail as the whole history. Hook consumers of `AgentTurnContext.newMessages` see the same bounded aggregate. The mode is fixed at loop start and does not impose a model/run budget.
+diff --git a/dist/agent-loop.js b/dist/agent-loop.js
+index 77af9601821de97524d2f7dbb33c322b65705d2c..5a43c9f2b9f6a96d3eb8917219e6256922654599 100644
+--- a/dist/agent-loop.js
++++ b/dist/agent-loop.js
+@@ -77,6 +77,10 @@ function createAgentStream() {
+  * Main loop logic shared by agentLoop and agentLoopContinue.
+  */
+ async function runLoop(initialContext, newMessages, initialConfig, signal, emit, streamFunction) {
++    const boundedHistory = initialConfig.runHistoryMode === "last-turn";
++    let omittedMessages = 0;
++    const end = () => emit({ type: "agent_end", messages: newMessages,
++        ...(boundedHistory ? { runHistory: { mode: "last-turn", omittedMessages } } : {}) });
+     let currentContext = initialContext;
+     let config = initialConfig;
+     let lastCompletedTurn;
+@@ -112,6 +116,14 @@ async function runLoop(initialContext, newMessages, initialConfig, signal, emit,
+                 }
+                 await emit({ type: "turn_start" });
+             }
++            // The caller explicitly opted out of a full aggregate run result.
++            // Prior callbacks already observed the original completed turn; native
++            // persistence and currentContext remain untouched. Never clear tools
++            // until their paired results and next-turn preparation have finished.
++            if (lastCompletedTurn && boundedHistory) {
++                omittedMessages += newMessages.length;
++                newMessages.length = 0;
++            }
+             // Process prepared and queued messages before the next assistant response.
+             for (const message of declareToolChanges(currentContext, [...preparedMessages, ...pendingMessages])) {
+                 await emit({ type: "message_start", message });
+@@ -149,7 +161,7 @@ async function runLoop(initialContext, newMessages, initialConfig, signal, emit,
+                 };
+                 await config.finishTurn?.(lastCompletedTurn, signal);
+                 await emit({ type: "turn_end", message, toolResults: [] });
+-                await emit({ type: "agent_end", messages: newMessages });
++                await end();
+                 return;
+             }
+             // Check for tool calls
+@@ -179,7 +191,7 @@ async function runLoop(initialContext, newMessages, initialConfig, signal, emit,
+             const decision = await config.finishTurn?.(lastCompletedTurn, signal);
+             await emit({ type: "turn_end", message, toolResults });
+             if (decision?.action === "end") {
+-                await emit({ type: "agent_end", messages: newMessages });
++                await end();
+                 return;
+             }
+             explicitContinuation = decision?.action === "continue";
+@@ -204,7 +216,7 @@ async function runLoop(initialContext, newMessages, initialConfig, signal, emit,
+         // No more messages, exit
+         break;
+     }
+-    await emit({ type: "agent_end", messages: newMessages });
++    await end();
+ }
+ /**
+  * Declare tool loadout changes to the model.
+@@ -672,4 +684,3 @@ async function emitToolResultMessage(toolResultMessage, emit) {
+     await emit({ type: "message_start", message: toolResultMessage });
+     await emit({ type: "message_end", message: toolResultMessage });
+ }
+\ No newline at end of file
+-//# sourceMappingURL=agent-loop.js.map
+\ No newline at end of file
+diff --git a/dist/agent.d.ts b/dist/agent.d.ts
+index 2429a213b6a95642effca6eec34a2772aabfec41..f252f0ffb2a0a97ac75e08b12061deb0a95a6683 100644
+--- a/dist/agent.d.ts
++++ b/dist/agent.d.ts
+@@ -15,6 +15,8 @@ export interface AgentOptions {
+     onProviderStreamEvent?: SimpleStreamOptions["onProviderStreamEvent"];
+     beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
+     afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
++    /** Opt-in bounded run result; persisted transcript/context and all per-message events are unchanged. */
++    runHistoryMode?: "all" | "last-turn";
+     finishTurn?: FinishTurn;
+     prepareRequest?: PrepareRequest;
+     prepareNextTurn?: (signal?: AbortSignal) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
+@@ -47,6 +49,8 @@ export declare class Agent {
+     onProviderStreamEvent?: SimpleStreamOptions["onProviderStreamEvent"];
+     beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
+     afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
++    /** Controls the messages returned in agent_end; frozen at each core-loop start. Default all. */
++    runHistoryMode: "all" | "last-turn";
+     finishTurn?: FinishTurn;
+     prepareRequest?: PrepareRequest;
+     prepareNextTurn?: (signal?: AbortSignal) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
+@@ -134,4 +138,3 @@ export declare class Agent {
+      */
+     private processEvents;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=agent.d.ts.map
+\ No newline at end of file
+diff --git a/dist/agent.js b/dist/agent.js
+index a8ccfc0bd9bd84895b5f158c9dfa328e65f200ca..10740637cb3b0b67dc371f232f90a3dbc7c187b4 100644
+--- a/dist/agent.js
++++ b/dist/agent.js
+@@ -105,6 +105,7 @@ export class Agent {
+     beforeToolCall;
+     afterToolCall;
+     finishTurn;
++    runHistoryMode;
+     prepareRequest;
+     prepareNextTurn;
+     prepareNextTurnWithContext;
+@@ -133,6 +134,7 @@ export class Agent {
+         this.beforeToolCall = runtimeOptions.beforeToolCall;
+         this.afterToolCall = runtimeOptions.afterToolCall;
+         this.finishTurn = runtimeOptions.finishTurn;
++        this.runHistoryMode = runtimeOptions.runHistoryMode ?? "all";
+         this.prepareRequest = runtimeOptions.prepareRequest;
+         this.prepareNextTurn = runtimeOptions.prepareNextTurn;
+         this.prepareNextTurnWithContext = runtimeOptions.prepareNextTurnWithContext;
+@@ -316,6 +318,7 @@ export class Agent {
+             beforeToolCall: this.beforeToolCall,
+             afterToolCall: this.afterToolCall,
+             finishTurn: this.finishTurn,
++            runHistoryMode: this.runHistoryMode,
+             prepareRequest: this.prepareRequest,
+             prepareNextTurn: this.prepareNextTurnWithContext || this.prepareNextTurn
+                 ? async (context) => {
+@@ -434,4 +437,3 @@ export class Agent {
+         }
+     }
+ }
+\ No newline at end of file
+-//# sourceMappingURL=agent.js.map
+\ No newline at end of file
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 410fd20e53435ecac2c2ba31364783b3e17c73a2..a67944c2fb69723fada639f8bc547233a6b135a6 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -113,7 +113,7 @@ export interface AgentTurnContext {
+     toolResults: ToolResultMessage[];
+     /** Current agent context after the turn's assistant message and tool results have been appended. */
+     context: AgentContext;
+-    /** Messages that this loop invocation will return if it exits at this point. Prompt runs include the initial prompt messages; continuation runs do not include pre-existing context messages. */
++    /** Messages this loop invocation will return. With runHistoryMode=last-turn only the current turn is retained; prior message events and model context are unchanged. */
+     newMessages: AgentMessage[];
+ }
+ /** Decision returned by {@link FinishTurn}. Returning undefined preserves normal scheduling. */
+@@ -156,6 +156,8 @@ export type PrepareRequest = (request: PrepareRequestContext, signal?: AbortSign
+ export interface PrepareNextTurnContext extends AgentTurnContext {
+ }
+ export interface AgentLoopConfig extends SimpleStreamOptions {
++    /** Default all. last-turn releases completed result batches only; model context is untouched. */
++    runHistoryMode?: "all" | "last-turn";
+     model: Model<any>;
+     /**
+      * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
+@@ -453,7 +455,9 @@ export type AgentEvent = {
+     type: "agent_start";
+ } | {
+     type: "agent_end";
++    /** All new messages by default; only the final turn when runHistory.mode is last-turn. */
+     messages: AgentMessage[];
++    runHistory?: { mode: "last-turn"; omittedMessages: number };
+ } | {
+     type: "turn_start";
+ } | {
+@@ -490,4 +494,3 @@ export type AgentEvent = {
+     /** Milliseconds `execute()` took, measured with a monotonic clock; absent when the tool did not run. */
+     durationMs?: number;
+ };
+\ No newline at end of file
+-//# sourceMappingURL=types.d.ts.map

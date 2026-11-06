@@ -2,8 +2,9 @@
 import { useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { XIcon } from "lucide-react";
+import { Tabs as TabsPrimitive } from "radix-ui";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 export type SettingsSection = { key: string; label: string; icon: LucideIcon };
@@ -33,6 +34,7 @@ export function SettingsDialog({
   children,
   footer,
   links,
+  className,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,13 +46,14 @@ export function SettingsDialog({
   children: ReactNode;
   footer?: ReactNode;
   links?: ReactNode;
+  className?: string;
 }) {
   const opener = useRef<HTMLElement | null>(null);
   const mobile = useIsMobile();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="settings-dialog"
+        className={`settings-dialog ${className ?? ""}`}
         showCloseButton={false}
         onOpenAutoFocus={() => {
           opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -62,7 +65,7 @@ export function SettingsDialog({
           }
         }}
       >
-        <Tabs
+        <TabsPrimitive.Root
           value={section}
           onValueChange={onSectionChange}
           orientation={mobile ? "horizontal" : "vertical"}
@@ -95,7 +98,7 @@ export function SettingsDialog({
             <div className="settings-body">{children}</div>
             {footer && <footer className="settings-footer">{footer}</footer>}
           </div>
-        </Tabs>
+        </TabsPrimitive.Root>
       </DialogContent>
     </Dialog>
   );

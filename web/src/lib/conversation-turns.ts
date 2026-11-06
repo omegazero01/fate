@@ -41,13 +41,14 @@ export function conversationTurns(items:Activity[]):ConversationTurn[] {
   return turns;
 }
 
-export type StreamSnapshot={worker:string;intent_id?:string;main_seg?:number;turn_id:string;stream_id:string;channel:'text'|'thinking';text:string;offset:number;ts:string;active:boolean};
+export type StreamSnapshot={worker:string;intent_id?:string;main_seg?:number;turn_id:string;stream_id:string;channel:'text'|'thinking';text:string;offset:number;text_start?:number;total_chars?:number;truncated?:boolean;ts:string;active:boolean};
 export function withLiveStreams(items:Activity[], streams:StreamSnapshot[]):Activity[]{
   const finalized=new Set(items.map(streamKey).filter(Boolean));
   const live=streams.filter(s=>!finalized.has(`${s.stream_id}:${s.channel}`)).map((s,i):Activity=>({
     seq:-100000-i,worker:s.worker,intent_id:s.intent_id,main_seg:s.main_seg,ts:s.ts,
     turn_id:s.turn_id,stream_id:s.stream_id,channel:s.channel,kind:s.channel,
     summary:s.text,detail:s.text,streaming:s.active,interrupted:!s.active,
+    detail_start:s.text_start,detail_total_chars:s.total_chars,detail_truncated:s.truncated,
   }));
   // Existing durable order is authoritative. A snapshot follows the records that
   // existed when its first fragment was emitted, not the newest final activity.

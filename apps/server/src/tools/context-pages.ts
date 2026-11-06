@@ -28,6 +28,28 @@ export async function contextNode(c:ToolRunContext,id:number){
     expID:Number(row.exploration_id),taskID:Number(row.task_id),summary:String(row.summary)};
 }
 
+/** Exact string fields are sliced inside PostgreSQL, so requesting a small
+ * evidence fragment never transfers the whole original to the event loop.
+ * Other JSON values keep the existing JS serialization and coordinate rules. */
+export async function contextNodeString(c:ToolRunContext,node:Awaited<ReturnType<typeof contextNode>>,field:string,offset:number,limit:number){
+ const tokens=field.split('/').slice(1).map(s=>s.replace(/~1/g,'/').replace(/~0/g,'~'));
+ if(!field.startsWith('/')||tokens.length!==2||tokens[0]!=='payload')return;
+ const row=(await c.db.query(`WITH selected AS MATERIALIZED (
+  SELECT n.payload->$4::text value,n.kind='fact' AND n.payload->>'observation_type'='negative' negative
+  FROM exploration_nodes n JOIN tasks t ON t.exploration_id=n.exploration_id
+  WHERE n.id=$1 AND n.content_version=$3 AND t.deleted_at IS NULL
+   AND (t.id=$2 OR t.id IN (SELECT source_task_id FROM task_relations WHERE task_id=$2))
+   AND exploration_node_readable(n.exploration_id,n.id)
+ ), original AS MATERIALIZED (
+  SELECT jsonb_typeof(value) value_type,CASE WHEN jsonb_typeof(value)='string' THEN value#>>'{}' END body,negative FROM selected
+ ) SELECT value_type,substring(body FROM least($5::numeric,2147483646)::int+1 FOR $6::int) content,char_length(body) total,
+  encode(sha256(convert_to(body,'UTF8')),'hex') source_hash,negative FROM original`,
+ [node.id,c.taskID,node.version,tokens[1],offset,limit])).rows[0];
+ if(!row)throw new Error('节点版本或授权已变化，请重新读取');
+ if(row.value_type!=='string')return;
+ return {content:String(row.content),total:Number(row.total),source_hash:String(row.source_hash),negative:Boolean(row.negative)};
+}
+
 export async function contextRelations(c:ToolRunContext,node:Awaited<ReturnType<typeof contextNode>>,view:'parents'|'members',cursor?:string){
   if(view==='members'&&node.kind!=='digest')throw new Error('members 仅支持摘要');
   const signature=createHash('sha256').update(JSON.stringify([c.taskID,c.role,node.taskID,node.id,node.version,view])).digest('hex');

@@ -9,3 +9,7 @@ allowBuilds:
   protobufjs: true
   "@google/genai": true
   node-pty: true
+
+patchedDependencies:
+  '@earendil-works/pi-agent-core@1.3.0': patches/@earendil-works__pi-agent-core@1.3.0.patch
+  '@earendil-works/pi-coding-agent@1.3.0': patches/@earendil-works__pi-coding-agent@1.3.0.patch

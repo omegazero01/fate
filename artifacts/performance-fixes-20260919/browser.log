@@ -1,4 +1,0 @@
-PASS: 6.5s pending response does not block history; no overlapping poll or starvation
-PASS: hub with 125 large children returns bounded summary, no eager details; bytes=211
-PASS: full body and all 125 relations available through explicit paging
-PASS: historical page background refresh requests counts only

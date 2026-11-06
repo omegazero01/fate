@@ -1,3 +1,4 @@
+import {noteGoalsToolResult} from '../db/goals-bootstrap.js';
 import { effectiveToolDescription } from '../agent/tool-descriptions.js';
 import {roleToolDescription,roleToolParameters} from '../agent/tool-description-policy.js';
 // 领域工具定义 helper：JSON Schema 字面量 → pi ToolDefinition。
@@ -94,14 +95,17 @@ export function domainTool<T>(spec: DomainToolSpec<T>, ctx: ToolRunContext) {
     async execute(_toolCallId: string, params: T, signal?: AbortSignal) {
       try {
         signal?.throwIfAborted();
+        await noteGoalsToolResult(ctx,spec.name,'保存尚未确认；恢复时核对持久记录并幂等重试');
         if(ctx.hooks.assertOwnership && spec.transactional===false)await ctx.hooks.assertOwnership(ctx.db);
         const execute=(db:typeof ctx.db)=>spec.run(params, { ...ctx, db, signal, toolCallID: _toolCallId });
         const out = ctx.hooks.assertOwnership && spec.transactional!==false ? await ctx.db.transaction(async db=>{await ctx.hooks.assertOwnership!(db);return execute(db);}) : await execute(ctx.db);
+        await noteGoalsToolResult(ctx,spec.name);
         const text = typeof out === "string" ? JSON.stringify({ content: out }) : JSON.stringify(out);
         const response=Buffer.byteLength(text,'utf8')>MAX_TOOL_OUTPUT?JSON.stringify(await saveToolOutput(ctx.db,ctx,spec.name,_toolCallId,text)):text;
         return { content: [{ type: "text" as const, text: response }], details: undefined };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        await noteGoalsToolResult(ctx,spec.name,msg);
         return {
           content: [{ type: "text" as const, text: clampOutput(JSON.stringify({ ...(err instanceof ToolResultError ? err.details : {}), error: msg })) }],
           isError: true,

@@ -1,7 +1,6 @@
 "use client";
 
 import {cacheHitRate} from '@/lib/model-token-stats';
-import { PageHeading } from "@/components/workspace";
 
 import * as React from "react";
 
@@ -370,14 +369,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 pb-6">
-      {/* ── Header ── */}
-      <div>
-        <div>
-          <PageHeading title={<>总览</>}/>
-          <p className="text-xs text-muted-foreground">系统全局状态 · 实时刷新</p>
-        </div>
-      </div>
-
       {/* ── Row 1: 5 stat cards ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {/* 活跃任务 */}

@@ -46,8 +46,9 @@ import type {
 import * as D from "./data";
 import { mockFindingExport } from "./finding-export";
 import { mockToolCalls } from "./tool-calls";
+import { createMockTraffic } from "./traffic";
 
-const mockTraffic: Record<string, (...a: unknown[]) => unknown> = new Proxy({}, { get: (_t, k) => () => (k === "page" ? { rows: [], total: 0 } : []) });
+const mockTraffic = createMockTraffic(D.traffic.exchanges ?? []);
 const findingTraffic: Record<string, (...a: unknown[]) => unknown> = new Proxy({}, { get: () => () => ({ refs: [] }) });
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
@@ -2649,6 +2650,7 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
   if (path === "/traffic/all" && m === "DELETE") return mockTraffic.remove();
   if (path === "/traffic/hosts" && m === "DELETE") return mockTraffic.remove(undefined, (b.hosts as string[]) ?? []);
   if (path === "/traffic/hosts") return mockTraffic.hosts();
+  if (path === "/traffic/paths") return mockTraffic.paths(q);
   if (path === "/traffic") return mockTraffic.page(q);
   if (path === "/traffic/exchange") return D.trafficDetail;
   if (path === "/settings/http-auth" && m === "GET") return { ...httpEntrySettings };

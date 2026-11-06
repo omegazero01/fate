@@ -3,7 +3,7 @@ import { cpSync, existsSync } from "node:fs";
 import path from "node:path";
 
 const src = path.resolve("src/db/sql");
-const dest = path.resolve("dist/db/sql");
+const dest = path.resolve(process.env.SERIES_BUILD_DIR ?? "dist", "db/sql");
 if (existsSync(src)) {
   cpSync(src, dest, { recursive: true });
   console.log(`[copy-assets] ${src} -> ${dest}`);

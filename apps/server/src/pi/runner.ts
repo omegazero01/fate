@@ -1,3 +1,5 @@
+import {ActivityDelivery} from './activity-delivery.js';
+import {nativeStreamID,withNativeActivity,type NativeActivityIdentity,type NativeActivityReference} from './native-activity.js';
 import type {ToolLoading} from '../agent/tool-loading.js';
 import {platformMcpExtension,hasDeferredMcp,MCP_RESOURCE_TOOLS,toolDiscoveryInstructions} from './platform-mcp.js';
 import {domainCompactionExtension,type CompactionHealth} from './domain-compaction.js';
@@ -97,7 +99,7 @@ function toolAvailabilityError(name:string,text:string|undefined,closing:Closing
 }
 
 /** 归一化后的 activity 事件（对接 Go/norma 的 activity 流） */
-export type RunnerActivity =
+export type RunnerActivity = (
   | {kind:'host_status';text:string;phase?:string}
 	| { kind: 'run_metadata'; runtimeID: string; role: string; mode: string; startedAt: string }
 	| { kind: 'assistant_delta'; text: string; streamID: string; isThinking?: boolean }
@@ -106,9 +108,14 @@ export type RunnerActivity =
 	| { kind: 'tool_end'; toolCallId: string; toolName: string; isError: boolean; durationMs?: number; text?: string }
 	| { kind: 'settled'; aborted: boolean; stopReason?: string }
 	| { kind: 'usage'; input: number; output: number; cacheRead: number; cacheWrite: number }
-	| { kind: 'queue_update'; steering: readonly string[]; followUp: readonly string[] };
+	| { kind: 'queue_update'; steering: readonly string[]; followUp: readonly string[] }) & {native_event?:NativeActivityReference};
 
 export interface AgentRunnerOptions {
+  nativeActivity?:NativeActivityIdentity;
+  nativeActivityRuntime?:string;
+  flushNativeSession?:()=>Promise<void>;
+  /** Host admission lease; never serialized into model context. */
+  resourceLease?: import("../engine/runtime-resources.js").RuntimeResourceLease;
   goalsPhase?: import('../db/goals-bootstrap.js').GoalsPhase;
   /** Host execution receipts; never wraps model requests or changes pi's tool loop. */
   wrapExecutionTool?: (tool:ToolDefinition)=>ToolDefinition;
@@ -137,6 +144,13 @@ export interface AgentRunnerOptions {
   summaryMaxTokens?:number;
   /** Adds role-specific retention requirements to native SDK compaction. */
   compactionInstructions?: string;
+  /** Platform storage at the awaited native compaction boundary. Never another model loop. */
+  onSessionCompacted?: (manager:SessionManager)=>Promise<void>;
+  canonicalSessionPath?:string;
+  archiveDiagnostics?:()=>unknown;
+  /** Explicit SDK aggregate retention. Managed sessions default to last-turn;
+   * originals remain in JSONL. False retains the SDK full-run default. */
+  boundedRunHistory?:boolean;
   onRequestSize?: (size: ReturnType<typeof requestSize>,purpose?:'conversation'|'compaction') => void | Promise<void>;
 	mcpGuard?: (server:string,method:string,tool?:string)=>Promise<void>;
 	modelPolicy?: { onResponse(message: unknown): Promise<void>; retry(signal?:AbortSignal): Promise<boolean>; setPurpose?(purpose: 'conversation'|'compaction'):void; setRuntimeID?(id:string):void; setScope?(scope:import('../db/usage-ledger.js').UsageScope):void; finish?():Promise<void> };
@@ -186,7 +200,7 @@ export interface AgentRunnerOptions {
 	/** Hide incremental text events when the selected model profile disables visible streaming. */
 	streaming?: boolean;
 	/** 归一化 activity 流（对接 Go 侧 activity 映射） */
-	onActivity?: (activity: RunnerActivity) => void;
+	onActivity?: (activity: RunnerActivity) => unknown;
 }
 
 export interface RunResult {
@@ -204,21 +218,24 @@ export interface RunResult {
  * 一个 runner 对应一个会话（内存或文件），不可跨会话复用；多会话由上层池化管理。
  */
 export class AgentRunner {
+	private entryCache?:{sessionID:string;count:number;entries:readonly SessionEntry[]};
+  private runHistory = {mode:'all' as 'all'|'last-turn',native_starts:0,native_ends:0,omitted_messages:0,last_result_messages:0};
 	private readonly session: AgentSession;
 	private readonly opts: AgentRunnerOptions;
 	private turns = 0;
-	private streamID = randomUUID();
+	private streamID:string = randomUUID();
 	private budgetExceeded = false;
 	private closing: ClosingState = { active: false };
   private wrapupContext!: (reason: WrapupContext['reason']) => WrapupContext;
 	private budgetReason: RunResult['budgetReason'];
   private compactionHealth:CompactionHealth={requests:0,completed:0,failed:0};
 	private modelError: string | undefined;
+  private hostContextFailure: {error?:Error} = {};
   private domainCompletion = {done:false};
 	private settled!: (result: RunResult) => void;
 	private settledPromise!: Promise<RunResult>;
 
-	private constructor(session: AgentSession, opts: AgentRunnerOptions) {
+	private constructor(session: AgentSession, opts: AgentRunnerOptions, private readonly activityDelivery: ActivityDelivery) {
 		this.session = session;
 		this.opts = opts;
 		this.resetSettled();
@@ -250,11 +267,40 @@ export class AgentRunner {
     );
     let enterClosing = () => {closing.active=true;};
     if(opts.platform) validatePlatformRunner(opts.platform.role,opts,opts.platform.taskID);
+    const activityDelivery = new ActivityDelivery();
+    const hostContextFailure: {error?:Error} = {};
+    let invalidateNativeEntries=()=>{};
+    const activityExtension: ExtensionFactory = api => {
+      const drain = async (_event: unknown, context: {abort():void}) => {
+        try { await activityDelivery.drain(); } catch { context.abort(); }
+      };
+      // These hooks are awaited by PI. A subscribe callback is deliberately not
+      // used as an async queue: PI does not await public event listeners.
+      api.on('message_start', drain);
+      api.on('tool_execution_start', drain);
+      api.on('tool_execution_end', drain);
+      api.on('turn_end', drain);
+      api.on('before_provider_request', drain);
+      api.on('agent_before_settle', drain);
+      api.on('tool_call', async (_event, context) => {
+        try { await activityDelivery.drain(); }
+        catch(error) { context.abort(); return {block:true,reason:String(error),terminate:true}; }
+      });
+    };
     const diagnosticsExtension: ExtensionFactory = api => {
+      api.on('session_compact',async(_event,context)=>{
+        if(!opts.onSessionCompacted)return;
+        try{await activityDelivery.drain();await opts.onSessionCompacted(sessionManager);}
+        catch(error){
+          hostContextFailure.error=new Error(`原生会话归档失败，已停止本次执行：${error instanceof Error?error.message:String(error)}`,{cause:error});
+          context.abort();
+        }finally{invalidateNativeEntries();}
+      });
       api.on('before_agent_start',event=>{
         if(opts.contextLayout)event.systemPromptOptions.sections.cwd='实际工作目录见本次宿主执行上下文的 cwd；相对路径由工具在该目录解析。';
       });
-      api.on('context', async event => {
+      api.on('context', async (event,context) => {
+        try {
         // Keep legacy feedback in the audit session, never in Agent coordination.
         const messages=[...(opts.projectMessages?.(event.messages)??event.messages)];
         if(opts.contextLayout)messages.push({role:'custom',customType:'host_task_context',display:false,timestamp:Date.now(),content:hostTaskContext(opts.cwd,opts.taskContext)});
@@ -270,6 +316,14 @@ export class AgentRunner {
             (closing.control?`\n【宿主收尾，以此为准】${closing.control.prompt}；剩余最多 ${Math.max(0,requestLimit()-turns-compactionHealth.requests)} 次请求（含压缩）。写回已有观察并总结，不重试探测。`:'' )});
         }
         return {messages};
+        } catch(error) {
+          // PI reports extension errors, but may otherwise continue with the
+          // default transcript. A failed authoritative context must stop the
+          // request, never silently omit current state/read-gap metadata.
+          hostContextFailure.error=new Error(`宿主上下文构建失败，已停止本次执行：${error instanceof Error?error.message:String(error)}`,{cause:error});
+          context.abort();
+          return {messages:event.messages};
+        }
       });
       api.on('message_end', event => {
         const message=event.message;
@@ -277,7 +331,8 @@ export class AgentRunner {
         const original=toolResultText(message),text=toolAvailabilityError(message.toolName,original,closing,opts);
         if(text!==original && text)return {message:{...message,content:[{type:'text' as const,text}]}};
       });
-      api.on('before_provider_request', async event => {
+      api.on('before_provider_request', async (event,context) => {
+        if(hostContextFailure.error){context.abort();return event.payload;}
         if(closing.active)enterClosing();
         const payload=opts.contextLayout?stableToolPayload(event.payload):event.payload;
         await opts.onRequestSize?.(requestSize(payload));
@@ -323,7 +378,8 @@ export class AgentRunner {
                 closing.control={reason:decision.settle,prompt:decision.reason??'意图依据不可用，停止新探测并保存已有观察',
                   limit:turns+compactionHealth.requests+1+Math.max(1,opts.maxWrapupTurns??2),announced:false};
                 enterClosing();
-                opts.onActivity?.({kind:'host_status',phase:'closing',text:`宿主已切换为收尾：${closing.control.prompt}；仅保留读取与写回，最多 ${Math.max(1,opts.maxWrapupTurns??2)} 次收尾请求。`});
+                const text=`宿主已切换为收尾：${closing.control.prompt}；仅保留读取与写回，最多 ${Math.max(1,opts.maxWrapupTurns??2)} 次收尾请求。`;
+                activityDelivery.emit(() => opts.onActivity?.({kind:'host_status',phase:'closing',text}));
               }
               return { block: true, reason: decision.reason ?? 'blocked by server guard', terminate: false };
             }
@@ -414,7 +470,7 @@ export class AgentRunner {
 			agentDir: opts.agentDir,
 			settingsManager: settings,
 			noExtensions: true,
-			extensionFactories: [diagnosticsExtension, modelPolicyExtension, compactionExtension, guardExtension, wrapupExtension, budgetExtension, mcpFactory,...(opts.extensionFactories??[])].filter(
+			extensionFactories: [activityExtension, diagnosticsExtension, modelPolicyExtension, compactionExtension, guardExtension, wrapupExtension, budgetExtension, mcpFactory,...(opts.extensionFactories??[])].filter(
 				(e): e is ExtensionFactory => typeof e === 'function',
 			).map(factory=>wrapRegisteredTools(opts.toolLoading?restrictRegisteredTools(factory,permitted):factory,tool=>{
         const wrapped=opts.wrapExecutionTool?.(tool)??tool;
@@ -460,8 +516,20 @@ export class AgentRunner {
 			customTools:(opts.toolLoading?customTools.filter(t=>permitted(t.name)):customTools).map(t=>opts.wrapExecutionTool?.(t)??t),
 		});
 
-		const runner = new AgentRunner(session, opts);
+		const runner = new AgentRunner(session, opts, activityDelivery);
+    if(opts.boundedRunHistory??!!opts.onSessionCompacted){
+      // A checked public dependency patch only changes the aggregate result;
+      // it does not split loops, replace hooks, or truncate native originals.
+      if(!sessionManager.getSessionFile() || !('runHistoryMode' in session.agent)){
+        session.dispose();
+        throw new Error('有界运行汇总需要持久化 PI 会话及仓库锁定的 SDK 补丁');
+      }
+      session.agent.runHistoryMode='last-turn';
+      runner.runHistory.mode='last-turn';
+    }
+    invalidateNativeEntries=()=>{runner.entryCache=undefined;};
     runner.domainCompletion=domainCompletion;
+    runner.hostContextFailure=hostContextFailure;
     runner.closing = closing;
     runner.wrapupContext = wrapupContext;
     runner.compactionHealth=compactionHealth;
@@ -489,9 +557,41 @@ export class AgentRunner {
 	// → … → agent_end → agent_settled）
 	// -------------------------------------------------------------------------
 
+  private nativeActivity(activity:RunnerActivity):RunnerActivity {
+    return this.opts.nativeActivityRuntime?withNativeActivity(activity,this.opts.nativeActivityRuntime,this.nativeActivitySequence):activity;
+  }
+  private emitActivity(activity:RunnerActivity):void {
+    this.nativeActivityRevision++;
+    const delivered=this.nativeActivity(activity);
+    this.activityDelivery.emit(() => this.opts.onActivity?.(delivered));
+  }
+
+  private nativeActivitySequence=0;
+  private nativeActivityRevision=0;
+  private nativeActivityAcknowledgement=-1;
+  private nativeToolDurations=new Map<string,number|undefined>();
+
+  /** Host acknowledgement only, after role-specific final projection succeeds.
+   * Any subsequent event invalidates it. It never acknowledges a model claim. */
+  async acknowledgeNativeActivities(){
+    await this.activityDelivery.drain();
+    if(this.session.isStreaming)throw new Error('Cannot acknowledge native activities before actual settlement');
+    this.nativeActivityAcknowledgement=this.nativeActivityRevision;
+  }
+  get nativeActivitiesAcknowledged(){return this.nativeActivityAcknowledgement===this.nativeActivityRevision&&!this.activityDelivery.diagnostics.failed;}
+
+
+  get activityDiagnostics() { return this.activityDelivery.diagnostics; }
+
 	private handleEvent(event: AgentSessionEvent): void {
 		this.opts.onRawEvent?.(event);
 		switch (event.type) {
+      case 'agent_start':this.runHistory.native_starts++;break;
+      case 'agent_end':
+        this.runHistory.native_ends++;
+        this.runHistory.omitted_messages+=event.runHistory?.omittedMessages??0;
+        this.runHistory.last_result_messages=event.messages.length;
+        break;
 			case 'turn_end':
 				this.turns++;
 				if (this.opts.maxTurns && this.turns + this.compactionHealth.requests >= this.opts.maxTurns
@@ -500,12 +600,15 @@ export class AgentRunner {
         }
 				break;
 			case 'message_start':
-				if (event.message.role === 'assistant') this.streamID = randomUUID();
+				if (event.message.role === 'assistant') {
+          this.nativeActivitySequence++;
+          this.streamID=this.opts.nativeActivityRuntime?nativeStreamID(this.opts.nativeActivityRuntime,this.nativeActivitySequence):randomUUID();
+        }
 				break;
 			case 'message_update': {
 				const update = event.assistantMessageEvent;
 				if (this.opts.streaming !== false && (update.type === 'text_delta' || update.type === 'thinking_delta')) {
-					this.opts.onActivity?.({ kind: 'assistant_delta', text: update.delta, streamID: this.streamID, isThinking: update.type === 'thinking_delta' });
+					this.emitActivity({ kind: 'assistant_delta', text: update.delta, streamID: this.streamID, isThinking: update.type === 'thinking_delta' });
 				}
 				break;
 			}
@@ -514,18 +617,27 @@ export class AgentRunner {
 					this.modelError = event.message.stopReason === 'error' ? event.message.errorMessage ?? '模型调用失败' : undefined;
 					const thinking = assistantThinking(event.message);
 					if (thinking) {
-						this.opts.onActivity?.({ kind: 'assistant_message_end', text: thinking, streamID: this.streamID, isThinking: true });
+						this.emitActivity({ kind: 'assistant_message_end', text: thinking, streamID: this.streamID, isThinking: true });
 					}
-					this.opts.onActivity?.({ kind: 'assistant_message_end', text: assistantText(event.message), streamID: this.streamID,
-            ...(this.domainCompletion.done && ['aborted','error'].includes(event.message.stopReason) && !event.message.content.length && !event.message.usage.totalTokens ? {} : {response: {stop_reason:event.message.stopReason,has_tools:event.message.content.some(b=>b.type==='toolCall'),model:event.message.model,provider:event.message.provider,usage:event.message.usage}}) });
+          const original=this.nativeActivity({kind:'assistant_message_end',text:assistantText(event.message),streamID:this.streamID,
+            response:{stop_reason:event.message.stopReason,has_tools:event.message.content.some(b=>b.type==='toolCall'),model:event.message.model,provider:event.message.provider,usage:event.message.usage}});
+          this.emitActivity(this.domainCompletion.done&&['aborted','error'].includes(event.message.stopReason)&&!event.message.content.length&&!event.message.usage.totalTokens
+            ? {...original,response:undefined} as RunnerActivity:original);
 					const u = (event.message as { usage?: { input: number; output: number; cacheRead: number; cacheWrite: number } }).usage;
 					if (u) {
-						this.opts.onActivity?.({ kind: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite });
+						this.emitActivity({ kind: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite });
 					}
-				}
-				break;
-			case 'tool_execution_start':
-				this.opts.onActivity?.({
+        }else if(event.message.role==='toolResult'&&this.opts.nativeActivityRuntime){
+          // Native message_end follows result extensions. Hash this authoritative
+          // text, not the earlier tool event before extension transformations.
+          const m=event.message;
+          this.emitActivity({kind:'tool_end',toolCallId:m.toolCallId,toolName:m.toolName,isError:!!m.isError,
+            durationMs:this.nativeToolDurations.get(m.toolCallId),text:toolResultText(m)});
+          this.nativeToolDurations.delete(m.toolCallId);
+        }
+        break;
+      case 'tool_execution_start':
+				this.emitActivity({
 					kind: 'tool_start',
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
@@ -533,7 +645,8 @@ export class AgentRunner {
 				});
 				break;
 			case 'tool_execution_end':
-				this.opts.onActivity?.({
+        if(this.opts.nativeActivityRuntime&& !('parentToolCallId' in event&&event.parentToolCallId)){this.nativeToolDurations.set(event.toolCallId,event.durationMs);break;}
+				this.emitActivity({
 					kind: 'tool_end',
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
@@ -543,10 +656,10 @@ export class AgentRunner {
 				});
 				break;
 			case 'queue_update':
-				this.opts.onActivity?.({ kind: 'queue_update', steering: event.steering, followUp: event.followUp });
+				this.emitActivity({ kind: 'queue_update', steering: event.steering, followUp: event.followUp });
 				break;
 			case 'agent_settled':
-				this.opts.onActivity?.({ kind: 'settled', aborted: this.domainCompletion.done?false:event.aborted, stopReason:this.domainCompletion.done?'completed':this.closing.control?.reason??(this.budgetExceeded||this.closing.reason==='turn_limit'||this.closing.reason==='duration_limit'?'budget':event.aborted?'aborted':'completed') });
+				this.emitActivity({ kind: 'settled', aborted: this.domainCompletion.done?false:event.aborted, stopReason:this.domainCompletion.done?'completed':this.closing.control?.reason??(this.budgetExceeded||this.closing.reason==='turn_limit'||this.closing.reason==='duration_limit'?'budget':event.aborted?'aborted':'completed') });
 				this.settled({ aborted: this.domainCompletion.done?false:event.aborted, lastAssistantText: this.session.getLastAssistantText(), stopReason: this.domainCompletion.done?"completed":this.budgetExceeded || this.closing.reason==='turn_limit' || this.closing.reason==='duration_limit' ? "budget" : event.aborted ? "aborted" : "completed", budgetReason:this.domainCompletion.done?undefined:this.budgetReason??(this.closing.reason==='settled'?undefined:this.closing.reason),settlementReason:this.domainCompletion.done?undefined:this.closing.control?.reason });
 				this.resetSettled();
 				break;
@@ -561,6 +674,7 @@ export class AgentRunner {
 
 	/** 发送一条用户消息并等待本次 run settle（含 wrapup 续跑轮） */
 	async prompt(text: string, images?: import("../evidence/attachments.js").ChatImage[]): Promise<RunResult> {
+		if(this.hostContextFailure.error)throw this.hostContextFailure.error;
 		this.modelError = undefined;
     this.compactionHealth.error=undefined;
 		this.opts.signal?.throwIfAborted();
@@ -585,6 +699,8 @@ export class AgentRunner {
 		try {
 			await this.session.prompt(text,{images});
 			const result = await finished;
+      await this.activityDelivery.drain();
+      if(this.hostContextFailure.error)throw this.hostContextFailure.error;
       this.assertCompactionHealthy();
 			if (this.modelError && !this.domainCompletion.done && !this.opts.signal?.aborted && !result.aborted) throw new Error(this.modelError);
 			return result;
@@ -617,7 +733,7 @@ export class AgentRunner {
 
 	/** 当前会话文件路径（内存会话为 undefined；首条用户消息落盘后才存在） */
 	get sessionFile(): string | undefined {
-		return this.session.sessionFile;
+		return this.opts.canonicalSessionPath??this.session.sessionFile;
 	}
 
 	get sessionId(): string {
@@ -629,7 +745,14 @@ export class AgentRunner {
 		return this.session.messages;
 	}
 
-  get sessionEntries(): readonly SessionEntry[] { return this.session.sessionManager.getEntries(); }
+  get sessionEntries(): readonly SessionEntry[] {
+    const manager=this.session.sessionManager,sessionID=manager.getSessionId(),count=manager.getEntryCount();
+    if(this.entryCache?.sessionID!==sessionID||this.entryCache.count!==count)
+      this.entryCache={sessionID,count,entries:manager.getEntries()};
+    return this.entryCache.entries;
+  }
+
+  get sessionLeafId():string|null {return this.session.sessionManager.getLeafId();}
 
   /** Host metadata stays in the native transcript and never becomes a model instruction. */
   appendSessionEntry(customType:string,data:unknown):string {
@@ -656,12 +779,15 @@ export class AgentRunner {
   private assertCompactionHealthy(){if(this.compactionHealth.error)throw new Error(`会话压缩失败，可恢复重试：${this.compactionHealth.error.message}`);}
 
   async compact():Promise<void>{
+    if(this.hostContextFailure.error)throw this.hostContextFailure.error;
     this.compactionHealth.error=undefined;
     try{await this.session.compact();}catch(error){throw this.compactionHealth.error??error;}
     this.assertCompactionHealthy();
+    if(this.hostContextFailure.error)throw this.hostContextFailure.error;
   }
 
-  get compactionDiagnostics(){const {requests,completed,failed}=this.compactionHealth;return {requests,completed,failed};}
+  get compactionDiagnostics(){const {requests,completed,failed,cancelled=0}=this.compactionHealth;return {requests,completed,failed,cancelled};}
+  get runHistoryDiagnostics(){return {...this.runHistory};}
 
   get activeToolNames(){return this.session.getActiveToolNames();}
   get settlementReason(){return this.closing.control?.reason;}
@@ -686,7 +812,14 @@ export class AgentRunner {
 
 	async dispose(): Promise<void> {
 		try { await this.session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); }
-		finally { this.session.dispose();await this.opts.modelPolicy?.finish?.(); }
+		finally {
+      this.session.dispose();
+      this.nativeToolDurations.clear();
+      // Cancellation/disposal must release outstanding host writes, too. The
+      // prompt already reports projection failures; do not mask its outcome.
+      await this.activityDelivery.drain().catch(()=>{});
+      await this.opts.modelPolicy?.finish?.();
+    }
 	}
 }
 

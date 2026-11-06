@@ -51,6 +51,7 @@ export interface AssetQuery {
 export function assetDTO(a: AssetRow): AssetRow {
 	for (const key of [
 		"id",
+		"content_version",
 		"company_id",
 		"port",
 		"status_code",
@@ -100,18 +101,23 @@ export async function queryAssets(db: Database, q: AssetQuery) {
 	)
 		throw new AssetQueryError("limit/offset 无效");
 	const cols = q.summary
-		? "a.id,a.type,a.company_id,a.domain,a.root_domain,a.ip,a.port,a.url,a.method,a.service_type,a.service_name,a.app_name,a.bundle_id,a.page_title,a.status_code,a.technologies,a.last_seen"
+		? "a.id,a.content_version,a.type,a.company_id,a.domain,a.root_domain,a.ip,a.port,a.url,a.method,a.service_type,a.service_name,a.app_name,a.bundle_id,a.page_title,a.status_code,a.technologies,a.last_seen"
 		: "a.*";
 	const rows = await db.query(
 		`WITH ${assetContextCTE}, matched AS MATERIALIZED (
+ SELECT a.id,a.last_seen FROM assets a WHERE ${where.join(" AND ")}
+), selected AS (
+ SELECT id FROM matched ORDER BY ${q.untested ? "id" : "last_seen DESC NULLS LAST,id DESC"} LIMIT ${param(limit)} OFFSET ${param(offset)}
+), page AS (
  SELECT ${cols},(a.id IN(SELECT asset_id FROM tested)) tested,(a.id IN(SELECT asset_id FROM legacy_tested)) legacy_tested,
  (SELECT min(t.created_at) FROM tested_records t WHERE t.asset_id=a.id) tested_at,
  (SELECT t.origin FROM tested_records t WHERE t.asset_id=a.id ORDER BY t.created_at LIMIT 1) tested_by,
  link.source task_source,link.source_summary task_source_summary,link.source_node_id task_source_node_id,
  link.source_origin,link.task_id source_task_id,COALESCE(link.task_id<>$1,false) inherited,COALESCE(link.task_id<>$1,false) read_only
- FROM assets a LEFT JOIN LATERAL(SELECT l.* FROM task_asset_links l JOIN context_tasks c ON c.task_id=l.task_id WHERE l.asset_id=a.id ORDER BY (l.task_id=$1) DESC,l.task_id LIMIT 1)link ON true
- WHERE ${where.join(" AND ")}), page AS (SELECT * FROM matched ORDER BY ${q.untested ? "id" : "last_seen DESC NULLS LAST,id DESC"} LIMIT ${param(limit)} OFFSET ${param(offset)})
- SELECT (SELECT count(*)::int FROM matched) total,COALESCE((SELECT jsonb_agg(to_jsonb(page)) FROM page),'[]') assets`,
+ FROM selected JOIN assets a ON a.id=selected.id
+ LEFT JOIN LATERAL(SELECT l.* FROM task_asset_links l JOIN context_tasks c ON c.task_id=l.task_id WHERE l.asset_id=a.id ORDER BY (l.task_id=$1) DESC,l.task_id LIMIT 1)link ON true
+)
+ SELECT (SELECT count(*)::int FROM matched) total,COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY ${q.untested ? "id" : "last_seen DESC NULLS LAST,id DESC"}) FROM page),'[]') assets`,
 		values,
 	);
 	const total = Number(rows.rows[0]?.total ?? 0),

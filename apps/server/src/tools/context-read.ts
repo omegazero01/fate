@@ -1,7 +1,9 @@
 import {contextEvidence} from './context-evidence.js';
+import {unicodeLength,unicodeSlice} from '../unicode.js';
+import {ReadSelectionRequired,fieldReadOptions,type ReadCoordinate} from './read-coordinate.js';
 import {contextNeeds} from '../agent/context-needs.js';
 import {readOperations} from '../db/operation-journal.js';
-import {boundedContextPage,contextNode,contextRelations} from './context-pages.js';
+import {boundedContextPage,contextNode,contextNodeString,contextRelations} from './context-pages.js';
 import {ownObservations} from '../db/worker-drafts.js';
 import {createHash} from 'node:crypto';
 import type {ToolRunContext} from './context.js';
@@ -9,11 +11,13 @@ import {domainTool} from './define.js';
 import {graphSources,resolveGraphNode,authorizedNodes} from '../db/graph_view.js';
 import {nodeDetailTool} from './graph.js';
 import {progressSummary,resultSummary,stopSummary} from '../agent/context-projection.js';
-import {searchPlannerHistory,getPlannerHistory} from './planner-history.js';
+import {searchPlannerHistory,getPlannerHistory,getPlannerHistoryContent,getPlannerDispatchOutput,PLANNER_HISTORY_ROLES} from './planner-history.js';
 
-interface Search {source?:'graph'|'planner_session'|'operations'|'needs';q?:string;types?:string[];state?:string;asset_id?:number;intent_id?:number;task_id?:number;limit?:number;cursor?:string;}
+interface Search {source?:'graph'|'planner_session'|'operations'|'needs';q?:string;types?:string[];roles?:string[];include_content?:boolean;state?:string;asset_id?:number;intent_id?:number;task_id?:number;limit?:number;cursor?:string;}
 export async function searchContext(c:ToolRunContext,args:Search) {
   await recallPermission(c,'context_search');
+  if(args.roles!==undefined&&args.source!=='planner_session')throw new Error('roles 仅适用于 source=planner_session；图节点类型使用 types');
+  if(args.include_content!==undefined&&args.source!=='planner_session')throw new Error('include_content 仅适用于 source=planner_session');
   if(args.source==='needs'){
     if(args.task_id&&args.task_id!==c.taskID)throw new Error('上下文清单仅限当前任务');
     const page=await contextNeeds(c,{intent_id:args.intent_id,limit:args.limit,cursor:args.cursor});
@@ -77,7 +81,7 @@ export async function searchContext(c:ToolRunContext,args:Search) {
 }
 
 export function contextSearchTool(c:ToolRunContext){return domainTool<Search>({name:'context_search',description:'按全文、类型、资产、意图和状态检索授权探索图，包含冷图原始节点。节点按新到旧返回；默认 fact/finding/intent。返回命中片段、Unicode match_offset 和可直接交给 context_get 的 read。has_more=true 时保留查询参数用 next_cursor 续页；第一页无结果不能证明方向未测试，优先按 asset_id 核对。来源任务只读。',readOnly:true,
-  parameters:{type:'object',properties:{source:{type:'string',enum:c.role==='planner'?['graph','planner_session','operations','needs']:['graph','operations','needs'],description:'默认 graph；needs 返回按优先级排序的依赖缺口、未读区间和直接读取参数；operations 查询本任务工具执行记录，Worker 仅能读取自己的记录；planner_session 召回规划历史'},q:{type:'string',maxLength:200,description:'不区分大小写的字面关键词；多个词按完整短语匹配，不是语义搜索。空值按筛选条件列出。'},types:{type:'array',items:{type:'string',enum:['fact','finding','intent','goal','hint','digest','activity']}},state:{type:'string'},asset_id:{type:'integer',minimum:1},intent_id:{type:'integer',minimum:1},task_id:{type:'integer',minimum:1},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:'string'}}},run:(args,ctx)=>searchContext(ctx,args)},c);}
+  parameters:{type:'object',properties:{source:{type:'string',enum:c.role==='planner'?['graph','planner_session','operations','needs']:['graph','operations','needs'],description:'默认 graph；needs 返回按优先级排序的依赖缺口、未读区间和直接读取参数；operations 查询本任务工具执行记录，Worker 仅能读取自己的记录；planner_session 召回规划历史'},...(c.role==='planner'?{include_content:{type:'boolean',description:'仅 planner_session：同时读取可完整容纳的短原文，最多3条、每条3000字符且总输出有界。original=true 且有 content/read_receipt 才是已返回原文；其他项按 read 用 context_get 续读。'},roles:{type:'array',minItems:1,maxItems:6,items:{type:'string',enum:PLANNER_HISTORY_ROLES},description:'仅 planner_session：按原始条目角色筛选。查规划结论可选 assistant；未指定保留所有角色。'}}:{}),q:{type:'string',maxLength:200,description:'不区分大小写的字面关键词；多个词按完整短语匹配，不是语义搜索。空值按筛选条件列出。'},types:{type:'array',items:{type:'string',enum:['fact','finding','intent','goal','hint','digest','activity']}},state:{type:'string'},asset_id:{type:'integer',minimum:1},intent_id:{type:'integer',minimum:1},task_id:{type:'integer',minimum:1},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:'string'}}},run:(args,ctx)=>searchContext(ctx,args)},c);}
 
 function legacyContextGetTool(c:ToolRunContext){return domainTool<{ref:string;version?:number;offset?:number;after_edge?:number;anchor_offset?:number}>({name:'context_get',description:'读取 node:ID 的详情、证据和图关系。超过单页时继续 offset/after_edge/anchor_offset；version 可拒绝读取过程中被修改的节点。',readOnly:true,
   parameters:{type:'object',properties:{ref:{type:'string',pattern:'^node:[1-9][0-9]*$'},version:{type:'integer',minimum:0},offset:{type:'integer',minimum:0},after_edge:{type:'integer',minimum:0},anchor_offset:{type:'integer',minimum:0}},required:['ref']},
@@ -145,7 +149,7 @@ async function searchActivitiesAndNodes(c:ToolRunContext,args:Search){
     has_more:rows.length>page.length,order:cursor.order==='desc'?'newest_first':'oldest_first',
     next_cursor:rows.length>page.length&&last?Buffer.from(JSON.stringify({...cursor,after:Number(last.id),kind:last.category,...(cursor.order==='desc'?{time:String(last.created_at)}:{})})).toString('base64url'):null};
 }
-interface RecallItem {ref:string;view?:'summary'|'detail'|'output'|'parents'|'members';field?:string;offset?:number;version?:number;cursor?:string;}
+interface RecallItem {ref:string;view?:'summary'|'detail'|'output'|'parents'|'members';field?:string;offset?:number;version?:number;cursor?:string;max_chars?:number;}
 interface RecallArgs {items?:RecallItem[];max_chars?:number;ref?:string;version?:number;offset?:number;after_edge?:number;anchor_offset?:number;}
 function pointer(value:unknown,field?:string):unknown{
   if(!field)return value;
@@ -158,7 +162,7 @@ function pointer(value:unknown,field?:string):unknown{
 }
 export function contextGetTool(c:ToolRunContext){return domainTool<RecallArgs>({name:'context_get',readOnly:true,
   description:'批量读取 node:ID、activity:ID、operation:ID、output:UUID、attachment:URL编码路径、traffic:UUID:request|response；证据引用按返回 offset_unit/next_item 续读；detail 为完整证据，output 为最终输出，parents 为上游，members 为冷图成员。field 使用 JSON Pointer；offset 按 Unicode 字符续读，沿用返回的 next_offset。来源任务只读。',
-  parameters:{type:'object',properties:{items:{type:'array',minItems:1,maxItems:5,items:{type:'object',properties:{ref:{type:'string',pattern:'^((node|activity|operation):[1-9][0-9]*|session:[a-zA-Z0-9_-]+|(output|attachment|traffic):.+)$'},view:{type:'string',enum:['summary','detail','output','parents','members']},field:{type:'string'},offset:{type:'integer',minimum:0},version:{type:'integer',minimum:0},cursor:{type:'string',description:'parents/members 关系页游标；按 next_cursor 续读，页内先读完 next_offset'}},required:['ref']}},max_chars:{type:'integer',minimum:256,maximum:24000}},required:['items']},
+  parameters:{type:'object',properties:{items:{type:'array',minItems:1,maxItems:5,items:{type:'object',properties:{ref:{type:'string',pattern:'^((node|activity|operation):[1-9][0-9]*|session:[a-zA-Z0-9_-]+|(output|attachment|traffic):.+)$'},view:{type:'string',enum:['summary','detail','output','parents','members']},field:{type:'string',description:'JSON Pointer，例如 /payload/evidence、历史会话 /content。长正文分段须明确字段；空字符串明确选择整个视图 JSON，其偏移不能用于内嵌证据字段。'},offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:24000,description:'本条 node/activity/operation/session 的 Unicode 字符上限，同时受顶层总上限约束。其他证据引用使用其原生分页。'},version:{type:'integer',minimum:0,description:'图节点版本；session: 原文引用不使用此参数。'},cursor:{type:'string',description:'parents/members 关系页游标；按 next_cursor 续读，页内先读完 next_offset'}},required:['ref']}},max_chars:{type:'integer',minimum:256,maximum:24000,description:'本次批量读取的总字符上限；items 内可另设每条上限。'}},required:['items']},
   async run(args,ctx){
     if(!args.items&&args.ref){const result=await legacyContextGetTool(ctx).execute(ctx.toolCallID??'legacy-read',args as never,ctx.signal,undefined,{} as never);if(result.isError)throw new Error((result.content[0] as {text:string}).text);return JSON.parse((result.content[0] as {text:string}).text);}
     if(!args.items?.length||args.items.length>5)throw new Error('items 需要 1–5 个引用');
@@ -168,15 +172,31 @@ export function contextGetTool(c:ToolRunContext){return domainTool<RecallArgs>({
       const item=args.items[i]!,view=item.view??'detail';
       try{
         await recallPermission(ctx,'context_get');
+        if(item.max_chars!==undefined){
+          if(!Number.isSafeInteger(item.max_chars)||item.max_chars<1||item.max_chars>24000)throw new Error('items.max_chars 必须是 1–24000 的整数');
+          if(/^(output|attachment|traffic):/.test(item.ref))throw new Error('本证据引用使用原生分页及 offset_unit，不支持 items.max_chars；请移除此参数后按 next_item 续读');
+        }
         const evidence=await contextEvidence(ctx,item);
         if(evidence){items.push(evidence);bytes-=Buffer.byteLength(JSON.stringify(evidence));budget-=400;continue;}
         if((view==='parents'||view==='members')&&(item.offset??0)>0&&!item.cursor)
           throw new Error('关系分页请从 offset 0 重新读取，再沿用 page_cursor 和 next_offset 续读');
         const match=/^(node|activity|operation|session):([a-zA-Z0-9_-]+)$/.exec(item.ref);if(!match)throw new Error('无效引用');
-        const id=Number(match[2]);let evidenceScope:unknown;let data:unknown,version:number|undefined,sourceTask=ctx.taskID,nextCursor:string|null=null,pageCursor:string|undefined;
+        const id=Number(match[2]);let evidenceScope:unknown;let data:unknown,version:number|undefined,sourceTask=ctx.taskID,nextCursor:string|null=null,pageCursor:string|undefined,dispatchPage=false;
+        const offset=Math.max(0,item.offset??0),remaining=args.items.length-i;
+        const take=Math.min(item.max_chars??24000,Math.floor(budget/remaining),Math.floor(bytes/remaining/6));
+        let sliced:{content:string;total:number;source_hash:string}|undefined;
         if(match[1]==='session'){
-          if(!['summary','detail','output'].includes(view)||item.cursor)throw new Error('历史会话不支持关系视图或关系游标');
-          data=await getPlannerHistory(ctx,item.ref);
+          if(item.version!==undefined){const {version:ignored,...retry}=item;throw new ReadSelectionRequired('session: 引用指向不可变历史条目，不使用图节点 version；移除此参数后读取同一条原文。',[retry]);}
+          if(!['summary','detail','output'].includes(view))throw new Error('历史会话不支持关系视图');
+          const page=view==='output'?await getPlannerDispatchOutput(ctx,item.ref,item.cursor):undefined;
+          if(page){
+            if(offset>0&&!item.cursor)throw new Error('派单回执分段续读必须携带 page_cursor');
+            data=page.data;nextCursor=page.next_cursor;pageCursor=page.page_cursor;dispatchPage=true;
+          }else{
+            if(item.cursor)throw new Error('历史会话不支持关系游标');
+            if(item.field==='/content')sliced=await getPlannerHistoryContent(ctx,item.ref,offset,take);
+            if(!sliced)data=await getPlannerHistory(ctx,item.ref);
+          }
         }else if(!Number.isSafeInteger(id)||id<=0){throw new Error('无效节点或活动引用');
         }else if(match[1]==='operation'){
           const page=await readOperations(ctx,{id});
@@ -206,6 +226,11 @@ export function contextGetTool(c:ToolRunContext){return domainTool<RecallArgs>({
               await recallPermission(ctx,view==='members'?'expand_digest':'node_detail');
               const page=await contextRelations(ctx,meta,view,item.cursor);data=page.items;nextCursor=page.next_cursor;pageCursor=page.page_cursor;
             }else {
+            if(view==='detail'&&item.field){
+              const field=await contextNodeString(ctx,meta,item.field,offset,take);
+              if(field){sliced=field;if(field.negative)evidenceScope={claim:'reported_negative',scope_verified:false,unmeasured_directions:'unknown',direction_exclusions:[]};}
+            }
+            if(!sliced){
             const r=await resolveGraphNode(ctx.db,ctx.taskID,ctx.expID,id);
             version=r.node.content_version;
             if(r.node.kind==='fact'&&r.node.payload.observation_type==='negative')evidenceScope={claim:'reported_negative',scope_verified:false,unmeasured_directions:'unknown',direction_exclusions:[]};
@@ -218,21 +243,27 @@ export function contextGetTool(c:ToolRunContext){return domainTool<RecallArgs>({
               data={...r.node,anchors:await ctx.db.exploration(r.expID).anchorAssetIDs(id),...(r.node.kind==='finding'?{finding_detail:(await ctx.db.query('SELECT id,name,severity,summary,evidence,report,status,evidence_version,report_evidence_version FROM findings WHERE node_id=$1',[id])).rows[0]??null}:{})};
             }else throw new Error('未知视图');
             }
+            }
           }
         }
         if(item.version!==undefined&&item.version!==version)throw new Error('节点版本已变化，请重新检索');
-        const value=pointer(data,item.field),chars=Array.from(typeof value==='string'?value:JSON.stringify(value??null));
-        const offset=Math.max(0,item.offset??0),remaining=args.items.length-i;
-        const take=Math.min(Math.floor(budget/remaining),Math.floor(bytes/remaining/6));
-        const content=chars.slice(offset,offset+take).join('');budget-=Array.from(content).length;bytes-=Buffer.byteLength(JSON.stringify(content));
-        const nextOffset=offset+take<chars.length?offset+take:null;
-        const nextItem=nextOffset!==null?{ref:item.ref,view,field:item.field,version,offset:nextOffset,...(pageCursor?{cursor:pageCursor}:{})}
-          :nextCursor?{ref:item.ref,view,field:item.field,version,offset:0,cursor:nextCursor}:undefined;
-        const readReceipt={version:1,source_hash:createHash('sha256').update(chars.join('')).digest('hex'),start:Math.min(offset,chars.length),end:Math.min(offset,chars.length)+Array.from(content).length,total:chars.length};
-        const historySegment=match[1]==='session'?{segment:{start:offset,end:offset+Array.from(content).length,total:chars.length,complete:offset===0&&nextOffset===null},
+        const value=sliced?undefined:pointer(data,item.field),text=sliced?'':typeof value==='string'?value:JSON.stringify(value??null);
+        const total=sliced?.total??unicodeLength(text);
+        if(item.field===undefined&&!['parents','members'].includes(view)&&!dispatchPage&&(offset>0||total>take)){
+          const options=fieldReadOptions(data,{ref:item.ref,view,version});
+          throw new ReadSelectionRequired('未返回正文：请明确 field 后分段读取。整个视图 JSON 与其证据字段使用不同字符坐标；不要把一个偏移用于另一字段。确需原始视图 JSON 时显式传 field=""。',options);
+        }
+        const content=sliced?.content??unicodeSlice(text,offset,offset+take),returnedChars=unicodeLength(content);budget-=returnedChars;bytes-=Buffer.byteLength(JSON.stringify(content));
+        const nextOffset=offset+take<total?offset+take:null;
+        const coordinate:ReadCoordinate={ref:item.ref,view,field:item.field??'',...(version!==undefined?{version}:{}),...(pageCursor?{cursor:pageCursor}:{}),unit:'unicode_codepoints',format:sliced||typeof value==='string'?'text':'json'};
+        const pageLimit=item.max_chars!==undefined?{max_chars:item.max_chars}:{};
+        const nextItem=nextOffset!==null?{ref:item.ref,view,field:coordinate.field,version,offset:nextOffset,...pageLimit,...(pageCursor?{cursor:pageCursor}:{})}
+          :nextCursor?{ref:item.ref,view,field:coordinate.field,version,offset:0,cursor:nextCursor,...pageLimit}:undefined;
+        const readReceipt={version:1,coordinate,source_hash:sliced?.source_hash??createHash('sha256').update(text).digest('hex'),start:Math.min(offset,total),end:Math.min(offset,total)+returnedChars,total};
+        const historySegment=match[1]==='session'?{segment:{start:offset,end:offset+returnedChars,total,complete:offset===0&&nextOffset===null},
           ...(offset>0||nextOffset!==null?{note:'仅当前分段；未返回区间不能视为已读或无证据。'}:{})}:{};
-        items.push({ref:item.ref,view,field:item.field,version,source_task_id:sourceTask,inherited:sourceTask!==ctx.taskID,content,total_chars:chars.length,next_offset:nextOffset,read_receipt:readReceipt,...(evidenceScope?{evidence_scope:evidenceScope}:{}),...historySegment,...(nextItem?{next_item:nextItem}:{}),...(view==='parents'||view==='members'?{page_cursor:pageCursor,next_cursor:nextOffset!==null?null:nextCursor}:{} )});
-      }catch(error){items.push({ref:item.ref,error:error instanceof Error?error.message:String(error)});}
+        items.push({ref:item.ref,view,field:coordinate.field,version,source_task_id:sourceTask,inherited:sourceTask!==ctx.taskID,content,total_chars:total,offset_unit:coordinate.unit,next_offset:nextOffset,read_receipt:readReceipt,...(evidenceScope?{evidence_scope:evidenceScope}:{}),...historySegment,...(nextItem?{next_item:nextItem}:{}),...(view==='parents'||view==='members'||dispatchPage?{page_cursor:pageCursor,next_cursor:nextOffset!==null?null:nextCursor}:{} )});
+      }catch(error){items.push({ref:item.ref,error:error instanceof Error?error.message:String(error),...(error instanceof ReadSelectionRequired?{error_code:error.code,read_options:error.read_options}: {})});}
     }
     return {items};
   }},c);}

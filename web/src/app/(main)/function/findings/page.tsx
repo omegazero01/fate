@@ -1,5 +1,4 @@
 "use client";
-import { PageHeading } from "@/components/workspace";
 
 import * as React from "react";
 
@@ -726,10 +725,6 @@ export default function FindingsPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <PageHeading title={<>发现</>}/>
-          <p className="text-muted-foreground text-sm">跨任务漏洞汇总</p>
-        </div>
         <Tabs value={view} onValueChange={(v) => setView(v as FindingView)}>
           <TabsList>
             <TabsTrigger value="flat">全部发现</TabsTrigger>

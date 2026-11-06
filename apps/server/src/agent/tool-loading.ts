@@ -1,4 +1,6 @@
 import {readFile} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
+import {createInterface} from 'node:readline';
 import path from 'node:path';
 import {applyToolBindings} from './tool-bindings.js';
 import {TOOL_POLICY_VERSION,TOOL_ALIASES,isCoreTool,toolIdentity,RETIRED_TOOLS} from './tool-registry.js';
@@ -22,6 +24,23 @@ export function compactToolSchema(tool:ToolDefinition):ToolDefinition {
 export interface ToolLoading {
  version:string;initialActive:string[];deferred:string[];compatibility:string[];referencedActive?:string[];fallback?:string;
 }
+
+/** Compatibility is a marker lookup, not another full in-memory JSONL load.
+ * Stop as soon as the installed policy is found; PI still owns session parsing. */
+export async function legacyToolSession(file:string):Promise<boolean>{
+ const input=createReadStream(file,{encoding:'utf8'}),lines=createInterface({input,crlfDelay:Infinity});
+ let messages=false;
+ try{
+  for await(const line of lines){
+   if(!line.trim())continue;
+   const entry=JSON.parse(line);
+   if(entry.type==='custom'&&entry.customType===TOOL_POLICY_VERSION)return false;
+   if(entry.type==='message')messages=true;
+  }
+  return messages;
+ }catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return false;throw error;}
+ finally{lines.close();input.destroy();}
+}
 /** Pure loadout shared with preview. Filtering never introduces a tool absent from the bound set. */
 export function toolLoadout(role:string,options:Pick<AgentRunnerOptions,'customTools'|'toolAllowlist'>,settings:{direct?:boolean;legacy?:boolean;legacyParameters?:string[];referenced?:string[];custom?:string[];fallback?:string}={}) {
  const allowed=[...new Set(options.toolAllowlist??[])].filter(n=>!RETIRED_TOOLS.has(n));
@@ -36,7 +55,7 @@ export function toolLoadout(role:string,options:Pick<AgentRunnerOptions,'customT
 type ToolLoadingOptions=Pick<AgentRunnerOptions,'customTools'|'toolAllowlist'|'legacyTools'|'systemPrompt'|'taskContext'|'resumeSessionPath'|'skillsDir'|'allowedSkills'>;
 export async function prepareToolLoading(db:Database,role:string,options:ToolLoadingOptions,direct:boolean,fallback?:string){
  let legacy=false;
- if(options.resumeSessionPath){try{const lines=(await readFile(options.resumeSessionPath,'utf8')).split('\n').filter(Boolean).map(l=>JSON.parse(l));legacy=lines.some(e=>e.type==='message')&&!lines.some(e=>e.type==='custom'&&e.customType===TOOL_POLICY_VERSION);}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
+ if(options.resumeSessionPath)legacy=await legacyToolSession(options.resumeSessionPath);
  // Scan only explicitly bound Skills for compatibility; no Skill content is injected into the model.
  const sources=[options.systemPrompt??'',options.taskContext??''];
  if(options.skillsDir)for(const skill of options.allowedSkills??[]){

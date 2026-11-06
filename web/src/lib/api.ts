@@ -1,6 +1,8 @@
 import { entryAwareFetch } from "@/lib/http-auth";
 import { modelTokenStats } from "@/lib/model-token-stats";
 import { listItems } from "@/lib/api-list";
+import {activityContentQuery,type ActivityContentPage,type ActivityContentOptions} from '@/lib/activity-content';
+import {graphPageQuery,type GraphSelection,type GraphReply,type GraphNodePage} from '@/lib/graph-browse';
 // Real backend client. /api/* is proxied to the Go backend (next.config rewrites).
 // Returns the domain types in lib/types.ts. Shapes match the backend handlers;
 // a few fields the backend serializes differently (e.g. created_at as a unix int)
@@ -131,7 +133,7 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
       document.cookie = "series_token=; path=/; max-age=0";
       window.location.href = "/login";
     }
-    throw new Error("未授权");
+    throw Object.assign(new Error("未授权"), { status: r.status });
   }
   if (!r.ok) {
     const fallback = `${init?.method ?? "GET"} ${path}: ${r.status}`;
@@ -144,7 +146,7 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Keep the status-based fallback for empty or non-JSON error responses.
     }
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: r.status });
   }
   if (r.status === 204) return undefined as T;
   return r.json();
@@ -325,7 +327,7 @@ export const api = {
   controlIntent: (taskId: string, intentId: string, action: "pause" | "resume" | "cancel", reason?: string) =>
     post<{
       id: number;
-      state: "paused" | "open" | "running" | "stopped";
+      state: "paused" | "open" | "running" | "stopped" | "done" | "blocked" | "exhausted";
       cancelled_by_user: boolean;
       cancel_reason?: string;
       queued?: boolean;
@@ -355,7 +357,7 @@ export const api = {
       by_type: { type: string; total: number; tested: number }[];
     }>(`/tasks/${id}/coverage`),
   // 资产覆盖图：范围内全部资产 + 连接用的根域名/公司节点，含 tested/in_scope。
-  taskCoverageGraph: (id: string) => get<CoverageGraphData>(`/tasks/${id}/coverage-graph`),
+  taskCoverageGraph: (id: string, query: {page?:number; focus?:string; revision?:string}={}, signal?:AbortSignal) => get<CoverageGraphData>(`/tasks/${id}/coverage-graph?${new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v])=>[k,String(v)]))}`,{signal}),
   // 全局 llm_usage 聚合（仪表盘新版 token 视图）：按 profile 总量 + 按天分桶。
   usageStats: (days = 365) => get<UsageStats>(`/tokens/usage?days=${days}`),
   // ---- 目标管理（总览）----
@@ -697,12 +699,16 @@ export const api = {
     get<ConvTokenSummary[]>("/tokens/conversations")
       .then(arr),
   explorationGraph: (task?: string) => get<{ nodes: TaskNode[]; edges: Edge[] }>(`/exploration/graph${tq(task)}`),
+  graphPage:(task:string,selection:GraphSelection={},known?:string,signal?:AbortSignal)=>get<GraphReply>(`/exploration/graph?${graphPageQuery(task,selection,known)}`,{signal}),
+  graphNodePage:(task:string,id:string,offset=0,version?:string,assetOffset=0,signal?:AbortSignal,revision?:string)=>get<GraphNodePage>(`/exploration/nodes/${encodeURIComponent(id)}?${new URLSearchParams({task,view:'page',offset:String(offset),asset_offset:String(assetOffset),...(version?{version}:{}),...(revision?{revision}:{})})}`,{signal}),
   // 播报板:服务端按创建顺序分页的探索节点(默认最新在前)。
   explorationNodes: (task: string, query: ExplorationNodeQuery = {}, signal?: AbortSignal) => {
     const q = new URLSearchParams();
     if (task) q.set("task", task);
     q.set("page", String(query.page ?? 1));
     q.set("size", String(query.size ?? 20));
+    q.set("edges", "none");
+    if(query.revision)q.set("revision",query.revision);
     if (query.countOnly) q.set("count_only", "1");
     if (query.kinds?.length) q.set("kind", query.kinds.join(","));
     if (query.states?.length) q.set("state", query.states.join(","));
@@ -710,6 +716,7 @@ export const api = {
     if (query.order === "asc") q.set("order", "asc");
     return get<ExplorationNodePage>(`/exploration/nodes?${q.toString()}`, { signal }).then((r) => ({
       items: arr(r.items),
+      revision:r.revision,
       total: r.total ?? 0,
       page: r.page ?? 1,
       size: r.size ?? query.size ?? 20,
@@ -734,9 +741,15 @@ export const api = {
     }));
   },
   turnSummaries: (task:string|undefined,conversation:number|undefined,ids:string[]) => get<{items:import('./turn-summary').TurnSummary[]}>(`/${conversation?`conversations/${conversation}`:`tasks/${task}`}/turns?ids=${encodeURIComponent(ids.join(','))}`),
-  workerWritebacks: (task:string,turn:string,bucket:'current'|'previous'='current',cursor?:string) =>
-    get<import('./worker-writebacks').WorkerWritebackPage>(`/tasks/${encodeURIComponent(task)}/turns/${encodeURIComponent(turn)}/writebacks?${new URLSearchParams({bucket,...(cursor?{cursor}:{})})}`),
+  turnModels: (task:string|undefined,conversation:number|undefined,id:string,offset:number,version:string) => get<{items:import('./turn-summary').TurnSummary[]}>(`/${conversation?`conversations/${conversation}`:`tasks/${task}`}/turns?${new URLSearchParams({ids:id,models_offset:String(offset),data_revision:version})}`),
+  turnModelName: (task:string|undefined,conversation:number|undefined,id:string,index:number,offset:number,version:string) => get<{name:{content:string;offset:number;next_offset:number;total_chars:number;has_more:boolean}}>(`/${conversation?`conversations/${conversation}`:`tasks/${task}`}/turns?${new URLSearchParams({ids:id,name_index:String(index),name_offset:String(offset),data_revision:version})}`),
   activityDetail: (id: number, task?: string) => get<{ detail: string }>(`/exploration/activity/${id}${tq(task)}`),
+  activityContent: (id:number,options:ActivityContentOptions={},task?:string)=>get<ActivityContentPage>(`/exploration/activity/${id}?${activityContentQuery(options,task)}`,{signal:options.signal}),
+  conversationContent: (id:number,seq:number,options:ActivityContentOptions={})=>get<ActivityContentPage>(`/conversations/${id}/messages/${seq}?${activityContentQuery(options)}`,{signal:options.signal}),
+  streamContent: (stream:string,channel:string,options:ActivityContentOptions={},task?:string,conversationId?:number)=>{
+    const q=activityContentQuery(options,task);q.set('channel',channel);
+    return get<ActivityContentPage>(`${conversationId?`/conversations/${conversationId}`:'/exploration'}/streams/${encodeURIComponent(stream)}?${q}`,{signal:options.signal});
+  },
   // Reverse-paginated session history. session = "main" | "plan" | "intent:<id>".
   // before=0 → latest page; before=<id> → the older page ending before that id.
   // snapshotCursor is the TASK-level max id at query time — open the task SSE at

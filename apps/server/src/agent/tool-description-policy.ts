@@ -25,6 +25,8 @@ export function roleToolParameters(name:string,parameters:Record<string,unknown>
   if(role==='planner'||!['context_search','context_get'].includes(name))return parameters;
   const result=structuredClone(parameters) as any;
   if(name==='context_search'&&result.properties?.source){
+    delete result.properties.roles;
+    delete result.properties.include_content;
     const source=result.properties.source;
     if(Array.isArray(source.enum))source.enum=source.enum.filter((value:string)=>value!=='planner_session');
     if(typeof source.description==='string')source.description=source.description.replace('；planner_session 召回规划历史','');

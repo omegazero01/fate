@@ -1,5 +1,8 @@
 /** Prompt projections never replace the graph record; callers retain node refs. */
-const short=(v:unknown,n:number)=>typeof v==='string'?v.slice(0,n):undefined;
+const short=(v:unknown,n:number)=>{
+  if(typeof v!=='string')return undefined;
+  let count=0,end=0;for(const char of v){if(count++>=n)break;end+=char.length;}return v.slice(0,end);
+};
 export function progressSummary(value:unknown){
   if(!value||typeof value!=='object')return undefined;
   const p=value as Record<string,unknown>;
@@ -19,3 +22,20 @@ export function stopSummary(value:unknown){
   return {reason:short(s.reason,64),summary:short(s.summary,240),recovery:short(s.recovery,240),
     accepted_result:s.accepted_result===true,recorded_at:short(s.recorded_at,64)};
 }
+
+/** Trusted SQL expressions only: trim before transfer, not after loading a whole
+ * tool response/result into the server heap. Full fields remain on context_get. */
+export const progressProjectionSQL=(p:string)=>`CASE WHEN jsonb_typeof(${p}->'progress')='object' THEN jsonb_build_object(
+ 'phase',left(${p}->'progress'->>'phase',40),'summary',left(${p}->'progress'->>'summary',200),
+ 'blocker',left(${p}->'progress'->>'blocker',160),'next_step',left(${p}->'progress'->>'next_step',160),
+ 'updated_at',left(${p}->'progress'->>'updated_at',64)) END`;
+export const stopProjectionSQL=(p:string)=>`CASE WHEN jsonb_typeof(${p}->'execution_stop')='object' THEN jsonb_build_object(
+ 'reason',left(${p}->'execution_stop'->>'reason',64),'summary',left(${p}->'execution_stop'->>'summary',240),
+ 'recovery',left(${p}->'execution_stop'->>'recovery',240),'accepted_result',${p}->'execution_stop'->'accepted_result',
+ 'recorded_at',left(${p}->'execution_stop'->>'recorded_at',64)) END`;
+export const resultProjectionSQL=(p:string)=>`CASE WHEN jsonb_typeof(${p}->'execution_result')='object' THEN jsonb_build_object(
+ 'outcome',left(${p}->'execution_result'->>'outcome',40),'summary',left(${p}->'execution_result'->>'summary',240),
+ 'remaining',left(${p}->'execution_result'->>'remaining',160),
+ 'criteria',(SELECT jsonb_agg(jsonb_build_object('fact_ids',(SELECT jsonb_agg(v) FROM (
+  SELECT value v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(c->'fact_ids')='array' THEN c->'fact_ids' ELSE '[]'::jsonb END) LIMIT 20) f)))
+  FROM (SELECT value c FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${p}->'execution_result'->'criteria')='array' THEN ${p}->'execution_result'->'criteria' ELSE '[]'::jsonb END) LIMIT 10) cs)) END`;

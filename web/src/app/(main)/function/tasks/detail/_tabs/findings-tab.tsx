@@ -72,7 +72,6 @@ function TaskFindings({ taskId }: { taskId: string }) {
   return (
     <div className="task-findings flex flex-col gap-7">
       <div className="flex items-baseline gap-3">
-        <h2 className="text-xl font-medium">所有发现</h2>
         <span className="text-sm text-muted-foreground">
           {data ? `${data.total} 项发现` : error ? "加载失败" : "加载中…"}
         </span>

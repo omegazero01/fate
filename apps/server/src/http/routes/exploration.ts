@@ -1,4 +1,5 @@
 import {serveActivityStream} from '../activity-stream.js';
+import {readActivityPage} from '../../db/activity-content.js';
 // 探索图路由（按 expID 寻址，M5 新契约）：节点/边/活动分页/frontier + 活动实时 SSE。
 // SSE 与 Go streamActivity 同构：先 `: connected`，回放 since 之后的 DB 历史，
 // 再桥接 engine.bus 的 activity 事件；每帧 `id: <seq>\ndata: {json}\n\n`，20s 心跳 `: ping`。
@@ -12,7 +13,6 @@ import {runContext} from '../../tools/context.js';
 /** engine.bus activity 事件（EngineActivity + 落库后的自增 id）。 */
 type BusActivity = EngineActivity & { id?: number };
 
-const ACTIVITY_COLS = `id, node_id, worker, kind, tool, tool_use_id, is_error, summary, detail, main_seg, metadata, created_at`;
 
 function num(v: unknown, def = 0): number {
   const n = Number(v);
@@ -85,12 +85,7 @@ export function registerExplorationRoutes(app: FastifyInstance): void {
     const node = q["node"] !== undefined && q["node"] !== "" ? num(q["node"], 0) : null;
     const intent = q["intent"] !== undefined && q["intent"] !== "" ? num(q["intent"], 0) : null;
     const nodeFilter = node ?? intent;
-    const res = await db().query(
-      `SELECT ${ACTIVITY_COLS} FROM activity
-       WHERE exploration_id=$1 AND id>$2 AND exploration_activity_readable($1,node_id,metadata) AND ($3::bigint IS NULL OR node_id=$3)
-       ORDER BY id ASC LIMIT $4`,
-      [expID, since, nodeFilter, limit],
-    );
+    const res = await readActivityPage(db(),'task','exploration_id=$1 AND id>$2 AND exploration_activity_readable($1,node_id,metadata) AND ($3::bigint IS NULL OR node_id=$3)',[expID,since,nodeFilter],'ASC',limit);
     const items = res.rows.map((r) => ({
       id: Number(r["id"]),
       node_id: r["node_id"] === null ? null : Number(r["node_id"]),
@@ -101,9 +96,10 @@ export function registerExplorationRoutes(app: FastifyInstance): void {
       is_error: r["is_error"] === true,
       summary: String(r["summary"] ?? ""),
       detail: r["detail"] ?? null,
+      detail_total_chars:r.detail_total_chars,detail_truncated:r.detail_truncated,detail_version:r.detail_version,metadata_truncated:r.metadata_truncated,summary_truncated:r.summary_truncated,
       created_at: r["created_at"] instanceof Date ? (r["created_at"] as Date).toISOString() : String(r["created_at"]),
     }));
-    return { items, cursor: items.length > 0 ? items[items.length - 1]!.id : since };
+    return { items, cursor: items.length > 0 ? items[items.length - 1]!.id : since, has_more:res.hasMore };
   });
 
   app.get("/api/exploration/:expID/frontier", async (req) => {

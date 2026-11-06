@@ -1,3 +1,4 @@
+import {archiveReport,prepareReproduction,attachStepTraffic,reportSections,assembleReport,reproductionSchema} from '../evidence/reproduction.js';
 import {requireTaskGoal} from "../agent/task-goal.js";
 import type {ToolDefinition} from '@earendil-works/pi-coding-agent';
 import {domainTool} from './define.js';
@@ -6,6 +7,7 @@ import type {Engine} from '../engine/engine.js';
 import {findingEvidence} from '../evidence/store.js';
 export function conversationDomainTools(ctx:ToolRunContext,engine:Pick<Engine,'admitTask'|'pause'|'notify'>,options:{profileID?:number;pendingReports?:Set<number>;onSaved?:()=>void}={}){
  const tools:ToolDefinition[]=[],role=ctx.role,taskID=ctx.taskID,id=ctx.conversationID??0,profileID=options.profileID??0;
+ const reads=new Map<number,{evidence:number;revision:number;ranges:Array<[number,number]>;total:number;complete:boolean}>();
  const pendingReports=options.pendingReports??new Set<number>(),onSaved=options.onSaved??(()=>{});
    if(role==='auto'){
     const make=(name:string,description:string,properties:Record<string,unknown>,run:(a:Record<string,unknown>)=>Promise<Record<string,unknown>>,required:string[]=[])=>domainTool({name,description,transactional:false,parameters:{type:'object',properties,required},run},ctx);
@@ -25,10 +27,28 @@ export function conversationDomainTools(ctx:ToolRunContext,engine:Pick<Engine,'a
    if(['reporter','auto'].includes(role)){
      tools.push(domainTool<{finding_id:number;offset?:number}>({name:'get_finding',description:'读取漏洞、证据版本及绑定；报告正文使用 offset 续读。',readOnly:true,parameters:{type:'object',properties:{finding_id:{type:'integer'},offset:{type:'integer',minimum:0}},required:['finding_id']},async run(a,c){
      const f=(await c.db.query('SELECT * FROM findings WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND finding_readable(id)',[a.finding_id,taskID])).rows[0];if(!f)throw new Error('漏洞不存在或未获当前任务授权');if(role==='reporter'&&(!f.report||f.report_evidence_version==null||Number(f.report_evidence_version)!==Number(f.evidence_version)))pendingReports.add(Number(f.id));
-     const body=JSON.stringify(f),off=Math.max(0,a.offset??0);
-     return {finding_id:Number(f.id),evidence_version:Number(f.evidence_version),content:body.slice(off,off+1500),next_offset:off+1500<body.length?off+1500:null,evidence:await findingEvidence(c.db,a.finding_id)};
-    }},ctx) as never,domainTool<{finding_id:number;evidence_version:number;report:string}>({name:'update_finding_report',description:'仅在证据版本一致时更新漏洞报告；冲突后重新读取证据。',parameters:{type:'object',properties:{finding_id:{type:'integer'},evidence_version:{type:'integer'},report:{type:'string'}},required:['finding_id','evidence_version','report']},async run(a,c){
-     const r=await c.db.query('UPDATE findings SET report=$3,report_evidence_version=$4 WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND evidence_version=$4 AND finding_readable(id) RETURNING id',[a.finding_id,taskID,a.report,a.evidence_version]);if(!r.rowCount)throw new Error('证据版本已变化或漏洞不可用，请重新读取');pendingReports.delete(a.finding_id);onSaved();return {saved:true};
+     const body=Array.from(JSON.stringify(f)),off=Math.max(0,a.offset??0),end=Math.min(body.length,off+1500);
+     const prior=reads.get(Number(f.id));
+     const read=prior&&prior.evidence===Number(f.evidence_version)&&prior.revision===Number(f.report_revision)?prior:{evidence:Number(f.evidence_version),revision:Number(f.report_revision),ranges:[] as Array<[number,number]>,total:body.length,complete:false};
+     read.ranges.push([Math.min(off,body.length),end]);read.ranges.sort((x,y)=>x[0]-y[0]);let covered=0;for(const [start,stop] of read.ranges){if(start>covered)break;covered=Math.max(covered,stop);}read.complete=covered>=body.length;reads.set(Number(f.id),read);
+     return {finding_id:Number(f.id),evidence_version:Number(f.evidence_version),report_revision:Number(f.report_revision),read_complete:read.complete,content:body.slice(off,off+1500).join(''),next_offset:off+1500<body.length?off+1500:null,evidence:await findingEvidence(c.db,a.finding_id)};
+    }},ctx) as never,domainTool<{finding_id:number;evidence_version:number;report?:string;report_revision?:number;report_sections?:unknown;reproduction?:unknown}>({name:'update_finding_report',transactional:false,description:'仅在证据版本一致时更新漏洞报告；冲突后重新读取证据。',parameters:{type:'object',properties:{finding_id:{type:'integer'},evidence_version:{type:'integer'},report:{type:'string',description:'仅兼容旧报告'},report_revision:{type:'integer'},report_sections:{type:'object',properties:{description:{type:'string'},impact:{type:'array',items:{type:'string'}},remediation:{type:'array',items:{type:'string'}}},required:['description','impact','remediation'],additionalProperties:false},reproduction:reproductionSchema},required:['finding_id','evidence_version']},async run(a,c){
+     const saved=await c.db.transaction(async db=>{await c.hooks.assertOwnership?.(db);c={...c,db};
+     const seen=reads.get(a.finding_id);
+     if(!seen)throw new Error('必须先 get_finding 读取证据及报告版本');
+     if(!seen.complete)throw new Error('漏洞内容尚未读完，请按 get_finding 的 next_offset 续读；分段预览不等于全文已读');
+     const f=(await c.db.query('SELECT * FROM findings WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND finding_readable(id) FOR UPDATE',[a.finding_id,taskID])).rows[0];
+     if(!f||Number(f.evidence_version)!==a.evidence_version||Number(f.report_revision)!==(a.report_revision??seen.revision)||seen.evidence!==a.evidence_version)throw new Error('证据或报告版本已变化，请重新读取');
+     await archiveReport(c.db,f);
+     const sections=a.report_sections?reportSections(a.report_sections):null;
+     const repro=a.reproduction===undefined?(f.reproduction as import('../evidence/reproduction.js').Reproduction|null):await prepareReproduction(c.db,a.reproduction,{taskID:Number(f.task_id),evidence:String(f.evidence),findingNodeID:Number(f.node_id)},true);
+     if(a.reproduction!==undefined)await attachStepTraffic(c.db,a.finding_id,Number(f.task_id),repro);
+     const version=Number((await c.db.query('SELECT evidence_version FROM findings WHERE id=$1',[a.finding_id])).rows[0]!.evidence_version);
+     if(!sections&&!a.report?.trim())throw new Error('报告正文不能为空');
+     const report=sections?assembleReport({...f,report_sections:sections,reproduction:repro,report_evidence_version:version,evidence_version:version}):a.report!;
+     await c.db.query('UPDATE findings SET report=$2,report_sections=$3,reproduction=$4,report_evidence_version=$5,report_revision=report_revision+1 WHERE id=$1',[a.finding_id,report,sections,repro,version]);
+     return {saved:true};
+     });pendingReports.delete(a.finding_id);onSaved();return saved;
     }},ctx) as never);
    }
 

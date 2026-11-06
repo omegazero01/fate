@@ -1,10 +1,13 @@
 "use client";
 
 import * as React from "react";
+import {ActivityBody,ActivityContentProvider} from "@/components/activity-body";
 import {
   InfoIcon,
   CopyIcon,
   CheckIcon,
+  CircleHelpIcon,
+  CircleStopIcon,
   ChevronDown,
   ChevronRight,
   CrosshairIcon,
@@ -12,9 +15,7 @@ import {
   MessageSquare,
   PaperclipIcon,
   ShieldAlertIcon,
-  Terminal,
   UserIcon,
-  Wrench,
   XIcon,
 } from "lucide-react";
 import {plannerRoundView,isPlannerBoundary} from '@/lib/planner-round';
@@ -22,7 +23,7 @@ import {PlannerRoundMarker} from '@/components/planner-round-marker';
 import {SteeringNotice} from '@/components/steering-notice';
 import {isSteering} from '@/lib/steering';
 import {useTurnSummaries} from '@/hooks/use-turn-summaries';
-import {WorkerWritebacks,WorkerConclusion} from '@/components/worker-writebacks';
+import {TurnModels} from './turn-models';
 import {turnParts,durationLabel,type TurnSummary} from '@/lib/turn-summary';
 import {Popover,PopoverTrigger,PopoverContent,PopoverHeader,PopoverTitle,PopoverDescription} from '@/components/ui/popover';
 import {Separator} from '@/components/ui/separator';
@@ -40,6 +41,17 @@ import { Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, 
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { MessageScrollerItem, useMessageScroller } from "@/components/ui/message-scroller";
 import type { Activity } from "@/lib/types";
+
+// Shared dot-matrix mark for reasoning and tool activity; motion reflects live work only.
+const ExecutionLiveContext = React.createContext(false);
+function ProcessGlyph({active=false}:{active?:boolean}) {
+  return <svg viewBox="0 0 24 24" className="process-glyph" data-active={active} aria-hidden="true">
+    {Array.from({length:25},(_,i)=><circle key={i} cx={3+(i%5)*4.5} cy={3+Math.floor(i/5)*4.5} r="1.4" fill="currentColor" opacity={[16,20,16,12,10,18,28,24,14,10,22,36,50,24,12,25,55,85,40,16,35,85,100,50,22][i]/100} style={{animationDelay:`${i*45}ms`}}/>)}
+  </svg>;
+}
+function WorkingIndicator(){
+  return <div className="execution-working" role="status"><span className="execution-working-dots" aria-hidden="true"><i/><i/><i/></span><span>正在处理你的任务…</span></div>;
+}
 
 // ---- per-agent lane color (planner + work#1/#2/#3 …) ---------------------------
 const workerColors = ["bg-sky-600", "bg-violet-600", "bg-teal-600", "bg-pink-600", "bg-orange-600"];
@@ -166,7 +178,7 @@ function ActivityTime({ ts }: { ts: string }) {
 // command out of the raw input JSON ({"command":…,"description":…}) so the UI shows
 // the command itself instead of JSON; other tools fall back to the raw text.
 function toolInputText(tool: string, raw: string): string {
-  if (tool !== "Bash") return raw;
+  if (tool.toLowerCase() !== "bash") return raw;
   // full input (expanded detail): parse and pull the command out.
   try {
     const o = JSON.parse(raw);
@@ -189,233 +201,68 @@ function toolInputText(tool: string, raw: string): string {
   return raw;
 }
 
-function ToolBlock({
-  group,
-  getDetail,
-  showWorker,
-  focused,
-  onLocated,
-  focusLabel = "来源调用",
-}: {
-  group: Extract<Group, { type: "tool" }>;
-  getDetail: (seq: number) => Promise<string>;
-  showWorker?: boolean;
-  focused?: boolean;
-  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
-  focusLabel?: string;
+function ToolBlock({group,showWorker,focused,onLocated,focusLabel="来源调用"}: {
+  group:Extract<Group,{type:"tool"}>;getDetail:(seq:number)=>Promise<string>;showWorker?:boolean;focused?:boolean;
+  onLocated?:(el:HTMLElement,explicit?:boolean)=>void;focusLabel?:string;
 }) {
-  const [open, setOpen] = React.useState(!!focused);
-  const root = React.useRef<HTMLDivElement>(null);
-  const [loadError, setLoadError] = React.useState(false);
-  const [retry, setRetry] = React.useState(0);
-  React.useEffect(() => {
-    if (focused) setOpen(true);
-  }, [focused]);
-  const [detail, setDetail] = React.useState<string | null>(null);
-  // what we last loaded, keyed by the underlying step seqs. When the tool result
-  // arrives after we expanded mid-run (command only), this key changes and the
-  // effect below re-fetches — so the output shows up instead of being cached out.
-  const loadedKey = React.useRef<string | null>(null);
-  const [parts, setParts] = React.useState<{ seq: number; text: string }[]>([]);
-  const { use, result } = group;
-  const toolName = use?.tool || result?.tool || "工具";
-  const ToolIcon = toolName === "Bash" ? Terminal : Wrench;
-  const running = !result;
-  const ok = !!result && !result.is_error;
-  const statusTone = running
-    ? "text-muted-foreground"
-    : ok
-      ? "text-emerald-600 dark:text-emerald-400"
-      : "text-red-600 dark:text-red-400";
-  const rawCmd =
-    use && use.summary.startsWith(toolName) ? use.summary.slice(toolName.length).trimStart() : (use?.summary ?? "");
-  const cmd = toolInputText(toolName, rawCmd);
-  // status only — the full result lives behind the expand (【输出】), not previewed inline
-  const statusText = running ? "执行中…" : ok ? "✓" : "✕ 失败";
-
-  // key over the seqs we'd load; changes when the result (or command) arrives.
-  const detailKey = `${use?.seq ?? ""}:${result?.seq ?? ""}:${retry}`;
-  React.useEffect(() => {
-    if (!open || loadedKey.current === detailKey) return;
-    let live = true;
-    const segs: { label: string; seq: number }[] = [];
-    if (use) segs.push({ label: "命令", seq: use.seq });
-    if (result) segs.push({ label: "输出" + (result.is_error ? " ✕" : " ✓"), seq: result.seq });
-    setLoadError(false);
-    Promise.all(segs.map((x) => getDetail(x.seq).then((d) => d || "（空）")))
-      .then((parts) => {
-        if (!live) return;
-        setDetail(
-          segs
-            .map(
-              (x, i) =>
-                `【${x.label}】\n${x.label === "命令" && focusLabel !== "搜索结果" ? toolInputText(toolName, parts[i]) : parts[i]}`,
-            )
-            .join("\n\n"),
-        );
-        setParts(
-          segs.map((x, i) => ({
-            seq: x.seq,
-            text: `【${x.label}】\n${x.label === "命令" && focusLabel !== "搜索结果" ? toolInputText(toolName, parts[i]) : parts[i]}`,
-          })),
-        );
-        loadedKey.current = detailKey;
-      })
-      .catch(() => {
-        if (live) setLoadError(true);
-      });
-    return () => {
-      live = false;
-    };
-  }, [open, detailKey, use, result, getDetail, toolName, focusLabel]);
-
-  React.useEffect(() => {
-    // A failed detail request is also a settled view: keep its retry control
-    // visible at the source call instead of leaving it buried in old history.
-    if (!focused || !open || (!detail && !loadError) || !root.current) return;
-    if (onLocated) {
-      const frame = requestAnimationFrame(() => {
-        if (root.current) onLocated(root.current);
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-    const el = root.current;
-    const viewport = el.closest('[data-slot="scroll-area-viewport"], [data-slot="message-scroller-viewport"]');
-    if (!viewport) return;
-    const center = () => {
-      const rect = el.getBoundingClientRect(),
-        bounds = viewport.getBoundingClientRect();
-      viewport.scrollTop += rect.top + rect.height / 2 - bounds.top - bounds.height / 2;
-    };
-    const observer = new ResizeObserver(center);
-    observer.observe(el.parentElement ?? el);
-    observer.observe(viewport);
-    const stop = () => observer.disconnect();
-    for (const event of ["wheel", "touchstart", "pointerdown", "keydown"])
-      viewport.addEventListener(event, stop, { passive: true, once: true });
-    const frame = requestAnimationFrame(center),
-      timer = setTimeout(stop, 2000);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-      stop();
-      for (const event of ["wheel", "touchstart", "pointerdown", "keydown"]) viewport.removeEventListener(event, stop);
-    };
-  }, [focused, open, detail, loadError, onLocated]);
-
-  function toggle() {
-    setOpen((o) => !o);
-  }
-
-  return (
-    <div
-      ref={root}
-      data-source-call={focused || undefined}
-      data-activity-id={use?.seq ?? result?.seq}
-      className={cn("text-xs", focused && "rounded-md border border-primary bg-accent/30 p-2")}
-    >
-      {focused && <Badge variant="outline">{focusLabel}</Badge>}
-      <button type="button" onClick={toggle} className="flex w-full items-start gap-2 py-1 text-left hover:bg-muted/40">
-        <span className="mt-0.5 text-muted-foreground">
-          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        </span>
-        <ToolIcon className={"mt-0.5 size-3.5 shrink-0 " + (running ? "text-sky-600 dark:text-sky-400" : statusTone)} />
-        {showWorker && <span className={chip(group.worker)}>{group.worker}</span>}
-        <span className="shrink-0 font-medium text-sky-600 dark:text-sky-400">{toolName}</span>
-        {cmd && <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{cmd}</span>}
-        <span className={"ml-auto shrink-0 font-medium " + statusTone}>{statusText}</span>
-      </button>
-      {open && (
-        <pre
-          data-search-body
-          className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed"
-        >
-          {loadError ? (
-            <Button size="sm" variant="outline" onClick={() => setRetry((n) => n + 1)}>
-              加载失败，重试
-            </Button>
-          ) : detail ? (
-            parts.map((part) => (
-              <span key={part.seq} data-search-activity={part.seq}>
-                {part.text}
-                {"\n\n"}
-              </span>
-            ))
-          ) : (
-            "加载中…"
-          )}
-        </pre>
-      )}
-    </div>
+  const [open,setOpen]=React.useState(!!focused),root=React.useRef<HTMLDivElement>(null),panelId=React.useId();
+  React.useEffect(()=>{if(focused)setOpen(true);},[focused]);
+  const located=React.useCallback(()=>{if(focused)requestAnimationFrame(()=>{if(root.current)onLocated?.(root.current);});},[focused,onLocated]);
+  const {use,result}=group,toolName=use?.tool||result?.tool||"工具";
+  const isTerminal=toolName.toLowerCase()==="bash"||toolName.startsWith("shell_");
+  const live=React.useContext(ExecutionLiveContext);
+  const outcomeText=result?.detail&&!result.detail_truncated?result.detail:result&&!result.summary_truncated?result.summary:undefined;
+  // PI's existing activity API records these cancellation outcomes as error
+  // text. Recognize only its exact markers, never a phrase in truncated output.
+  const cancelledOutput=!!result?.is_error&&!!outcomeText&&(
+    ['Operation aborted','Command aborted','Tool execution aborted','aborted'].includes(outcomeText.trim())
+    || toolName.toLowerCase()==='bash'&&/\n\nCommand aborted$/.test(outcomeText.trim())
   );
+  // Only this call's persisted outcome can mark it complete. A settled parent
+  // turn cannot supply a missing result (e.g. incomplete historical pages).
+  const stopped=cancelledOutput||!!(result?.interrupted||use?.interrupted)
+    || ['aborted','cancelled','canceled','stopped','interrupted'].includes(result?.metadata?.status??use?.metadata?.status??'');
+  const running=live&&!result&&!stopped;
+  const state=stopped?'stopped':result?(result.is_error?'failed':'completed'):running?'running':'unknown';
+  const raw=use&&use.summary.startsWith(toolName)?use.summary.slice(toolName.length).trimStart():use?.summary??'';
+  const cmd=toolInputText(toolName,raw),status={running:'执行中…',unknown:'结果未记录',completed:'已完成',failed:'失败',stopped:'已停止'}[state];
+  const statusClass=state==='completed'?'text-[var(--status-success)]':state==='failed'?'text-destructive':'text-muted-foreground';
+  const StatusIcon=state==='completed'?CheckIcon:state==='failed'?XIcon:state==='stopped'?CircleStopIcon:CircleHelpIcon;
+  const parts=[...(use?[{step:use,label:'命令'}]:[]),...(result?[{step:result,label:result.is_error?'输出 ✕':'输出 ✓'}]:[])];
+  return <div ref={root} data-source-call={focused||undefined} data-activity-id={use?.seq??result?.seq} data-terminal={isTerminal} data-tool-status={state} className={cn('execution-tool',focused&&'rounded-md border border-primary bg-accent/30 p-2')}>
+    {focused&&<Badge variant="outline">{focusLabel}</Badge>}
+    <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-controls={panelId} aria-busy={running} title={toolName} className="execution-process-trigger">
+      <span className="mt-0.5 text-muted-foreground">{open?<ChevronDown className="size-3"/>:<ChevronRight className="size-3"/>}</span>
+      {running?<ProcessGlyph active/>:<StatusIcon aria-hidden="true" className={cn('execution-tool-status-icon',statusClass)}/>}{showWorker&&<span className={chip(group.worker)}>{group.worker}</span>}
+      <span className="shrink-0">{isTerminal?'终端':toolName}</span>
+      {cmd&&<span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{isTerminal?'$ ':''}{cmd}</span>}
+      <span className={cn('ml-auto shrink-0 font-medium',statusClass)}>{status}</span>
+    </button>
+    {open&&<div id={panelId} data-search-body className="execution-tool-detail"><div className="execution-terminal-surface" data-terminal={isTerminal}>
+      {parts.map(({step,label})=><section key={step.seq} data-search-activity={step.seq} className="execution-terminal-part" aria-label={label}>
+        <div className="execution-terminal-label">{label}</div>
+        <ActivityBody step={step} onReady={located} copy copyText={(text,complete)=>complete&&step===use&&focusLabel!=='搜索结果'?toolInputText(toolName,text):text} render={(text,complete)=><pre>{complete&&step===use&&focusLabel!=='搜索结果'?toolInputText(toolName,text):text}</pre>}/>
+      </section>)}
+    </div></div>}
+  </div>;
 }
 
 // MessageBlock renders a coalesced agent message (merged streaming text/thinking/
 // result fragments into one block) so the conversation reads as messages, not rows.
-function MessageBlock({
-  group,
-  getDetail,
-  showWorker,
-}: {
-  group: Extract<Group, { type: "msg" }>;
-  getDetail: (seq: number) => Promise<string>;
-  showWorker?: boolean;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const [detail, setDetail] = React.useState<string | null>(null);
-  // like ToolBlock: keyed by the group's step seqs so streamed steps arriving
-  // after an early expand re-fetch instead of being cached out.
-  const loadedKey = React.useRef<string | null>(null);
-  const speak = group.steps.filter((s) => s.kind !== "thinking");
-  const hasThinking = group.steps.some((s) => s.kind === "thinking");
-  const isError = group.steps.some((s) => s.is_error);
-  const body = (speak.length ? speak : group.steps).map((s) => s.summary).join("  ") || "…";
-  const Icon = isError ? Flag : MessageSquare;
-  const tone = isError ? "text-red-600 dark:text-red-400" : "text-foreground";
-
-  const detailKey = group.steps.map((s) => `${s.seq}:${s.detail?.length??0}`).join(",");
-  React.useEffect(() => {
-    if (!open || loadedKey.current === detailKey) return;
-    let live = true;
-    void Promise.all(
-      group.steps.map((s) =>
-        (s.detail!==undefined?Promise.resolve(s.detail):getDetail(s.seq))
-          .then((d) => d || s.summary)
-          .catch(() => s.summary),
-      ),
-    ).then((parts) => {
-      if (!live) return;
-      setDetail(group.steps.map((s, i) => `【${kindLabel(s.kind)}】\n${parts[i]}`).join("\n\n"));
-      loadedKey.current = detailKey;
-    });
-    return () => {
-      live = false;
-    };
-  }, [open, detailKey, group.steps, getDetail]);
-
-  function toggle() {
-    setOpen((o) => !o);
-  }
-
-  return (
-    <div className="text-xs">
-      <button type="button" onClick={toggle} className="flex w-full items-start gap-2 py-1 text-left hover:bg-muted/40">
-        <span className="mt-0.5 text-muted-foreground">
-          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        </span>
-        <Icon className={"mt-0.5 size-3.5 shrink-0 " + tone} />
-        {showWorker && <span className={chip(group.worker)}>{group.worker}</span>}
-        <span className={"min-w-0 flex-1 truncate " + tone}>
-          {hasThinking ? (group.steps.some(s=>s.streaming)?"正在分析…":"思考过程") : body}
-        </span>
-      </button>
-      {open && (
-        <pre className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed">
-          {detail ?? "加载中…"}
-        </pre>
-      )}
-    </div>
-  );
+function MessageBlock({group,showWorker}:{group:Extract<Group,{type:"msg"}>;getDetail:(seq:number)=>Promise<string>;showWorker?:boolean}) {
+ const [open,setOpen]=React.useState(false),executing=React.useContext(ExecutionLiveContext);
+ const thinking=group.steps.some(s=>s.kind==='thinking');
+ const body=group.steps.slice(0,3).map(s=>s.summary).join('  ')||'…';
+ return <Collapsible open={open} onOpenChange={setOpen} className="execution-thought">
+  <CollapsibleTrigger className="execution-process-trigger"><ChevronRight className={cn('execution-chevron',open&&'rotate-90')}/>
+   {thinking?<ProcessGlyph active={executing&&group.steps.some(s=>s.streaming)}/>:<MessageSquare/>}
+   {showWorker&&<span className={chip(group.worker)}>{group.worker}</span>}
+   <span className="min-w-0 truncate">{thinking?'思考过程':body}</span>
+  </CollapsibleTrigger>
+  <CollapsibleContent className="execution-thought-detail">{open&&<div data-search-body className="flex flex-col gap-3">
+   {group.steps.map(step=><ActivityBody key={`${step.seq}:${step.stream_id??''}`} step={step}/>)}
+  </div>}</CollapsibleContent>
+ </Collapsible>;
 }
 
 // UserRow renders a right-aligned chat bubble: either a human turn (the message you
@@ -449,143 +296,35 @@ function parseUserBody(body: string): { text: string; attachments: MsgAttachment
   return { text: body, attachments: [] };
 }
 
-function UserRow({
-  step,
-  intent,
-  getDetail,
-}: {
-  step: Activity;
-  intent?: boolean;
-  getDetail: (seq: number) => Promise<string>;
-}) {
-  const Icon = intent ? CrosshairIcon : UserIcon;
-  const [ref, inView] = useInView();
-  // Optimistic echoes carry their detail inline; persisted rows lazy-load it on scroll.
-  const inline = step.detail ?? null;
-  const [full, setFull] = React.useState<string | null>(inline);
-  React.useEffect(() => {
-    if (inline !== null || step.seq < 0) return; // optimistic/attachment-only messages never fetch a negative id
-    if (!inView) return; // fetch the full message only when the bubble nears view
-    let live = true;
-    getDetail(step.seq)
-      .then((d) => {
-        if (live) setFull(d || step.summary);
-      })
-      .catch(() => {
-        if (live) setFull(step.summary);
-      });
-    return () => {
-      live = false;
-    };
-  }, [inView, step.seq, getDetail, step.summary, inline]);
-  const parsed = parseUserBody(full ?? step.summary);
-  const text=parsed.text,attachments=step.metadata?.attachments??parsed.attachments;
-  return (
-    <Message ref={ref} data-activity-id={step.seq} align="end" className="mt-3 mb-2">
-      <MessageAvatar><Icon className="size-3.5 text-primary" /></MessageAvatar>
-      <MessageContent className="w-fit max-w-[85%] items-end gap-1.5">
-        {attachments.length > 0 && (
-          <div className="flex min-w-0 max-w-full flex-wrap justify-end gap-1.5">
-            {attachments.map((a) => (
-              <Attachment
-                key={a.path}
-                state="done" size="xs"
-                title={a.path}
-              >
-                <AttachmentMedia><PaperclipIcon /></AttachmentMedia>
-                <AttachmentContent><AttachmentTitle>{a.name}</AttachmentTitle><AttachmentDescription>{fmtBytes(a.size)}</AttachmentDescription></AttachmentContent>
-              </Attachment>
-            ))}
-          </div>
-        )}
-        {text && (
-          <Bubble variant="outline" align="end" className="conversation-user-bubble max-w-full"><BubbleContent className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</BubbleContent></Bubble>
-        )}
-        <MessageFooter><ActivityTime ts={step.ts} /></MessageFooter>
-      </MessageContent>
-    </Message>
-  );
+function UserRow({step,intent}:{step:Activity;intent?:boolean;getDetail:(seq:number)=>Promise<string>}) {
+ const Icon=intent?CrosshairIcon:UserIcon,[ref,inView]=useInView();
+ return <Message ref={ref} data-activity-id={step.seq} align="end" className="mt-3 mb-2">
+  <MessageAvatar><Icon className="size-3.5 text-primary"/></MessageAvatar>
+  <MessageContent className="w-fit max-w-[85%] items-end gap-1.5">
+   <ActivityBody step={step} enabled={inView} render={(body,complete)=>{
+    const parsed=complete?parseUserBody(body):{text:body,attachments:[]};
+    const attachments=step.metadata?.attachments??parsed.attachments;
+    return <>{attachments.length>0&&<div className="flex min-w-0 max-w-full flex-wrap justify-end gap-1.5">{attachments.map(a=><Attachment key={a.path} state="done" size="xs" title={a.path}>
+     <AttachmentMedia><PaperclipIcon/></AttachmentMedia><AttachmentContent><AttachmentTitle>{a.name}</AttachmentTitle><AttachmentDescription>{fmtBytes(a.size)}</AttachmentDescription></AttachmentContent>
+    </Attachment>)}</div>}
+    {parsed.text&&<Bubble variant="outline" align="end" className="conversation-user-bubble max-w-full"><BubbleContent className="whitespace-pre-wrap [overflow-wrap:anywhere]">{parsed.text}</BubbleContent></Bubble>}</>;
+   }}/>
+   <MessageFooter><ActivityTime ts={step.ts}/></MessageFooter>
+  </MessageContent>
+ </Message>;
 }
-
-// AnswerBlock renders the agent's FINAL answer (kind="result") in full — never
-// collapsed. The summary is a truncated first line, so the full text is pulled
-// from the detail and shown inline.
-function AnswerBlock({ step, getDetail }: { step: Activity; getDetail: (seq: number) => Promise<string> }) {
-  const [ref, inView] = useInView();
-  const [full, setFull] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    if (!inView || step.detail || step.seq < 0) return; // fetch the full answer only when it nears view
-    let live = true;
-    getDetail(step.seq)
-      .then((d) => {
-        if (live) setFull(d || step.summary);
-      })
-      .catch(() => {
-        if (live) setFull(step.summary);
-      });
-    return () => {
-      live = false;
-    };
-  }, [inView, step.seq, getDetail, step.summary, step.detail]);
-  return (
-    <div ref={ref} data-activity-id={step.seq} className="min-w-0 [overflow-wrap:anywhere]">
-      {step.is_error && !step.metadata?.worker_feedback ? <span className="whitespace-pre-wrap text-destructive">{step.detail ?? full ?? step.summary}</span>
-        : <Markdown text={step.detail ?? full ?? step.summary} />}
-    </div>
-  );
+function AnswerBlock({step}:{step:Activity;getDetail:(seq:number)=>Promise<string>}) {
+ const [ref,inView]=useInView();
+ return <div ref={ref} data-activity-id={step.seq} className="min-w-0 [overflow-wrap:anywhere]">
+  <ActivityBody step={step} enabled={inView} render={text=>step.is_error&&!step.metadata?.worker_feedback?<span className="whitespace-pre-wrap text-destructive">{text}</span>:<Markdown text={text}/>}/>
+ </div>;
 }
-
-// Focused ordinary messages load their exact body even when outside the viewport.
-function LocatedActivity({
-  step,
-  getDetail,
-  onLocated,
-}: {
-  step: Activity;
-  getDetail: (seq: number) => Promise<string>;
-  onLocated?: (el: HTMLElement, explicit?: boolean) => void;
-}) {
-  const root = React.useRef<HTMLDivElement>(null);
-  const [body, setBody] = React.useState<string | null>(null);
-  const [error, setError] = React.useState(false);
-  const [retry, setRetry] = React.useState(0);
-  React.useEffect(() => {
-    let current = true;
-    setBody(null);
-    setError(false);
-    getDetail(step.seq)
-      .then((v) => {
-        if (current) setBody(v || step.summary);
-      })
-      .catch(() => {
-        if (current) setError(true);
-      });
-    return () => {
-      current = false;
-    };
-  }, [step.seq, step.summary, getDetail, retry]);
-  React.useEffect(() => {
-    if (body === null && !error) return;
-    const frame = requestAnimationFrame(() => {
-      if (root.current) onLocated?.(root.current);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [body, error, onLocated]);
-  return (
-    <div ref={root} data-activity-id={step.seq} className="min-w-0 rounded-md border border-primary p-2">
-      {error ? (
-        <Button variant="outline" size="sm" onClick={() => setRetry((n) => n + 1)}>
-          详情加载失败，重试
-        </Button>
-      ) : body === null ? (
-        "加载中…"
-      ) : (
-        <div data-search-body>
-          <Markdown text={body} />
-        </div>
-      )}
-    </div>
-  );
+function LocatedActivity({step,onLocated}:{step:Activity;getDetail:(seq:number)=>Promise<string>;onLocated?:(el:HTMLElement,explicit?:boolean)=>void}) {
+ const root=React.useRef<HTMLDivElement>(null);
+ const located=React.useCallback(()=>{requestAnimationFrame(()=>{if(root.current)onLocated?.(root.current);});},[onLocated]);
+ return <div ref={root} data-activity-id={step.seq} className="min-w-0 rounded-md border border-primary p-2" data-search-body>
+  <ActivityBody step={step} onReady={located} render={text=><Markdown text={text}/>}/>
+ </div>;
 }
 
 // ExecView renders an agent execution replay (planner / worker / main agent) in
@@ -679,14 +418,14 @@ function ActivitySteps({
 
 type ExecutionProps = React.ComponentProps<typeof ActivitySteps> & {live?:boolean;scrollItems?:boolean;pendingStatus?:string;conversationId?:number};
 const roleNames:Record<string,string>={mainagent:'Main',main:'Main',goals:'Goals',planner:'Planner',worker:'Worker',auto:'Auto',pentest:'Pentest',reporter:'Reporter',retester:'Retester'};
-function TurnDetails({summary,label,elapsed,conversationId}:{summary?:TurnSummary;label:string;elapsed:string;conversationId?:number}){
+function TurnDetails({summary,label,elapsed,conversationId,taskId}:{summary?:TurnSummary;label:string;elapsed:string;conversationId?:number;taskId?:string}){
   const unknown='未记录',usage=summary?.usage;
   const values:[string,React.ReactNode][]=[
     ['开始时间',summary?.started_at?new Date(summary.started_at).toLocaleString('zh-CN'):unknown],['耗时',elapsed],
     ['模式',({managed:'托管',manual:'手动',conversation:'独立会话'} as Record<string,string>)[summary?.mode??'']??unknown],
     ['角色',roleNames[summary?.role??'']??summary?.role??unknown],
     ...(conversationId?([['会话',`#${conversationId}`]] as [string,React.ReactNode][]):summary?.role==='mainagent'&&summary.main_seg!=null?([['会话',`主 Agent · #${summary.main_seg+1}`]] as [string,React.ReactNode][]):[]),
-    ['模型',summary?.models.length?summary.models.join(' → '):unknown],
+    ['模型',summary?<TurnModels key={`${summary.turn_id}:${summary.data_revision??summary.updated_at}`} summary={summary} taskId={taskId} conversationId={conversationId}/>:unknown],
     ['步骤',summary?.steps??unknown],['工具调用',summary?.tool_calls??unknown],['失败调用',summary?.failed_tool_calls??unknown],
     ['Token',usage?`${usage.total.toLocaleString()}${usage.incomplete?'（部分用量未知）':''}`:unknown],
     ...(usage?([['输入总量 / 输出',`${usage.input} / ${usage.output}`],['未缓存输入',usage.uncached_input??unknown],['缓存读取 / 写入',`${usage.cache_read} / ${usage.cache_write}`],
@@ -696,10 +435,10 @@ function TurnDetails({summary,label,elapsed,conversationId}:{summary?:TurnSummar
     ...(summary?.intent_id?([['意图',`#${summary.intent_id}`]] as [string,React.ReactNode][]):[]),
   ];
   return <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="执行详情"><InfoIcon/></Button></PopoverTrigger>
-    <PopoverContent align="start" collisionPadding={12} className="w-80 max-w-[calc(100vw-24px)] p-4">
+    <PopoverContent align="start" collisionPadding={12} className="w-80 max-w-[calc(100vw-24px)] max-h-[var(--radix-popover-content-available-height)] overflow-hidden p-4">
       <PopoverHeader><PopoverTitle>执行详情</PopoverTitle><PopoverDescription>{label} · 仅统计本轮执行</PopoverDescription></PopoverHeader>
       <Separator/>
-      <dl className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">{values.map(([name,value])=><div key={name} className="flex items-start justify-between gap-6"><dt className="shrink-0 text-muted-foreground">{name}</dt><dd className="min-w-0 text-right break-words">{value}</dd></div>)}</dl>
+      <dl className="flex min-h-0 max-h-[60vh] flex-col gap-3 overflow-y-auto">{values.map(([name,value])=><div key={name} className="flex items-start justify-between gap-6"><dt className="shrink-0 text-muted-foreground">{name}</dt><dd className="min-w-0 text-right break-words">{value}</dd></div>)}</dl>
       <p className="text-xs text-muted-foreground">一步为一次模型响应。工具调用单独计数；压缩和失败请求的已知用量包含在总 Token 中。</p>
     </PopoverContent>
   </Popover>;
@@ -714,16 +453,14 @@ function ExecutionTurn({turn,summary,latest,...props}:ExecutionProps&{turn:Retur
   const streaming=turn.steps.some(s=>s.streaming);
   const live=!ended&&(streaming||(props.live&&latest)||status==='running');
   const interrupted=turn.steps.some(s=>s.interrupted)||status==='interrupted';
-  const pending=turn.steps.some(t=>t.kind==='tool_use'&&!turn.steps.some(s=>s.kind==='tool_result'&&s.tool_use_id===t.tool_use_id));
   const failed=terminal?.is_error||status==='failed'||status==='blocked';
-  const label=status==='awaiting_confirmation'?'等待宿主确认':!ended&&props.pendingStatus&&latest?'等待停止确认':failed?'失败':status==='stopped'||status==='paused'?'已停止':status==='exhausted'?'预算耗尽':interrupted?'执行已中断':ended?'已完成':live?(pending?'执行工具中':streaming?'正在生成':'等待模型响应'):'历史记录';
+  const label=status==='awaiting_confirmation'?'等待宿主确认':!ended&&props.pendingStatus&&latest?'等待停止确认':failed?'失败':status==='stopped'||status==='paused'?'已停止':status==='exhausted'?'预算耗尽':interrupted?'执行已中断':ended?'已完成':live?'运行中':'历史记录';
   const [now,setNow]=React.useState(Date.now);
   React.useEffect(()=>{if(!live)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[live]);
   const elapsed=durationLabel(summary?.started_at??null,summary?.finished_at??terminal?.ts??null,now);
   const {final,process:rawProcess}=turnParts(turn.steps,summary);
   const planning=plannerRoundView(turn.steps,summary,live,ended);
   const process=planning?rawProcess.filter(a=>!isPlannerBoundary(a)):rawProcess;
-  const workerResults=!!props.taskId&&!props.conversationId&&ended&&(summary?.role==='worker'||last.worker.startsWith('work#'));
   const [steeringFocus,setSteeringFocus]=React.useState<number>();
   const [steeringExpanded,setSteeringExpanded]=React.useState<Record<number,boolean>>({});
   const onSteeringExpanded=React.useCallback((seq:number,open:boolean)=>setSteeringExpanded(old=>({...old,[seq]:open})),[]);
@@ -746,26 +483,27 @@ function ExecutionTurn({turn,summary,latest,...props}:ExecutionProps&{turn:Retur
   const steering=processSteps.filter(isSteering);
   const errorText=summary?.error??(failed?terminal?.detail||terminal?.summary:undefined);
   const failedTools=summary?.failed_tool_calls??new Set(processSteps.filter(s=>s.kind==='tool_result'&&s.is_error).map(s=>s.tool_use_id??s.seq)).size;
-  const statusClass=cn('execution-status text-sm',failed||status==='exhausted'?'text-destructive':status==='completed'||status==='done'?'text-[var(--status-success)]':'text-muted-foreground',live&&'shimmer');
-  async function copy(){try{const entries=final?[final]:processSteps.filter(s=>['text','assistant','result'].includes(s.kind));const bodies=await Promise.all(entries.map(s=>s.detail??(s.seq>0?getDetail(s.seq):Promise.resolve(s.summary))));await navigator.clipboard.writeText(bodies.join('\n\n'));toast.success('已复制');}catch{toast.error('复制失败');}}
+  const statusClass=cn('execution-status',failed||status==='exhausted'?'text-destructive':live?'text-[var(--status-warning)]':status==='completed'||status==='done'?'text-[var(--status-success)]':'text-muted-foreground');
+  const groupedProcess=hasProcess&&!processSteps.every(s=>s.kind==='thinking');
+  async function copy(){try{const entries=final?[final]:processSteps.filter(s=>['text','assistant','result'].includes(s.kind));const bodies=await Promise.all(entries.map(s=>s.seq>0&&(s.detail===undefined||s.detail_truncated)?getDetail(s.seq):Promise.resolve(s.detail??s.summary)));await navigator.clipboard.writeText(bodies.join('\n\n'));toast.success('已复制');}catch{toast.error('复制失败');}}
   if(turn.steps.every(isSteering))return <ActivitySteps {...stepProps} activity={turn.steps}/>;
   if(turn.user)return <UserRow step={last} intent={last.kind==='intent'} getDetail={getDetail}/>;
   if(last.metadata?.worker_feedback||last.worker==='system')return <Message align="start"><MessageContent><Bubble variant="muted"><BubbleContent><ActivitySteps {...stepProps} activity={turn.steps}/></BubbleContent></Bubble></MessageContent></Message>;
-  return <Message data-turn-id={turn.key} data-run-status={label} align="start"><MessageContent>
+  return <ExecutionLiveContext.Provider value={live}><Message className="neo-execution-turn" data-turn-id={turn.key} data-run-status={label} align="start"><MessageContent>
     {planning&&<PlannerRoundMarker round={planning} focusActivity={focus} onLocated={props.onLocated}/> }
-    <Bubble variant="ghost" className="w-full max-w-full"><BubbleContent className="flex w-full min-w-0 flex-col gap-4 py-2">
-      <div className="flex flex-wrap items-center gap-2"><span role="status" className={statusClass}><span className="execution-status-dot" aria-hidden="true"/>{label}</span><span aria-hidden="true" className="text-muted-foreground">/</span><span className="text-sm text-muted-foreground tabular-nums">{elapsed}</span><TurnDetails summary={summary} label={label} elapsed={elapsed} conversationId={props.conversationId}/></div>
-      {hasProcess?<Collapsible open={open} onOpenChange={open=>{setManualOpen({open,focus:props.focusActivity});setSteeringFocus(undefined);}}>
-        <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"><ChevronRight className={cn('transition-transform',open&&'rotate-90')}/><span>{live?'执行中':ended?(failed?'执行失败':['completed','done'].includes(status??'')?'执行完成':'执行记录'):'历史过程'}</span><span className="font-normal text-muted-foreground">{summary?.steps==null?'步骤未记录':`${summary.steps} 步`} · {summary?.tool_calls==null?'调用数未记录':`${summary.tool_calls} 次工具调用`}{failedTools>0?` · ${failedTools} 次失败`:''}</span></Button></CollapsibleTrigger>
+    <Bubble variant="ghost" className="w-full max-w-full"><BubbleContent className="execution-body flex w-full min-w-0 flex-col">
+      <div className="execution-status-bar"><span role="status" className={statusClass}><span className="execution-status-dot" aria-hidden="true"/>{label}</span><span aria-hidden="true" className="text-muted-foreground">/</span><span className="text-muted-foreground tabular-nums">{elapsed}</span><TurnDetails summary={summary} label={label} elapsed={elapsed} conversationId={props.conversationId} taskId={props.taskId}/></div>
+      {live&&!streaming&&<WorkingIndicator/>}
+      {groupedProcess?<Collapsible open={open} onOpenChange={open=>{setManualOpen({open,focus:props.focusActivity});setSteeringFocus(undefined);}}>
+        <CollapsibleTrigger asChild><Button variant="ghost" className="execution-group-trigger h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"><ChevronRight className={cn('transition-transform',open&&'rotate-90')}/><span>{live?'执行中':ended?(failed?'执行失败':['completed','done'].includes(status??'')?'执行完成':'执行记录'):'历史过程'}</span><span className="font-normal text-muted-foreground">{summary?.steps==null?'步骤未记录':`${summary.steps} 步`} · {summary?.tool_calls==null?'调用数未记录':`${summary.tool_calls} 次工具调用`}{failedTools>0?` · ${failedTools} 次失败`:''}</span></Button></CollapsibleTrigger>
         {!open&&steering.length>0&&<Button variant="outline" size="sm" onClick={()=>{const seq=steering[0].seq;steeringJump.current=seq;setManualOpen({open:true,focus:seq});setSteeringFocus(seq);onSteeringExpanded(seq,true);}}><Flag/>有 {steering.length} 条纠偏</Button>}
-        <CollapsibleContent className="min-w-0 border-l pl-3 sm:pl-5"><ActivitySteps {...stepProps} activity={processSteps}/></CollapsibleContent>
+        <CollapsibleContent className="execution-process-content min-w-0"><ActivitySteps {...stepProps} activity={processSteps}/></CollapsibleContent>
       </Collapsible>:processSteps.length>0?<ActivitySteps {...stepProps} activity={processSteps}/>:null}
       {errorText&&!final&&<Alert variant={failed||status==='exhausted'?'destructive':'default'}><AlertDescription>{errorText}</AlertDescription></Alert>}
-      {final&&<div data-final-answer="true">{workerResults?<WorkerConclusion focused={focus===final.seq}><ActivitySteps {...stepProps} activity={[final]}/></WorkerConclusion>:<ActivitySteps {...stepProps} activity={[final]}/>}</div>}
-      {workerResults&&<WorkerWritebacks key={`${props.taskId}:${turn.key}`} task={props.taskId!} turn={summary?.turn_id??turnID(last)??turn.key} status={status} revision={terminal?.seq??summary?.revision??last.seq}/>}
+      {final&&<div data-final-answer="true"><ActivitySteps {...stepProps} activity={[final]}/></div>}
     </BubbleContent></Bubble>
-    <MessageFooter className="gap-3"><Button variant="ghost" size="icon-sm" onClick={()=>void copy()} disabled={!final&&!processSteps.some(s=>["text","assistant","result"].includes(s.kind)&&!!(s.detail||s.summary))} aria-label="复制答复"><CopyIcon/></Button><ActivityTime ts={terminal?.ts??last.ts}/>{last.inherited&&<Badge variant="outline">来源任务 · 只读</Badge>}</MessageFooter>
-  </MessageContent></Message>;
+    {(ended||!!final)&&<MessageFooter className="gap-3"><Button variant="ghost" size="icon-sm" onClick={()=>void copy()} disabled={!final&&!processSteps.some(s=>["text","assistant","result"].includes(s.kind)&&!!(s.detail||s.summary))} aria-label="复制答复"><CopyIcon/></Button><ActivityTime ts={terminal?.ts??last.ts}/>{last.inherited&&<Badge variant="outline">来源任务 · 只读</Badge>}</MessageFooter>}
+  </MessageContent></Message></ExecutionLiveContext.Provider>;
 }
 // Native scroller owns the jump and disables follow-to-bottom for this explicit
 // navigation. The negative margin locates the control within its enclosing turn.
@@ -841,6 +579,6 @@ export function Transcript({
     taskId={taskId} chat={chat} fetchDetail={stableDetail} focusActivity={focusActivity??focusedSeq} onLocated={onLocated} focusLabel={focusLabel}/>;
   // The native scroller measures its direct DOM children. A wrapper (even with
   // display:contents) hides the message geometry and breaks manual scrolling.
-  if(scrollItems)return content;
-  return <div ref={transcriptRef} className="flex flex-col gap-1" style={focusPadding?{paddingBlock:focusPadding}:undefined}>{content}</div>;
+  if(scrollItems)return <ActivityContentProvider taskId={taskId} conversationId={conversationId}>{content}</ActivityContentProvider>;
+  return <div ref={transcriptRef} className="flex flex-col gap-1" style={focusPadding?{paddingBlock:focusPadding}:undefined}><ActivityContentProvider taskId={taskId} conversationId={conversationId}>{content}</ActivityContentProvider></div>;
 }

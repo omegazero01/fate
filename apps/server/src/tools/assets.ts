@@ -2,6 +2,7 @@ import { domainTool } from "./define.js";
 import type { ToolRunContext } from "./context.js";
 import { writeAssets } from "../db/asset-write.js";
 import { ASSET_TYPES, queryAssets, type AssetRow } from "../db/asset-query.js";
+import {unicodeLength,unicodeSlice} from '../unicode.js';
 const string = { type: "string" },
 	strings = { type: "array", items: string },
 	objects = { type: "array", items: { type: "object" } };
@@ -292,6 +293,7 @@ export function assetGetTool(ctx: ToolRunContext) {
 						const out: AssetRow = {
 							id: canonical,
 							asset_id: canonical,
+							version: row.content_version,
 							...(canonical !== id ? { requested_id: id } : {}),
 							type: row.type,
 							source_task_id: row.source_task_id,
@@ -310,14 +312,14 @@ export function assetGetTool(ctx: ToolRunContext) {
 							max_chars: budget,
 						};
 						if (typeof value === "string") {
-							const chars = Array.from(value),
+							const total = unicodeLength(value),
 								offset = a.offset ?? 0;
 							out.details = {
-								value: chars.slice(offset, offset + share).join(""),
+								value: unicodeSlice(value,offset,offset+share),
 								offset,
-								total_chars: chars.length,
+								total_chars: total,
 							};
-							if (offset + share < chars.length) {
+							if (offset + share < total) {
 								out.details.next_offset = offset + share;
 								out.next = { ...next, offset: offset + share };
 							}
@@ -333,7 +335,7 @@ export function assetGetTool(ctx: ToolRunContext) {
 										(a.field ?? "") +
 										"/" +
 										key.replaceAll("~", "~0").replaceAll("/", "~1");
-									return Array.from(JSON.stringify(v)).length <= per
+									return unicodeLength(JSON.stringify(v)) <= per
 										? { field, value: v }
 										: {
 												field,

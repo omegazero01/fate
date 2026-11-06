@@ -1,9 +1,12 @@
+import {usageOutboxMetrics} from '../pi/usage-outbox.js';
+import {registerFindingReproductionRoutes} from './routes/finding-reproduction.js';
 import {monitorEventLoopDelay} from 'node:perf_hooks';
 import {assertActiveRole} from '../agent/retired-roles.js';
 import {registerTurnRoutes} from './routes/turns.js';
 import {registerTaskFileRoutes} from "./routes/task-files.js";
 import {configureEvidenceStore} from '../evidence/blobs.js';
 import {registerActivityStreamShutdown,activityStreamMetrics} from './activity-stream.js';
+import {liveStreamMetrics} from '../engine/live-stream.js';
 import {registerRetestRoutes} from "./routes/retests.js";
 import {registerConversationRoutes} from "./routes/conversations.js";
 import {registerLLMManagementRoutes} from "./routes/llm-management.js";
@@ -106,7 +109,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const loopDelay=monitorEventLoopDelay({resolution:20});loopDelay.enable();
   app.addHook('onClose',async()=>loopDelay.disable());
   app.get('/api/runtime/metrics',async()=>({database:deps.db.runtimeMetrics(),scheduler:deps.engine.runtimeMetrics(),
-    streams:activityStreamMetrics(),memory:process.memoryUsage(),event_loop_ms:{p50:loopDelay.percentile(50)/1e6,p95:loopDelay.percentile(95)/1e6,p99:loopDelay.percentile(99)/1e6,max:loopDelay.max/1e6}}));
+    streams:activityStreamMetrics(),live_producers:liveStreamMetrics(),usage_outbox:usageOutboxMetrics(deps.db),memory:process.memoryUsage(),event_loop_ms:{p50:loopDelay.percentile(50)/1e6,p95:loopDelay.percentile(95)/1e6,p99:loopDelay.percentile(99)/1e6,max:loopDelay.max/1e6}}));
 
   // 前端静态托管（替代 Go 版 go:embed）：SERIES_STATIC_DIR 或仓库内 web/out。
   const staticDir =
@@ -150,6 +153,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.addHook('preHandler',async req=>{const key=(req.params as {key?:string})?.key;if(req.url.startsWith('/api/agents/')&&key)assertActiveRole(key);});
   registerConfigRoutes(app);
   registerEvidenceRoutes(app);
+  registerFindingReproductionRoutes(app);
   registerRetestRoutes(app);
   registerConversationRoutes(app);
   registerAttachmentRoutes(app);

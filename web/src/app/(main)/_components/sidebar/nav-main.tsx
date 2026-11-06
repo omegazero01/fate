@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ChevronRight, MailIcon, PlusCircleIcon } from "lucide-react";
-import { api } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -122,15 +121,17 @@ export function NavMain({ items }: NavMainProps) {
           )}
           <SidebarGroupContent>
             <SidebarMenu>
-              {group.items.map((item) => (
-                <NavItem
-                  key={item.id}
-                  item={item}
-                  isItemActive={isItemActive}
-                  isSubItemActive={isSubItemActive}
-                  isSubmenuOpen={isSubmenuOpen}
-                />
-              ))}
+              {group.items
+                .filter((item) => item.id !== "system")
+                .map((item) => (
+                  <NavItem
+                    key={item.id}
+                    item={item}
+                    isItemActive={isItemActive}
+                    isSubItemActive={isSubItemActive}
+                    isSubmenuOpen={isSubmenuOpen}
+                  />
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

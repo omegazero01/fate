@@ -2,6 +2,19 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {Database} from '../db/index.js';
 export interface ChatImage {type:'image';data:string;mimeType:string;}
+/** Validate stored references without reading file bodies or claiming ownership.
+ * prepareAttachments repeats the atomic ownership check after admission. */
+export async function validateAttachmentRefs(db:Database,scopeID:number,attachments:unknown,scope:'task'|'conversation'='task'){
+ if(attachments===undefined)return;
+ if(!Array.isArray(attachments)||attachments.length>8)throw Object.assign(new Error('附件最多 8 个'),{statusCode:400});
+ const paths=attachments.map(value=>value&&typeof value==='object'&&!Array.isArray(value)?(value as {path?:unknown}).path:undefined);
+ if(paths.some(value=>typeof value!=='string'||!value))throw Object.assign(new Error('附件引用无效'),{statusCode:400});
+ if(!paths.length)return;
+ const owner=scope==='task'?'task_id':'conversation_id';
+ const rows=await db.query(`SELECT path FROM chat_artifacts WHERE path=ANY($1::text[]) AND (${owner}=$2 OR (task_id IS NULL AND conversation_id IS NULL))`,[paths,scopeID]);
+ if(rows.rowCount!==new Set(paths).size)throw Object.assign(new Error('附件不存在或不属于本任务'),{statusCode:404});
+}
+
 export async function prepareAttachments(db:Database,dataDir:string,taskID:number,attachments:unknown,scope:'task'|'conversation'='task'){
  if(attachments===undefined)return {text:'',images:[] as ChatImage[],refs:[] as unknown[]};
  if(!Array.isArray(attachments)||attachments.length>8)throw Object.assign(new Error('附件最多 8 个'),{statusCode:400});

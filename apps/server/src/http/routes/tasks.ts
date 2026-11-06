@@ -3,7 +3,7 @@ import {requireTaskGoal} from "../../agent/task-goal.js";
 import {assetContextCTE} from '../../db/asset-query.js';
 import {registerOperationRoutes} from './operations.js';
 import {executionSnapshot,executionSnapshots} from '../../engine/coordinator.js';
-import {prepareAttachments} from "../../evidence/attachments.js";
+import {prepareAttachments,validateAttachmentRefs} from "../../evidence/attachments.js";
 // 任务路由：CRUD + 生命周期（start/pause/resume/stop|finish|control/delete）+ 意图控制 + 主对话。
 // 生命周期约定（对齐 Go manager/engine 分层）：tasks 表状态先落库，再驱动 engine；
 // engine 侧未运行（无运行时）时引擎调用静默跳过，DB 状态仍是唯一真源。
@@ -295,10 +295,13 @@ export function registerTaskRoutes(app: FastifyInstance): void {
     }
     const message = typeof body["message"] === "string" ? body["message"] : "";
     if (!message.trim() && !(Array.isArray(body["attachments"]) && body["attachments"].length)) throw Object.assign(new Error("message 不能为空"), { statusCode: 400 });
-    const attached=await prepareAttachments(app.db,app.dataDir,taskID,body["attachments"]);
+    // Keep only stored references while the host queues this session. Reading
+    // image bytes/base64 before admission multiplied memory by queued chats.
+    const attachmentRefs=body["attachments"];
+    await validateAttachmentRefs(app.db,taskID,attachmentRefs);
     const requestID=body["request_id"];
     if(requestID!==undefined&&(typeof requestID!=="string"||!/^[-a-zA-Z0-9:]{1,120}$/.test(requestID)))throw Object.assign(new Error("request_id 无效"),{statusCode:400});
-    return { reply: await app.engine.mainChat(taskID,[message,attached.text].filter(Boolean).join('\n\n'),segment,attached,requestID as string|undefined), mode: "main" };
+    return { reply: await app.engine.mainChat(taskID,message,segment,()=>prepareAttachments(app.db,app.dataDir,taskID,attachmentRefs),requestID as string|undefined), mode: "main" };
   };
   app.post("/api/tasks/:id/chat", async (req) => chat(Number((req.params as { id: string }).id), (req.body ?? {}) as Record<string, unknown>));
   app.post("/api/chat", async (req) => {

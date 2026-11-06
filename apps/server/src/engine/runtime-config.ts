@@ -1,3 +1,4 @@
+import {acquireRuntimeResources,resourceScope,type RuntimeResourceLease} from './runtime-resources.js';
 import {prepareToolLoading} from '../agent/tool-loading.js';
 import {assertToolBinding} from '../agent/tool-registry.js';
 import {domainState} from '../agent/domain-state.js';
@@ -8,6 +9,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {Database} from '../db/index.js';
 import {AgentRunner,type AgentRunnerOptions} from '../pi/runner.js';
 import {resolveModelProfiles} from '../pi/modelResolver.js';
+import {registerNativeActivityRun} from './native-activity-recovery.js';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function configuredRole(db:Database,taskID:number,role:string,conversationID?:number){
@@ -29,13 +31,25 @@ export async function configuredRole(db:Database,taskID:number,role:string,conve
 /** Domain observability only: pi continues to own the session/tool loop. */
 export async function createTrackedRunner(db:Database,taskID:number,role:string,options:AgentRunnerOptions,conversationID?:number){
  validatePlatformRunner(role,options,taskID);
+ const scope={taskID,role,intentID:options.intentID,conversationID,mainSegment:options.mainSegment};
+ options.resourceLease?.assert(resourceScope(db,scope));
+ const ownsResource=!options.resourceLease;
+ const resourceLease=options.resourceLease??await acquireRuntimeResources(db,scope,options.signal,
+  ()=>options.onActivity?.({kind:'host_status',phase:'resource_wait',text:'正在等待执行资源；尚未加载模型会话或连接 MCP'}));
+ try{return await createAdmittedRunner(db,taskID,role,{...options,resourceLease},conversationID,ownsResource);}
+ catch(error){resourceLease.ready();if(ownsResource)resourceLease.release();throw error;}
+}
+async function createAdmittedRunner(db:Database,taskID:number,role:string,options:AgentRunnerOptions&{resourceLease:RuntimeResourceLease},conversationID:number|undefined,ownsResource:boolean){
+ await options.resourceLease.beginInitialization(options.signal);
+ options.signal?.throwIfAborted();
  const configured=await configuredRole(db,taskID,role,conversationID),id=randomUUID();
+ if(options.nativeActivity&&!options.inMemory)options={...options,nativeActivityRuntime:id};
  options={...options,...await prepareToolLoading(db,role,options,configured.platform_policy.builtinLoading==='direct',configured.platform_policy.fallback)};
  options.modelPolicy?.setRuntimeID?.(id);
  options.modelPolicy?.setScope?.({intentID:options.intentID,mainSegment:options.mainSegment,turnID:options.turnID});
  const controller=new AbortController();
  const signal=options.signal?AbortSignal.any([options.signal,controller.signal]):controller.signal;
- const effective={usage_scope:{intentID:options.intentID,mainSegment:options.mainSegment,turnID:options.turnID},goals_phase:options.goalsPhase,tool_loading:options.toolLoading,context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
+ const effective={resource_reservation:{id:options.resourceLease.id,bytes:options.resourceLease.bytes,lane:options.resourceLease.lane},usage_scope:{intentID:options.intentID,mainSegment:options.mainSegment,turnID:options.turnID},goals_phase:options.goalsPhase,tool_loading:options.toolLoading,context_layout:options.contextLayout??'legacy',collaboration_policy:'blackboard-v1',platform_policy:configured.platform_policy,max_turns:options.maxTurns??null,max_duration_ms:options.maxDurationMs??null,wrapup_max_turns:options.maxWrapupTurns??null,
   model:configured.model,model_route:{provider:options.model.provider,id:options.model.id},streaming:options.streaming!==false,
   prompt_hash:digest(options.systemPrompt??''),tools:options.toolAllowlist??[],skills:options.allowedSkills??[],mcp:(options.mcpEntries??[]).map(e=>e.name)};
  const guard=options.guard;
@@ -85,18 +99,28 @@ export async function createTrackedRunner(db:Database,taskID:number,role:string,
    await options.mcpGuard?.(server,method,tool);
   }});
  Object.assign(effective,{context_policy:options.contextPolicy,active_tools:runner.activeToolNames,prompt_diagnostics:runner.promptDiagnostics,prompt_source:configured.prompt_source,prompt_version:configured.prompt_version});
- try{await db.query('INSERT INTO runtime_role_configs(id,task_id,conversation_id,role,configured,effective,expires_at) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,now()+interval \'20 seconds\')',[id,taskID||null,conversationID??null,role,JSON.stringify(configured),JSON.stringify(effective)]);}
- catch(error){await runner.dispose();throw error;}
+ try{
+  await db.query('INSERT INTO runtime_role_configs(id,task_id,conversation_id,role,configured,effective,expires_at) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,now()+interval \'20 seconds\')',[id,taskID||null,conversationID??null,role,JSON.stringify(configured),JSON.stringify(effective)]);
+  if(options.nativeActivityRuntime)await registerNativeActivityRun(db,id,runner,options.nativeActivity!,options.flushNativeSession);
+ }
+ catch(error){try{await runner.dispose();}finally{await db.query('UPDATE runtime_role_configs SET finished_at=now(),expires_at=now() WHERE id=$1',[id]);}throw error;}
+ options.resourceLease.ready();
  let renewing=false;
  const heartbeat=setInterval(()=>{if(renewing)return;renewing=true;void db.control().query("UPDATE runtime_role_configs SET expires_at=now()+interval '20 seconds' WHERE id=$1 AND finished_at IS NULL AND expires_at>clock_timestamp() RETURNING id",[id]).then(r=>{if(!r.rowCount)controller.abort('执行器已过期');}).catch(()=>{}).finally(()=>{renewing=false;});},5000);heartbeat.unref();
  const dispose=runner.dispose.bind(runner);
  const prompt=runner.prompt.bind(runner);
  runner.prompt=async(...args:Parameters<typeof runner.prompt>)=>{
   const task=taskID?await db.tasks().getTask(taskID):null;
-  options.onActivity?.({kind:'run_metadata',runtimeID:id,role,mode:conversationID?'conversation':task?.execution_mode??'unknown',startedAt:new Date().toISOString()});
+  await options.onActivity?.({kind:'run_metadata',runtimeID:id,role,mode:conversationID?'conversation':task?.execution_mode??'unknown',startedAt:new Date().toISOString()});
   return prompt(...args);
  };
- runner.dispose=async()=>{clearInterval(heartbeat);try{await dispose();}finally{await db.query("UPDATE runtime_role_configs SET finished_at=COALESCE(finished_at,now()),expires_at=LEAST(expires_at,now()),effective=effective||jsonb_build_object('compaction',$2::jsonb) WHERE id=$1",[id,JSON.stringify(runner.compactionDiagnostics)]);}};
+ let disposing:Promise<void>|undefined;
+ runner.dispose=()=>disposing??=(async()=>{clearInterval(heartbeat);try{await dispose();
+  if(options.nativeActivityRuntime&&runner.nativeActivitiesAcknowledged){
+   await options.flushNativeSession?.();
+   await db.query('UPDATE native_activity_runs SET completed=true,last_error=NULL,updated_at=now() WHERE runtime_id=$1',[id]);
+  }
+ }finally{await db.query("UPDATE runtime_role_configs SET finished_at=COALESCE(finished_at,now()),expires_at=LEAST(expires_at,now()),effective=effective||jsonb_build_object('compaction',$2::jsonb,'activity_delivery',$3::jsonb,'native_archive',$4::jsonb,'native_run_history',$5::jsonb) WHERE id=$1",[id,JSON.stringify(runner.compactionDiagnostics),JSON.stringify(runner.activityDiagnostics),JSON.stringify(options.archiveDiagnostics?.()??null),JSON.stringify(runner.runHistoryDiagnostics??null)]);}})().finally(()=>{if(ownsResource)options.resourceLease.release();});
  return runner;
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import * as React from "react";
-import {PlusIcon} from "lucide-react";
+import {CirclePlusIcon} from "lucide-react";
 import {RecentTasks} from "./recent-tasks";
 import {ThemeSwitcher} from "./theme-switcher";
 import {LayoutControls} from "./layout-controls";
@@ -16,6 +16,8 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarGroup,
+  SidebarTrigger,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -44,26 +46,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props} variant={variant} collapsible={collapsible}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <Link prefetch={false} href="/function/tasks">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/series-icon.svg" alt="SERIES" width={40} height={40} className="shrink-0" />
-                <span className="font-semibold text-base">{APP_CONFIG.name}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="app-sidebar-header">
+        <Link prefetch={false} href="/function/tasks" className="app-sidebar-brand" aria-label={`${APP_CONFIG.name} · 任务首页`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/series-icon.svg" alt="" width={24} height={24} />
+          <span>{APP_CONFIG.name}</span>
+        </Link>
+        <SidebarTrigger className="app-sidebar-toggle" aria-label="收起侧栏" title="收起侧栏（⌘B / Ctrl+B）" />
       </SidebarHeader>
-      <SidebarMenu className="px-2"><SidebarMenuItem><SidebarMenuButton asChild tooltip="新建任务"><Link href="/function/tasks?create=1" onClick={event=>{setOpenMobile(false);if(pathname.replace(/\/$/,'')==='/function/tasks'){event.preventDefault();window.dispatchEvent(new Event("series:create-task"));}}}><PlusIcon/><span>新建任务</span></Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
-      <SidebarContent>
+      <SidebarContent className="app-sidebar-content">
+        <SidebarGroup>
+          <SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild tooltip="新建任务"><Link href="/function/tasks?create=1" onClick={event=>{setOpenMobile(false);if(pathname.replace(/\/$/,'')==='/function/tasks'){event.preventDefault();window.dispatchEvent(new Event("series:create-task"));}}}><CirclePlusIcon/><span>新建任务</span></Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+        </SidebarGroup>
         <NavMain items={sidebarItems} />
         <React.Suspense><RecentTasks/></React.Suspense>
         {/* <NavSecondary items={data.navSecondary} className="mt-auto" /> */}
       </SidebarContent>
-      <SidebarFooter className="flex-row items-center gap-2 border-t group-data-[collapsible=icon]:flex-col"><ThemeSwitcher/><LayoutControls/></SidebarFooter>
+      <SidebarFooter className="shrink-0 flex-row items-center gap-2 border-t p-3 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:p-1"><ThemeSwitcher/><LayoutControls/></SidebarFooter>
     </Sidebar>
   );
 }

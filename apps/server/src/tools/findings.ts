@@ -1,3 +1,4 @@
+import {prepareReproduction,attachStepTraffic,reproductionSchema} from '../evidence/reproduction.js';
 import {findingPublished} from '../db/worker-drafts.js';
 import {writeOrigin,writeAnchors,assertDirectWrite,sourceFields,sameSource} from './write-origin.js';
 import {bindEvidence} from "../evidence/store.js";
@@ -12,7 +13,7 @@ import {normalizeWritebackScope,writebackReceipt,savedWritebackReceipt,writeback
 
 const SEVERITIES = ["critical", "high", "medium", "low"];
 
-interface ReportFindingArgs { scope?:WritebackScope; traffic_refs?:Array<{traffic_id:string;role?:string;note?:string}>; vulnclass: string; name?: string; severity: "critical" | "high" | "medium" | "low"; summary: string; evidence: string; asset_ids?: number[]; }
+interface ReportFindingArgs { reproduction?:unknown; scope?:WritebackScope; traffic_refs?:Array<{traffic_id:string;role?:string;note?:string}>; vulnclass: string; name?: string; severity: "critical" | "high" | "medium" | "low"; summary: string; evidence: string; asset_ids?: number[]; }
 
 export function reportFindingTool(ctx: ToolRunContext) {
   return domainTool<ReportFindingArgs>(
@@ -25,6 +26,7 @@ export function reportFindingTool(ctx: ToolRunContext) {
       parameters: {
         type: "object",
         properties: {
+          reproduction:reproductionSchema,
           traffic_refs:{type:"array",items:{type:"object",properties:{traffic_id:{type:"string"},role:{type:"string",enum:["baseline","proof","verification","supporting"]},note:{type:"string"}},required:["traffic_id"]}},
           vulnclass: { type: "string", description: "漏洞类别，如 SQL注入/XSS/SSRF/未授权访问" },
           name: { type: "string", description: "漏洞标题（可读）" },
@@ -60,6 +62,7 @@ export function reportFindingTool(ctx: ToolRunContext) {
           }
         }
 
+        const reproduction=await prepareReproduction(db,args.reproduction,{taskID:c.taskID,intentID:c.intentID,evidence:args.evidence});
         const payload: Record<string, unknown> = {
           vulnclass: args.vulnclass,
           name: args.name ?? "",
@@ -89,7 +92,8 @@ export function reportFindingTool(ctx: ToolRunContext) {
           ],
         );
         const findingID=Number(ins.rows[0]!.id);
-        await db.query("UPDATE findings SET tool_call_id=$2 WHERE id=$1",[findingID,c.toolCallID??null]);
+        await db.query("UPDATE findings SET tool_call_id=$2,reproduction=$3 WHERE id=$1",[findingID,c.toolCallID??null,reproduction]);
+        await attachStepTraffic(db,findingID,c.taskID,reproduction);
         if(args.traffic_refs?.length)await bindEvidence(db,findingID,args.traffic_refs,c.taskID);
         await findingPublished(db,c.expID,nodeID);
         created=true;

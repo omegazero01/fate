@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { SettingsDialog, SettingsPanel } from "@/components/settings-dialog";
-import { PaletteIcon } from "lucide-react";
+import { openSystemSettings } from "@/lib/system-settings";
 import { Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -252,25 +252,19 @@ export function AppearancePreferences() {
 }
 
 export function LayoutControls() {
-  const [open, setOpen] = React.useState(false);
+  const { setOpenMobile } = useSidebar();
   return (
-    <>
-      <Button variant="ghost" size="icon" aria-label="外观设置" onClick={() => setOpen(true)}>
-        <Settings />
-      </Button>
-      <SettingsDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="个人设置"
-        description="偏好设置即时保存，仅影响你的界面。"
-        sections={[{ key: "appearance", label: "外观与布局", icon: PaletteIcon }]}
-        section="appearance"
-        onSectionChange={() => {}}
-      >
-        <SettingsPanel value="appearance">
-          <AppearancePreferences />
-        </SettingsPanel>
-      </SettingsDialog>
-    </>
+    <Button
+      size="icon"
+      className="app-sidebar-settings ml-auto group-data-[collapsible=icon]:ml-0"
+      title="系统设置"
+      aria-label="系统设置"
+      onClick={() => {
+        setOpenMobile(false);
+        openSystemSettings();
+      }}
+    >
+      <Settings />
+    </Button>
   );
 }

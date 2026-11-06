@@ -1,4 +1,0 @@
-PASS broadcast node ID search
-PASS history filter preserves independent pending approval
-PASS mention selection from real catalog
-PASS draft upload survives asynchronous conversation creation

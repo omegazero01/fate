@@ -1,6 +1,5 @@
 "use client";
 import {useVisiblePoll} from "@/hooks/use-visible-poll";
-import { PageHeading } from "@/components/workspace";
 
 import * as React from "react";
 
@@ -774,7 +773,6 @@ export default function TasksPage() {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-6">
-      <div className="px-4 lg:px-6"><PageHeading title="任务" description="管理探索任务、查看执行进度与已发布成果。"/></div>
       <TabsList className="mx-4 lg:mx-6">
         <TabsTrigger value="current">当前任务</TabsTrigger>
         <TabsTrigger value="archived">已归档</TabsTrigger>

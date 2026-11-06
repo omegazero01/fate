@@ -16,7 +16,21 @@ export async function executionSnapshots(db:Database){
       planning:own.filter(r=>r.phase==='planning').length,available:Math.max(0,limit-task_active)};
   };
 }
-export async function executionSnapshot(db:Database,taskID:number){return (await executionSnapshots(db))(taskID);}
+export async function executionSnapshot(db:Database,taskID:number){
+  // A model boundary needs one task, not every worker slot materialized in JS.
+  // The paginated task list still uses executionSnapshots once for its batch.
+  const r=(await db.query(`SELECT (SELECT value FROM settings WHERE key='workers') worker_limit,
+    count(*) FILTER(WHERE s.phase='running') global_active,
+    count(*) FILTER(WHERE s.task_id=$1 AND s.phase='running') task_active,
+    count(*) FILTER(WHERE s.task_id=$1 AND s.phase='running' AND n.payload ? 'execution_result') exiting,
+    count(*) FILTER(WHERE s.task_id=$1 AND s.phase='ready') ready,
+    count(*) FILTER(WHERE s.task_id=$1 AND s.phase='planning') planning
+    FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token AND l.expires_at>clock_timestamp()
+    LEFT JOIN exploration_nodes n ON n.id=s.intent_id`,[taskID])).rows[0]!;
+  const limit=Math.min(128,Math.max(1,Number(r.worker_limit)||3)),task_active=Number(r.task_active);
+  return {policy:'blackboard-v1',limit_scope:'task' as const,limit,global_active:Number(r.global_active),task_active,
+    exiting:Number(r.exiting),ready:Number(r.ready),planning:Number(r.planning),available:Math.max(0,limit-task_active)};
+}
 export class Coordinator {
   readonly owner=randomUUID();
   private lockContentions=0;

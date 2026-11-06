@@ -6,6 +6,9 @@ import type {SessionEntry} from '@earendil-works/pi-coding-agent';
 import type {Database} from '../db/index.js';
 import type {AgentRunner,RunResult} from '../pi/runner.js';
 import {mergePlannerChanges} from './planner-context-policy.js';
+import {compactPlannerInput} from './planner-input.js';
+import {assertPlannerHostState,plannerHostValues} from '../db/planner-host-state.js';
+import type {PlannerHistorySnapshot} from '../db/planner-history.js';
 
 export const PLANNER_READING_RULES = `本任务使用持续规划会话。历史对话和压缩摘要用于追溯判断，不代表当前图状态或执行授权。
 先用本轮变化和当前态势确定需要核验的节点；摘要足够判断时不要遍历全部详情。独立的相关引用可在一次 context_get 中批量读取所需字段；保留原文引用与未读位置，避免为刷新上下文重复读取未变化的大段输出。
@@ -13,7 +16,7 @@ export const PLANNER_READING_RULES = `本任务使用持续规划会话。历史
 目标节点供 prove_goal 判定，不作为派单证据；add_intent 的 parent_ids/contract.basis 只能引用 fact/finding，初始派单可省略，由宿主连接任务根事实。
 负面结论只覆盖实际测试过的资产、端口、协议、方法和参数，不能将部分端口的响应推广到未测端口或将代理返回当成所有后端协议的响应。未测方向可因约束或缺少前置而暂缓，但仍应标为未知，不能称为已测、关闭或已被证伪。
 分段读取只证明已返回区间的内容；next_offset/next_cursor 非空时，不能断言全文已读、剩余部分无结论或无证据。读取相关片段足够作本轮判断时可以结束，但应保留未读范围，不补造全文结论。
-历史规划原文可通过 context_search(source=planner_session) 检索，再用 context_get 读取 session: 引用；历史不是新的事实，引用图节点时重新核对版本。覆盖度只代表接触记录，不证明测试完毕。保持现有直接派单语义，不等待额外完成协议。`;
+历史原文按需用 context_search(source=planner_session,include_content=true) 召回，查规划结论可加 roles=["assistant"]。original=true 且有 content/read_receipt 表示该原文已实际返回，不必再读；其他命中按 read/next_item 用 context_get 读取 session: 引用。历史不是新的事实，引用图节点时重新核对版本。覆盖度只代表接触记录，不证明测试完毕。保持现有直接派单语义，不等待额外完成协议。`;
 
 export const PLANNER_COMPACTION_RULES = `这是同一任务的持续 Planner 会话。保留任务目标、未完成待办及依赖、已派意图与派单理由、决定不再尝试的方向及其负面证据、阻塞和未解决问题。
 保留相关 asset ID、node ID、证据版本、会话条目引用与读取入口；区分实测、推断、否定和未知，不把旧状态或摘要当成当前事实。负面结论保留实际验证范围；未读区间及续读位置保留为未完成事项，不能摘要为已经读完。不要重复长工具输出；原文通过 context_search(source=planner_session)/context_get(session:...) 召回，图与资产详情用现有查询工具核实。不要遗漏否定结果而把已测方向当成未测试。`;
@@ -61,19 +64,23 @@ type ObjectValue=Record<string,unknown>;
 const object=(v:unknown):ObjectValue=>v&&typeof v==='object'&&!Array.isArray(v)?v as ObjectValue:{};
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export interface PlannerDelivery {
-  version:1;id:string;taskID:number;expID:number;input:string;contextIDs:number[];wakeupIDs:number[];
+  /** v1 stored the complete fingerprint map; v2 stores only this batch's updates. */
+  version:1|2;id:string;taskID:number;expID:number;input:string;contextIDs:number[];wakeupIDs:number[];
   seen:Record<string,string>;currentState:ObjectValue;
 }
 interface Completion {deliveryID:string;result:Pick<RunResult,'aborted'|'stopReason'|'lastAssistantText'>;}
 export function plannerDeliveries(entries:readonly SessionEntry[]){
-  const deliveries:PlannerDelivery[]=[],completed=new Map<string,Completion>();
+  const deliveries:PlannerDelivery[]=[],completed=new Map<string,Completion>(),seen=new Map<string,string>();
   for(const e of entries)if(e.type==='custom'){
-    if(e.customType==='planner_delivery')deliveries.push(e.data as PlannerDelivery);
+    if(e.customType==='planner_delivery'){
+      const delivery=e.data as PlannerDelivery;deliveries.push(delivery);
+      for(const [key,value] of Object.entries(delivery.seen??{}))seen.set(key,value);
+    }
     if(e.customType==='planner_delivery_completed'){
       const c=e.data as Completion;completed.set(c.deliveryID,c);
     }
   }
-  return {deliveries,completed};
+  return {deliveries,completed,seen};
 }
 
 /** Only current state is replaced at request boundaries; transcript entries remain untouched. */
@@ -95,10 +102,10 @@ export function plannerCurrentState(overview:ObjectValue,todos:unknown):ObjectVa
 export async function plannerInvalidations(db:Database,expID:number,ids:number[],changes:unknown[]){
   if(!ids.length)return [];
   const visible=new Set(changes.map(c=>object(c).ref));
-  const rows=(await db.query('SELECT id,node_id,kind FROM exploration_context_events WHERE exploration_id=$1 AND id=ANY($2::bigint[]) ORDER BY id',[expID,ids])).rows;
+  const rows=(await db.query('SELECT id,node_id,kind,subject_type,subject_id FROM exploration_context_events WHERE exploration_id=$1 AND id=ANY($2::bigint[]) ORDER BY id',[expID,ids])).rows;
   const groups=new Map<string,{event_ids:number[];unavailable_refs:string[]}>();
   for(const row of rows){
-    const ref=row.node_id===null?undefined:`node:${row.node_id}`;
+    const ref=row.subject_type&&row.subject_id!==null?`${row.subject_type}:${row.subject_id}`:row.node_id===null?undefined:`node:${row.node_id}`;
     if(ref&&visible.has(ref))continue;
     const kind=String(row.kind),group=groups.get(kind)??{event_ids:[],unavailable_refs:[]};
     group.event_ids.push(Number(row.id));if(ref&&!group.unavailable_refs.includes(ref))group.unavailable_refs.push(ref);
@@ -109,32 +116,44 @@ export async function plannerInvalidations(db:Database,expID:number,ids:number[]
       :'图节点删除、来源或可读性已变化；历史内容可能已失效，使用前重新检索和读取当前图，不能将历史引用直接当作有效依据。'}));
 }
 
-export function preparePlannerDelivery(args:{taskID:number;expID:number;overview:ObjectValue;todos:unknown;changes:unknown[];events:unknown[];contextIDs:number[];triggers:string;previous?:PlannerDelivery}):PlannerDelivery{
-  const seen={...args.previous?.seen},increment:ObjectValue[]=[];
-  // Per-section hashes preserve different projections/evidence of the same node.
-  const emit=(key:string,value:unknown)=>{
-    const fingerprint=hash(value);if(seen[key]===fingerprint)return;
-    seen[key]=fingerprint;increment.push({section:key,...object(value)});
-  };
+// Convenience for in-memory callers. Production reconstructs the index once from
+// append-only native entries and passes it explicitly; it never serializes it.
+const preparedSeen=new WeakMap<PlannerDelivery,ReadonlyMap<string,string>>();
+type DeliveryInput={taskID:number;expID:number;overview:ObjectValue;todos:unknown;changes:unknown[];events:unknown[];contextIDs:number[];triggers:string;previous?:PlannerDelivery;hasPrevious?:boolean;seen?:ReadonlyMap<string,string>};
+function deliveryProjections(args:DeliveryInput):Array<[string,unknown]>{
+  const values:Array<[string,unknown]>=[];
   for(const key of ['worker_capabilities','asset_readers','cold_digests_index','node_index'])
-    if(args.overview[key]!==undefined)emit(key,{value:args.overview[key]});
+    if(args.overview[key]!==undefined)values.push([key,{value:args.overview[key]}]);
   for(const section of ['recent_facts','recent_done_intents','cold_digests'])
-    for(const row of (args.overview[section]??[]) as ObjectValue[])emit(`${section}:${row.id}`,row);
+    for(const row of (args.overview[section]??[]) as ObjectValue[])values.push([`${section}:${row.id}`,row]);
   for(const source of (args.overview.related_tasks??[]) as ObjectValue[])
     for(const section of ['goals','recent_facts','cold_digests'])
-      for(const row of (source[section]??[]) as ObjectValue[])emit(`source:${source.source_task_id}:${section}:${row.id}`,{...row,source_task_id:source.source_task_id,read_only:true});
-  for(const raw of args.changes){const c=object(raw);emit(`change:${c.source_task_id}:${c.ref??hash(c)}`,c);}
+      for(const row of (source[section]??[]) as ObjectValue[])values.push([`source:${source.source_task_id}:${section}:${row.id}`,{...row,source_task_id:source.source_task_id,read_only:true}]);
+  for(const raw of args.changes){const c=object(raw);values.push([`change:${c.source_task_id}:${c.ref??hash(c)}`,c]);}
+  return values;
+}
+export function preparePlannerDelivery(args:DeliveryInput):PlannerDelivery{
+  const known=args.seen??(args.previous?preparedSeen.get(args.previous):undefined)??new Map(Object.entries(args.previous?.seen??{}));
+  const seen:Record<string,string>={},increment:ObjectValue[]=[];
+  // Per-section hashes preserve different projections/evidence of the same node.
+  const emit=(key:string,value:unknown)=>{
+    const fingerprint=hash(value);if((seen[key]??known.get(key))===fingerprint)return;
+    seen[key]=fingerprint;increment.push({section:key,...object(value)});
+  };
+  for(const [key,value] of deliveryProjections(args))emit(key,value);
   const events=args.events.map(object),wakeupIDs=events.map(e=>Number(e.id)).filter(Number.isSafeInteger);
   const currentState=plannerCurrentState(args.overview,args.todos);
-  const payload={initial:!args.previous,changes:mergePlannerChanges(increment,args.taskID),notifications:events,trigger:args.triggers,
+  const payload={initial:!(args.hasPrevious??!!args.previous),changes:mergePlannerChanges(increment,args.taskID),notifications:events,trigger:args.triggers,
     ...(args.contextIDs.length?{context_event_ids:args.contextIDs}:{}),
     historical_recall:{source:'planner_session',note:'当前状态见宿主实时投影；新增内容不等于整图，资产字段变化需要实时查询。'}};
-  return {version:1,id:randomUUID(),taskID:args.taskID,expID:args.expID,input:JSON.stringify(payload),
+  const delivery:PlannerDelivery={version:2,id:randomUUID(),taskID:args.taskID,expID:args.expID,input:compactPlannerInput(JSON.stringify(payload)),
     contextIDs:args.contextIDs,wakeupIDs,seen,currentState};
+  if(!args.seen)preparedSeen.set(delivery,new Map([...known,...Object.entries(seen)]));
+  return delivery;
 }
 
 export function selectPlannerDelivery(runner:AgentRunner,args:Parameters<typeof preparePlannerDelivery>[0]){
-  const {deliveries,completed}=plannerDeliveries(runner.sessionEntries);
+  const {deliveries,completed,seen}=plannerDeliveries(runner.sessionEntries);
   if(deliveries.some(d=>d.taskID!==args.taskID||d.expID!==args.expID))throw new Error('Planner 会话归属不匹配');
   const eventIDs=args.events.map(e=>Number(object(e).id));
   // A completion marker saved before a crash repairs DB acknowledgements without another model request.
@@ -143,7 +162,30 @@ export function selectPlannerDelivery(runner:AgentRunner,args:Parameters<typeof 
   if(recover)return {delivery:recover,recovered:completed.get(recover.id)!.result};
   const pending=deliveries.find(d=>!completed.has(d.id));
   if(pending)return {delivery:pending};
-  const delivery=preparePlannerDelivery({...args,previous:deliveries.at(-1)});
+  const delivery=preparePlannerDelivery({...args,previous:deliveries.at(-1),seen});
   runner.appendSessionEntry('planner_delivery',delivery);
+  return {delivery};
+}
+
+/** Point lookups replace rescanning every earlier delivery and loading the whole
+ * seen map. Original delivery/completion entries remain the crash-recovery log. */
+export async function selectIndexedPlannerDelivery(db:Database,s:PlannerHistorySnapshot,runner:Pick<AgentRunner,'appendSessionEntry'>,args:DeliveryInput){
+  if(s.taskID!==args.taskID||s.expID!==args.expID)throw new Error('Planner 会话归属不匹配');
+  await assertPlannerHostState(db,s);
+  const eventIDs=args.events.map(e=>Number(object(e).id));
+  const completed=(await db.query(`SELECT d.data,c.data completion FROM planner_host_state d
+    JOIN planner_host_state c ON c.exploration_id=d.exploration_id AND c.namespace='completion' AND c.key=d.key
+    WHERE d.exploration_id=$1 AND d.namespace='delivery' AND (d.context_ids && $2::bigint[] OR d.wakeup_ids && $3::bigint[])
+    ORDER BY d.ordinal LIMIT 1`,[s.expID,args.contextIDs,eventIDs])).rows[0];
+  if(completed){const delivery=JSON.parse(String(completed.data)) as PlannerDelivery;
+    if(delivery.taskID!==args.taskID||delivery.expID!==args.expID)throw new Error('Planner 会话归属不匹配');
+    return {delivery,recovered:(JSON.parse(String(completed.completion)) as Completion).result};}
+  const pending=(await db.query(`SELECT d.data FROM planner_host_state d WHERE d.exploration_id=$1 AND d.namespace='delivery' AND d.incomplete IS TRUE
+    ORDER BY d.ordinal LIMIT 1`,[s.expID])).rows[0];
+  if(pending){const delivery=JSON.parse(String(pending.data)) as PlannerDelivery;
+    if(delivery.taskID!==args.taskID||delivery.expID!==args.expID)throw new Error('Planner 会话归属不匹配');return {delivery};}
+  const seen=await plannerHostValues<string>(db,s,'seen',deliveryProjections(args).map(([key])=>key));
+  const hasPrevious=!!(await db.query("SELECT 1 FROM planner_host_state WHERE exploration_id=$1 AND namespace='delivery' LIMIT 1",[s.expID])).rowCount;
+  const delivery=preparePlannerDelivery({...args,seen,hasPrevious});runner.appendSessionEntry('planner_delivery',delivery);
   return {delivery};
 }

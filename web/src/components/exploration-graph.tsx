@@ -4,6 +4,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import {GraphNodeReader} from '@/components/graph-node-reader';
 import type { Asset } from "@/lib/types";
 
 import {
@@ -139,6 +140,7 @@ const summaryFields: Record<ExploreKind, string[]> = {
 };
 
 function nodeSummary(n: TaskNode): string {
+  if(n.summary!==undefined)return n.summary;
   const raw = n.payload ?? "";
   const fields = summaryFields[viewKind(n)] ?? [];
   if (fields.length && raw.trim()) {
@@ -383,12 +385,14 @@ function NodeDetailSheet({
   nodesById,
   onSelect,
   onOpenChange,
+  onExplore,
 }: {
   taskId?: string;
   node: TaskNode | null;
   nodesById: Map<string, TaskNode>;
   onSelect: (n: TaskNode) => void;
   onOpenChange: (open: boolean) => void;
+  onExplore?: (id:string,mode:'relations'|'members')=>void;
 }) {
   const [copied, setCopied] = React.useState(false);
   const [assets, setAssets] = React.useState<Asset[]>([]);
@@ -403,7 +407,7 @@ function NodeDetailSheet({
     setAssetsError("");
     setAssetsTotal(0);
     setAssetsNext(undefined);
-    if (!taskId || !node) return;
+    if (!taskId || !node || node.payload_preview) return;
     const abort = new AbortController();
     api
       .explorationNodeDetail(taskId, node.id, 0, 0, abort.signal)
@@ -535,7 +539,7 @@ function NodeDetailSheet({
                     )}
                   </section>
                 )}
-                {node.type === "digest" && (
+                {node.type === "digest" && !node.payload_preview && (
                   <>
                     {nodeSummary(node) && (
                       <section className="border-t pt-3">
@@ -589,7 +593,7 @@ function NodeDetailSheet({
                   </>
                 )}
 
-                <section className="border-t pt-3">
+                {node.payload_preview&&taskId?<GraphNodeReader key={node.id} taskID={taskId} nodeID={node.id} kind={node.type} onExplore={onExplore}/>:<section className="border-t pt-3">
                   <div className="mb-1.5 flex items-center justify-between">
                     <h4 className="text-muted-foreground text-xs font-medium">原始数据</h4>
                     <button
@@ -603,7 +607,7 @@ function NodeDetailSheet({
                   <pre className="bg-muted/50 text-foreground max-w-full overflow-hidden rounded-md border p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
                     {raw}
                   </pre>
-                </section>
+                </section>}
               </div>
             </ScrollArea>
           </>
@@ -622,12 +626,14 @@ function ExplorationGraphInner({
   nodes,
   edges,
   emptyHint = "暂无探索数据",
+  paged=false,readRevision,onExplore,
 }: {
   taskId?: string;
   focusNodeId?: string | null;
   nodes: TaskNode[];
   edges: Edge[];
   emptyHint?: string;
+  paged?:boolean;readRevision?:string;onExplore?:(id:string,mode:'relations'|'members')=>void;
 }) {
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<ExploreRFNode>([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
@@ -636,7 +642,8 @@ function ExplorationGraphInner({
   // covered members even though they are not rendered on the canvas.
   const nodesById = React.useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   // Collapsed view: folded members removed, their edges rewired onto the digest.
-  const { viewNodes, viewEdges } = React.useMemo(() => collapseDigestGraph(nodes, edges), [nodes, edges]);
+  const { viewNodes, viewEdges } = React.useMemo(() => paged?{viewNodes:nodes,viewEdges:edges}:collapseDigestGraph(nodes, edges), [nodes, edges,paged]);
+  React.useEffect(()=>{if(paged)setSelected(null);},[paged,readRevision]);
   const isEmpty = viewNodes.length === 0;
   const nodeFocus = focusNodeId,
     lastFocus = React.useRef("");
@@ -767,6 +774,7 @@ function ExplorationGraphInner({
         nodesById={nodesById}
         onSelect={setSelected}
         onOpenChange={(o) => !o && setSelected(null)}
+        onExplore={onExplore?(id,mode)=>{setSelected(null);onExplore(id,mode);}:undefined}
       />
     </>
   );
@@ -781,6 +789,7 @@ export function ExplorationGraph({
   edges,
   className,
   emptyHint,
+  paged,readRevision,onExplore,
 }: {
   nodes: TaskNode[];
   edges: Edge[];
@@ -788,6 +797,7 @@ export function ExplorationGraph({
   focusNodeId?: string | null;
   className?: string;
   emptyHint?: string;
+  paged?:boolean;readRevision?:string;onExplore?:(id:string,mode:'relations'|'members')=>void;
 }) {
   return (
     <div className={cn("w-full overflow-hidden rounded-xl", className)}>
@@ -798,6 +808,7 @@ export function ExplorationGraph({
           nodes={nodes}
           edges={edges}
           emptyHint={emptyHint}
+          paged={paged} readRevision={readRevision} onExplore={onExplore}
         />
       </ReactFlowProvider>
     </div>

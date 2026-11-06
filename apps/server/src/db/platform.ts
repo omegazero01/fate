@@ -1,3 +1,4 @@
+import {migrateSeriesGoals} from '../agent/goals-series-migration.js';
 import {migrateDirectionWriteback} from '../agent/direction-migration.js';
 import {TOOL_POLICY_VERSION,ACTIVE_ROLES} from '../agent/tool-registry.js';
 import {migrateConstraintProvenance} from './constraint-provenance.js';
@@ -687,6 +688,8 @@ export class PlatformStore {
 
   /** 插入（无 id）或更新。更新时 apiKey 留空=保留现有 key。 */
   async saveProfile(p: LLMProfileInput): Promise<number> {
+    // Pasted whitespace must behave identically in save, catalogue and PI calls.
+    p = { ...p, apiKey: p.apiKey?.trim(), baseURL: p.baseURL?.trim(), proxy: p.proxy?.trim() };
     const id=await this.saveProfileBase(p);
     if(p.supportsImages!==undefined)await this.db.query("UPDATE llm_profiles SET supports_images=$2 WHERE id=$1",[id,p.supportsImages]);
     return id;
@@ -986,6 +989,7 @@ export async function seedBuiltins(db: Database): Promise<void> {
   await migrateAssetTools(db);
   await migrateSeriesPlannerPrompt(db);
   await migrateDirectionWriteback(db);
+  await migrateSeriesGoals(db);
 
   // 5. 内置 MCP 只是配置预设：disabled 且不授予任何 agent。ON CONFLICT 保证重启不覆盖用户改动。
   await db.query(

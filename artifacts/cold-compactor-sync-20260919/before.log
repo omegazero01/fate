@@ -1,5 +1,0 @@
---- FAIL: TestTaskPlannerAdvancesColdCompactionRounds (0.22s)
-    task_compactor_test.go:41: cold compactor not invoked: round=0 want=1 err=<nil>
-FAIL
-FAIL	github.com/neouks/series/server	0.303s
-FAIL

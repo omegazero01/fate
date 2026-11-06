@@ -330,6 +330,10 @@ export interface CoverageGraphEdge {
 }
 
 export interface CoverageGraphData {
+  revision: string; page: number; page_size: number; focus: string | null; seed_keys: string[];
+  total: number; total_assets: number; connector_count: number; tested: number;
+  counts: {type: string; total: number; tested: number}[]; coverage_enabled: boolean;
+  next_page: number | null; complete: boolean;
   nodes: CoverageGraphNode[];
   edges: CoverageGraphEdge[];
 }
@@ -431,7 +435,12 @@ export type HintState = "active" | "consumed";
 export type ExploreRel = "spawns" | "derived_from" | "yields" | "proves" | "covers";
 
 export interface TaskNode {
+  summary?: string;
+  summary_truncated?: boolean;
+  payload_preview?: boolean;
+  version?: string;
   executor_active?: boolean;
+  resume_pending?: boolean;
   id: string;
   type: ExploreKind;
   payload?: string;
@@ -445,6 +454,7 @@ export interface TaskNode {
 
 // 播报板列表仅返回精简摘要；edges/refs 保留兼容字段，详情由展开后的分页接口读取。
 export interface ExplorationNodePage {
+  revision?: string;
   items: TaskNode[];
   total: number;
   page: number;
@@ -466,6 +476,7 @@ export interface ExplorationNodeDetail {
 }
 
 export interface ExplorationNodeQuery {
+  revision?: string;
   countOnly?: boolean;
   page?: number;
   size?: number;
@@ -485,9 +496,17 @@ export interface TaskGoal {
   ts: string;
 }
 
-// 约束管理卡片用的操作约束(allow=允许 / deny=禁止)。
+// 约束分类仅作展示，实际边界以正文及原文条件为准。
 export type ConstraintKind = "allow" | "deny";
+export interface TaskConstraintSource {
+  version?: number;
+  field?: "goal" | "description" | "user_message";
+  quote?: string;
+  context_quote?: string;
+  source_hash?: string;
+}
 export interface TaskConstraint {
+  source?: TaskConstraintSource;
   id: string;
   kind: ConstraintKind;
   text: string;
@@ -518,7 +537,11 @@ export interface FindingAsset {
 }
 
 export interface Finding {
+  reproduction?: FindingReproduction|null;
+  report_revision?: number;
+  report_sections?: FindingReportSections|null;
   traffic_count?: number;
+  image_count?: number;
   evidence_version?: number;
   report_evidence_version?: number;
   report_stale?: boolean;
@@ -684,6 +707,12 @@ export interface Activity {
   is_error?: boolean;
   summary: string;
   detail?: string;
+  detail_total_chars?: number;
+  detail_truncated?: boolean;
+  detail_version?: string;
+  detail_start?: number;
+  summary_truncated?: boolean;
+  metadata_truncated?: boolean;
   metadata?: {
     role?: string;
     planner_round?: {number:number;title:string|null};
@@ -1505,3 +1534,9 @@ export interface NotificationSummary {
 export interface TaskFileEntry { ref:string; name:string; kind:'file'|'directory'; size:number; modified_at:string; version:string; origin:'attachment'|'work'; intent_id?:string }
 export interface FileContentPage { ref:string; version:string; offset:number; next_offset:number; total:number; has_more:boolean; binary:boolean; content:string }
 export interface EvidenceContentPage { content:string; offset:number; next_offset:number; total:number; truncated:boolean; binary:boolean; encoding:'base64'|'utf8' }
+
+export interface FindingStep {id:string;action:string;request:string;response:string;expected:string;proves:string;traffic_id?:string;source?:"evidence";source_ref?:string;verified?:boolean;truncated?:boolean}
+export interface FindingReproduction {entry_point:string;prerequisites:string[];steps:FindingStep[];provenance:string}
+export interface FindingReportSections {description:string;impact:string[];remediation:string[]}
+export interface FindingStepImage {id:string;step_id?:string|null;caption:string;mime:string;position:number}
+export interface FindingReproductionDetail {reproduction:FindingReproduction|null;report_sections:FindingReportSections|null;report_revision:number;evidence_version:number;markdown:string;images:FindingStepImage[];versions:Array<{revision:number;evidence_version:number;created_at:string}>;job?:{id:number;conversation_id:number;status?:string;error?:string}}

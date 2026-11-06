@@ -1,4 +1,4 @@
-import {configureUsageOutbox,replayUsageOutbox} from './pi/usage-meter.js';
+import {configureUsageOutbox,replayUsageOutbox,closeUsageOutbox} from './pi/usage-meter.js';
 import { makeModelResolver } from "./pi/modelResolver.js";
 // SERIES TS 后端入口：解析启动参数，打开数据库（含幂等迁移），构造引擎（模型源 =
 // 激活 llm_profile → pi-ai 自定义 provider），监听 HTTP。
@@ -105,13 +105,21 @@ async function main(): Promise<void> {
 
   engine.startScheduler();
 
+  let shuttingDown=false;
   const shutdown = async (signal: string) => {
+    if(shuttingDown)return;shuttingDown=true;
     console.log(`[shutdown] 收到 ${signal}，正在停止…`);
     await engine.shutdown();
     await gateway?.close().catch(() => undefined);
     await app.close().catch(() => undefined);
     clearInterval(usageTimer);
     await replayUsageOutbox(db).catch(()=>undefined);
+    // Preserve the only surviving receipts if disk and DB are both unavailable.
+    // A forced process kill remains a data-loss boundary; graceful exit waits.
+    for(;;){
+      try{await closeUsageOutbox(db);break;}
+      catch{console.error('[shutdown] 用量尚未持久保存，等待存储恢复');await new Promise(resolve=>setTimeout(resolve,5000));await replayUsageOutbox(db).catch(()=>undefined);}
+    }
     await db.close().catch(() => undefined);
     process.exit(0);
   };

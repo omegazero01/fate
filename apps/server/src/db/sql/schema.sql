@@ -249,6 +249,10 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_expnodes_part     ON exploration_nodes(exploration_id, kind);
 CREATE INDEX IF NOT EXISTS idx_expnodes_frontier ON exploration_nodes(exploration_id, priority DESC)
     WHERE kind='intent' AND state='open';
+-- Grounding runs at model boundaries. Avoid reading/decompressing every large
+-- evidence JSON merely to locate the small set of reported negative facts.
+CREATE INDEX IF NOT EXISTS idx_nodes_negative_grounding ON exploration_nodes(exploration_id,id DESC)
+    WHERE kind='fact' AND payload->>'observation_type'='negative';
 DROP TRIGGER IF EXISTS trg_expnodes_upd ON exploration_nodes;
 CREATE TRIGGER trg_expnodes_upd BEFORE UPDATE ON exploration_nodes
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1522,6 +1526,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_runtime_task_commands_pending
 CREATE INDEX IF NOT EXISTS idx_runtime_task_commands_task
   ON runtime_task_commands(task_id,id DESC);
 
+-- Button continuations are durable control requests, never Worker chat messages.
+-- Only the task lease owner may atomically accept a request and reserve a slot.
+CREATE TABLE IF NOT EXISTS runtime_worker_resumes (
+  id BIGSERIAL PRIMARY KEY,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  intent_id BIGINT NOT NULL REFERENCES exploration_nodes(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','superseded')),
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  settled_at TIMESTAMPTZ,
+  executor_owner TEXT,
+  detail TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_resume_pending
+  ON runtime_worker_resumes(task_id,intent_id) WHERE status='pending';
+CREATE INDEX IF NOT EXISTS idx_worker_resume_delivery
+  ON runtime_worker_resumes(task_id,id) WHERE status='pending';
+CREATE OR REPLACE FUNCTION invalidate_worker_resume_on_task_control() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.paused OR NEW.queued OR NEW.status<>'running' OR NEW.deleted_at IS NOT NULL THEN
+    UPDATE runtime_worker_resumes SET status='superseded',settled_at=now(),detail='task control changed'
+      WHERE task_id=NEW.id AND status='pending';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS worker_resume_task_control ON tasks;
+CREATE TRIGGER worker_resume_task_control AFTER UPDATE OF paused,queued,status,deleted_at ON tasks
+  FOR EACH ROW EXECUTE FUNCTION invalidate_worker_resume_on_task_control();
+
 -- Immutable, content-addressed evidence survives deletion from the traffic inbox.
 CREATE TABLE IF NOT EXISTS evidence_blobs(hash TEXT PRIMARY KEY,bytes BYTEA NOT NULL);
 CREATE TABLE IF NOT EXISTS traffic_exchanges(
@@ -1910,6 +1942,9 @@ CREATE TABLE IF NOT EXISTS goals_bootstrap (
  goal_ids BIGINT[] NOT NULL DEFAULT '{}', fallback BOOLEAN NOT NULL DEFAULT false,
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Keep old policy defaults for historical/manual enrollment; new API creation opts in explicitly.
+ALTER TABLE goals_bootstrap ADD COLUMN IF NOT EXISTS pending_errors JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- Planning capacity is independent of Worker execution capacity.
 CREATE TABLE IF NOT EXISTS engine_planner_slots (

@@ -6,6 +6,7 @@ import type { ToolRunContext, TodoItem } from "./context.js";
 import { KindIntent, RelDerivedFrom, nodeCancelledByUser } from "../db/exploration.js";
 import { normalizeContract, type IntentContract } from '../agent/intent-contract.js';
 import {workerCapabilities, validateWorkerToolNames} from '../agent/worker-capabilities.js';
+import {priorPlannerDispatch,savePlannerDispatch,type SubmittedIntent} from '../db/planner-dispatch.js';
 
 interface IntentItem { summary: string; parent_id?: number|string; parent_ids?: (number|string)[]; asset_ids?: (number|string)[]; priority?: number; contract?:IntentContract; retry_of?:number;retry_kind?:string;retry_reason?:string }
 interface AddIntentArgs extends Partial<IntentItem> { intents?: IntentItem[]; }
@@ -58,11 +59,13 @@ export function addIntentTool(ctx: ToolRunContext) {
           throw new Error('不能混合单条与批量参数；请把 summary/asset_ids/parent_ids/priority 等全部放入对应 intents 项，避免丢失事实依据');
         const items=batch?args.intents!:[args as IntentItem];
         if(items.length>4)throw new Error('一轮最多新增 4 条意图');
-        const results = await c.db.transaction(async db => {
+        const committed = await c.db.transaction(async db => {
           await c.hooks.assertOwnership?.(db);
+          const receipt=await priorPlannerDispatch(db,c,args);
+          if(receipt?.prior)return {results:receipt.prior,replayed:true};
           const capabilities = await workerCapabilities({...c, db});
           const s = db.exploration(c.expID), originFact = await s.originFactID();
-          const submitted: { summary: string; intent_id: number; created: boolean; duplicate_of?: number;dedup?:{version:3;strength:string;match?:string;related_intent_ids?:number[]} }[] = [];
+          const submitted: SubmittedIntent[] = [];
           for (const item of items) {
             const explicitParents=item.parent_ids??(item.parent_id!==undefined?[item.parent_id]:[]);
             const parentIDs=intentIDs(explicitParents,'parent_ids');
@@ -95,9 +98,11 @@ export function addIntentTool(ctx: ToolRunContext) {
             }
             submitted.push({summary:item.summary,intent_id:res.id,created:res.created,dedup:res.dedup,...(!res.created?{duplicate_of:res.id}:{})});
           }
-          return submitted;
+          if(receipt)await savePlannerDispatch(db,c.expID,receipt,submitted);
+          return {results:submitted,replayed:false};
         });
-        for (const result of results) if (result.created) {
+        const results=committed.results;
+        for (const result of results) if (result.created&&!committed.replayed) {
           c.hooks.notifyIntent?.(c.expID,result.intent_id);
           // The host signs a one-intent grant after the node is committed.
           if (c.role === "mainagent") await c.hooks.dispatchIntent?.(c.expID,result.intent_id);

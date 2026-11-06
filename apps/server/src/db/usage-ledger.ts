@@ -1,6 +1,6 @@
 import type {Database} from './index.js';
 
-export type UsageScope={taskIDs?:number[];taskID?:number;conversationID?:number;intentID?:number;mainSegment?:number;runtimeID?:string;turnID?:string};
+export type UsageScope={taskIDs?:number[];taskID?:number;conversationID?:number;intentID?:number;mainSegment?:number;runtimeID?:string;turnID?:string;turnIDs?:string[]};
 export const USAGE_VERSION='usage-v2';
 
 /** One-way import. No business record is rewritten; reruns and deleted logs cannot remove receipts. */
@@ -34,9 +34,8 @@ export async function backfillUsageLedger(db:Database){
 }
 
 /** Priority is per execution, never per task. Ambiguous overlaps remain explicitly visible. */
-export const CANONICAL_USAGE_CTE=`ledger AS MATERIALIZED (
- SELECT *,COALESCE('conversation:'||conversation_id,'task:'||task_id,'platform') domain_key FROM llm_usage_ledger /* usage_scope */
-), physical AS MATERIALIZED (
+const USAGE_DOMAIN="COALESCE('conversation:'||conversation_id,'task:'||task_id,'platform')";
+const USAGE_RESOLUTION_CTE=`physical AS MATERIALIZED (
  SELECT * FROM ledger WHERE source IN ('provider','request_audit')
 ), scope_counts AS MATERIALIZED (
  SELECT domain_key,scope_key,count(*) FILTER(WHERE source IN ('provider','request_audit')) physicals,
@@ -66,6 +65,34 @@ export const CANONICAL_USAGE_CTE=`ledger AS MATERIALIZED (
   GREATEST(0,COALESCE((usage->>'cacheRead')::bigint,0)) cr,GREATEST(0,COALESCE((usage->>'cacheWrite')::bigint,0)) cw FROM canonical
 )`;
 
+export const CANONICAL_USAGE_CTE=`ledger AS MATERIALIZED (
+ SELECT *,${USAGE_DOMAIN} domain_key FROM llm_usage_ledger /* usage_scope */
+), ${USAGE_RESOLUTION_CTE}`;
+
+/** Select executions, not individual receipts. Provider/native priority needs all
+ * receipts in each selected domain + scope; ambiguous legacy intervals also need
+ * every legacy boundary for the selected physical requests' domain + role.
+ * Apply the selection again AFTER canonicalization. SQL predicates here are
+ * host-authored, parameterized fragments, never user-provided SQL. */
+export function selectedUsageCTE(identityWhere:string,selectionWhere:string){
+ return `usage_keys AS MATERIALIZED (
+  SELECT DISTINCT ${USAGE_DOMAIN} domain_key,scope_key FROM llm_usage_ledger
+  WHERE (${identityWhere}) AND (${selectionWhere})
+ ), selected_usage AS MATERIALIZED (
+  SELECT l.*,${USAGE_DOMAIN} domain_key FROM llm_usage_ledger l
+  WHERE (${identityWhere}) AND EXISTS(SELECT 1 FROM usage_keys k WHERE k.scope_key=l.scope_key AND k.domain_key=${USAGE_DOMAIN})
+ ), legacy_roles AS MATERIALIZED (
+  SELECT DISTINCT domain_key,role FROM selected_usage WHERE source IN ('provider','request_audit')
+ ), ledger AS MATERIALIZED (
+  SELECT * FROM selected_usage
+  UNION ALL
+  SELECT l.*,${USAGE_DOMAIN} domain_key FROM llm_usage_ledger l
+  WHERE (${identityWhere}) AND source='legacy_results'
+   AND EXISTS(SELECT 1 FROM legacy_roles r WHERE r.domain_key=${USAGE_DOMAIN} AND r.role=l.role)
+   AND NOT EXISTS(SELECT 1 FROM usage_keys k WHERE k.domain_key=${USAGE_DOMAIN} AND k.scope_key=l.scope_key)
+ ), ${USAGE_RESOLUTION_CTE}`;
+}
+
 export const USAGE_SUM_SQL=`count(DISTINCT task_id) tasks,count(*) FILTER(WHERE source<>'legacy_results') calls,
  COALESCE(sum(CASE WHEN usage->>'_input_total_known'='true' THEN (usage->>'inputTotal')::bigint ELSE i+CASE WHEN input_semantics='exclusive_cache' THEN cr+cw ELSE 0 END END),0) input_tokens,
  COALESCE(sum(i) FILTER(WHERE input_semantics='exclusive_cache'),0) uncached_input_tokens,COALESCE(sum(o),0) output_tokens,
@@ -94,6 +121,11 @@ export async function aggregateUsage(db:Database,scope:UsageScope&{days?:number;
   if(scope[key]!==undefined){params.push(scope[key]);where.push(`${col}=$${params.length}`);}
  if(scope.taskIDs!==undefined){params.push(scope.taskIDs);where.push(`task_id=ANY($${params.length}::bigint[])`);}
  const identityWhere=where.join(' AND ');
+ let cte=CANONICAL_USAGE_CTE.replace('/* usage_scope */',identityWhere?'WHERE '+identityWhere:'');
+ if(scope.turnIDs!==undefined){
+  params.push(scope.turnIDs);const selected=`turn_id=ANY($${params.length}::text[])`;
+  cte=selectedUsageCTE(identityWhere||'TRUE',selected);where.push(selected);
+ }
  if(scope.days!==undefined){params.push(scope.days);where.push(`created_at>=((now() AT TIME ZONE 'Asia/Shanghai')::date-($${params.length}::int-1)) AT TIME ZONE 'Asia/Shanghai'`);}
  for(const [key,operator] of [['since','>='],['until','<']] as const)if(scope[key]){params.push(scope[key]);where.push(`created_at${operator}$${params.length}::timestamptz`);}
  if(scope.timeKnown!==undefined)where.push(scope.timeKnown?"source IN ('provider','request_audit')":"source NOT IN ('provider','request_audit')");
@@ -105,7 +137,7 @@ export async function aggregateUsage(db:Database,scope:UsageScope&{days?:number;
   conversation:'conversation_id::text',role:'role',task:'task_id::text',turn:'turn_id'};
  if(group==='conversation')where.push('conversation_id IS NOT NULL');
  if(group==='task')where.push('task_id IS NOT NULL');
- const rows=(await db.query(`WITH ${CANONICAL_USAGE_CTE.replace('/* usage_scope */',identityWhere?'WHERE '+identityWhere:'')} SELECT ${group?`${expression[group]} bucket, CASE WHEN count(DISTINCT model)=1 THEN max(model) END model,array_agg(DISTINCT model) models,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_name) END profile_name,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_id) END profile_id,array_agg(DISTINCT profile_id) profile_ids,CASE WHEN count(DISTINCT COALESCE(task_id::text,'unknown'))=1 THEN max(task_id) END task_id,CASE WHEN count(DISTINCT role)=1 THEN max(role) END role,min(to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD')) date, min(created_at) created_at,`:''}${USAGE_SUM_SQL}
+ const rows=(await db.query(`WITH ${cte} SELECT ${group?`${expression[group]} bucket, CASE WHEN count(DISTINCT model)=1 THEN max(model) END model,array_agg(DISTINCT model) models,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_name) END profile_name,CASE WHEN count(DISTINCT COALESCE(profile_id::text,'unknown'))=1 THEN max(profile_id) END profile_id,array_agg(DISTINCT profile_id) profile_ids,CASE WHEN count(DISTINCT COALESCE(task_id::text,'unknown'))=1 THEN max(task_id) END task_id,CASE WHEN count(DISTINCT role)=1 THEN max(role) END role,min(to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD')) date, min(created_at) created_at,`:''}${USAGE_SUM_SQL}
   FROM measured ${where.length?'WHERE '+where.join(' AND '):''} ${group?'GROUP BY 1 ORDER BY 1':''}`,params)).rows;
  return rows.map(r=>({...r,...usageDTO(r)}));
 }

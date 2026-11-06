@@ -1,10 +1,18 @@
 .DS_Store
 
-# Local dependencies, runtime state and generated output (tracked history is unchanged).
+# Local dependencies, runtime state and generated output.
 **/node_modules/
 /apps/server/data/
 /apps/server/dist/
+/apps/server/dist-*/
 /.playwright-mcp/
+**/coverage/
+**/test-results/
+**/playwright-report/
+**/*.tsbuildinfo
+
+# Local operational snapshots and review evidence are not application source.
+/docs/reviews/evidence/
 
 # Use pnpm for the server workspace and npm for the standalone web app.
 /apps/server/package-lock.json

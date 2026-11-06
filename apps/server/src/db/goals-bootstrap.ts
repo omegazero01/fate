@@ -2,8 +2,9 @@ import {createHash} from 'node:crypto';
 import type {Database} from './index.js';
 import type {ToolRunContext} from '../tools/context.js';
 export const GOALS_POLICY='goal-field-isolation-v1';
-export type GoalsPhase='constraints'|'objectives';
-export interface GoalsBootstrap {task_id:number;goal:string;description:string;phase:GoalsPhase|'completed';goal_ids:number[];fallback:boolean}
+export const SERIES_GOALS_POLICY='series-single-session-v1';
+export type GoalsPhase='constraints'|'objectives'|'combined';
+export interface GoalsBootstrap {policy:string;pending_errors:Record<string,string>;task_id:number;goal:string;description:string;phase:GoalsPhase|'completed';goal_ids:number[];fallback:boolean}
 export const goalHash=(text:string)=>createHash('sha256').update(text).digest('hex');
 export async function goalsBootstrap(db:Database,taskID:number):Promise<GoalsBootstrap|undefined>{return (await db.query('SELECT * FROM goals_bootstrap WHERE task_id=$1',[taskID])).rows[0] as GoalsBootstrap|undefined;}
 /** Lock lifecycle first, then bootstrap, matching task control's ownership order. */
@@ -20,14 +21,24 @@ export async function saveBootstrapGoals(ctx:ToolRunContext,goals:GoalSubmission
  return ctx.db.transaction(async db=>{
   const row=await activeBootstrap(ctx,db);
   if(row.phase==='completed')return row.goal_ids.map(Number);
-  if(ctx.goalsPhase!=='objectives'||row.phase!=='objectives')throw new Error('当前阶段不能写入目标');
+  if(!(row.policy===SERIES_GOALS_POLICY?ctx.goalsPhase==='combined'&&row.phase==='constraints':ctx.goalsPhase==='objectives'&&row.phase==='objectives'))throw new Error('当前阶段不能写入目标');
+  if(row.policy===SERIES_GOALS_POLICY&&Object.keys(row.pending_errors??{}).some(k=>k!=='set_goals'))throw new Error('约束或资产保存错误尚未解决，不能提交目标并启动执行');
   if(!goals.length||goals.length>10)throw new Error('目标数量须为 1–10');
   for(const g of goals){if(!g.text?.trim()||!g.source_quote?.trim()||!row.goal.includes(g.source_quote))throw new Error('目标 source_quote 必须逐字引用本次目标栏原文，不能引用描述或背景');}
   const store=db.exploration(ctx.expID),origin=await store.originFactID(),ids:number[]=[];
   // No replacement of manually added or historical goals. This receipt is committed with the nodes.
-  for(const g of goals){const id=await store.addGoal({text:g.text.trim(),...(g.vulnclass?{vulnclass:g.vulnclass}:{}),source:{version:GOALS_POLICY,field:'goal',quote:g.source_quote,source_hash:goalHash(row.goal),fallback}},'goals');if(origin)await store.link(origin,'spawns',id);ids.push(id);}
-  await db.query("UPDATE goals_bootstrap SET phase='completed',goal_ids=$2,fallback=$3,updated_at=now() WHERE task_id=$1",[ctx.taskID,ids,fallback]);
+  for(const g of goals){const id=await store.addGoal({text:g.text.trim(),...(g.vulnclass?{vulnclass:g.vulnclass}:{}),source:{version:row.policy??GOALS_POLICY,field:'goal',quote:g.source_quote,source_hash:goalHash(row.goal),fallback}},'goals');if(origin)await store.link(origin,'spawns',id);ids.push(id);}
+  await db.query("UPDATE goals_bootstrap SET phase='completed',goal_ids=$2,fallback=$3,pending_errors='{}'::jsonb,updated_at=now() WHERE task_id=$1",[ctx.taskID,ids,fallback]);
   ctx.signal?.throwIfAborted();
   return ids;
+ });
+}
+
+/** Durable initialization receipts survive a crash; never perform a business write during replay. */
+export async function noteGoalsToolResult(ctx:ToolRunContext,tool:string,error?:string){
+ if(ctx.role!=='goals'||ctx.goalsPhase!=='combined')return;
+ await ctx.db.transaction(async db=>{
+  await activeBootstrap(ctx,db);
+  await db.query(`UPDATE goals_bootstrap SET pending_errors=CASE WHEN $3::text IS NULL THEN pending_errors-$2 ELSE pending_errors||jsonb_build_object($2::text,$3::text) END,updated_at=now() WHERE task_id=$1 AND phase<>'completed'`,[ctx.taskID,tool,error?.slice(0,2000)??null]);
  });
 }

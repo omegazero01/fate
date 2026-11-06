@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import Link from "next/link";
+import { openSystemSettings, type SystemSettingKey } from "@/lib/system-settings";
 import { BrainIcon, GaugeIcon, PaletteIcon, ArchiveIcon, ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsDialog, SettingsPanel } from "@/components/settings-dialog";
@@ -87,11 +87,16 @@ export function TaskSettings({
             ["Skill", "skills"],
             ["自定义工具", "tools"],
           ].map(([label, path]) => (
-            <Button asChild key={path} variant="ghost">
-              <Link href={`/system/${path}`}>
-                {label}
-                <ArrowUpRightIcon data-icon="inline-end" />
-              </Link>
+            <Button
+              key={path}
+              variant="ghost"
+              onClick={() => {
+                onClose();
+                openSystemSettings(path as SystemSettingKey);
+              }}
+            >
+              {label}
+              <ArrowUpRightIcon data-icon="inline-end" />
             </Button>
           ))}
         </>

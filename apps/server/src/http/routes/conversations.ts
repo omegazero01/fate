@@ -1,5 +1,6 @@
 import {serveActivityStream,conversationReadable} from '../activity-stream.js';
 import {activityDTO} from '../../engine/live-stream.js';
+import {readActivityPage,readActivityContent,readSnapshotContent} from '../../db/activity-content.js';
 import type { FastifyInstance } from 'fastify';
 
 const activity = activityDTO;
@@ -92,9 +93,9 @@ export function registerConversationRoutes(app: FastifyInstance) {
     const forward = q.since !== undefined;
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
     const cursor = Math.max(0, Number(forward ? q.since : q.before) || 0);
-    const rows = await db().query(`SELECT * FROM conversation_activities WHERE conversation_id=$1 AND ${forward ? 'id>$2' : '($2::bigint=0 OR id<$2)'} ORDER BY id ${forward ? 'ASC' : 'DESC'} LIMIT $3`, [id, cursor, limit + 1]);
-    const hasMore = rows.rows.length > limit;
-    const items = rows.rows.slice(0, limit).map(activity);
+    const rows = await readActivityPage(db(),'conversation',`conversation_id=$1 AND ${forward ? 'id>$2' : '($2::bigint=0 OR id<$2)'}`,[id,cursor],forward?'ASC':'DESC',limit);
+    const hasMore = rows.hasMore;
+    const items = rows.rows.map(activity);
     if (!forward) items.reverse();
     const run = await db().query("SELECT status FROM conversation_runs WHERE conversation_id=$1 AND status IN ('queued','running') ORDER BY id DESC LIMIT 1", [id]);
     const retest = await db().query("SELECT status FROM finding_retests WHERE conversation_id=$1 AND status IN ('pending','running')", [id]);
@@ -104,9 +105,13 @@ export function registerConversationRoutes(app: FastifyInstance) {
   app.get('/api/conversations/:id/messages/:seq', async (req) => {
     const p = req.params as { id: string; seq: string };
     if (!await conversationReadable(db(),Number(p.id))) throw Object.assign(new Error('conversation not found'), {statusCode:404});
-    const row = (await db().query('SELECT detail FROM conversation_activities WHERE conversation_id=$1 AND id=$2', [Number(p.id), Number(p.seq)])).rows[0];
-    if (!row) throw Object.assign(new Error('message not found'), { statusCode: 404 });
-    return row;
+    return readActivityContent(db(),'conversation','conversation_id=$1 AND id=$2',[Number(p.id),Number(p.seq)],req.query as Record<string,string>);
+  });
+
+  app.get('/api/conversations/:id/streams/:stream',async req=>{
+    const p=req.params as {id:string;stream:string},id=Number(p.id);
+    if(!await conversationReadable(db(),id))throw Object.assign(new Error('conversation not found'),{statusCode:404});
+    return readSnapshotContent(db(),'conversation',id,p.stream,req.query as Record<string,string>);
   });
 
   app.post('/api/conversations/:id/messages', async (req, reply) => {

@@ -1,0 +1,86 @@
+diff --git a/README.md b/README.md
+index db40c5e12c00d7a068a9642744dc6a9af528a099..a129fc99609345015612a8c130d09eec374953fa 100644
+--- a/README.md
++++ b/README.md
+@@ -93,3 +93,8 @@ Read [CONTRIBUTING.md](https://github.com/earendil-works/pi/blob/main/CONTRIBUTI
+ ## License
+ 
+ MIT
++
++
++### Fate compatibility patch: bounded aggregate run results
++
++When a host explicitly selects `session.agent.runHistoryMode = "last-turn"`, the core retains the final turn in `agent_end.messages`. Extensions receive `agent_end.runHistory` including the exact omitted message count. Original per-message events and SessionManager persistence are unchanged; consumers requiring the full transcript must read the session, not mistake the event tail for a complete run. The SDK default remains `"all"`.
+diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
+index 45de709d9b96e50531f6b92f21696df15d315d37..51607ef0eb5c3470f63e372981d212d054649825 100644
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -49,6 +49,7 @@ export type AgentSessionEvent = WithParentToolCallId<Exclude<AgentEvent, {
+ }>> | {
+     type: "agent_end";
+     messages: AgentMessage[];
++    runHistory?: { mode: "last-turn"; omittedMessages: number };
+     willRetry: boolean;
+ } | {
+     type: "agent_settled";
+@@ -928,4 +929,3 @@ export declare class AgentSession {
+     get extensionRunner(): ExtensionRunner;
+ }
+ export {};
+\ No newline at end of file
+-//# sourceMappingURL=agent-session.d.ts.map
+\ No newline at end of file
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 11ab140cd4a227d03bf247de3b0d6a7197e892e0..b88a432b4f85c302ae92b7fc1323a557e9281af1 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -886,7 +886,8 @@ export class AgentSession {
+             await this._extensionRunner.emit({ type: "agent_start" });
+         }
+         else if (event.type === "agent_end") {
+-            await this._extensionRunner.emit({ type: "agent_end", messages: event.messages });
++            await this._extensionRunner.emit({ type: "agent_end", messages: event.messages,
++                ...(event.runHistory ? { runHistory: event.runHistory } : {}) });
+         }
+         else if (event.type === "turn_start") {
+             const extensionEvent = {
+@@ -3604,4 +3605,3 @@ export class AgentSession {
+         return this._extensionRunner;
+     }
+ }
+\ No newline at end of file
+-//# sourceMappingURL=agent-session.js.map
+\ No newline at end of file
+diff --git a/dist/core/extensions/types.d.ts b/dist/core/extensions/types.d.ts
+index 43c7ad43b394c7a9266dbcac0bee1e675b721713..23c6bd9f71681f04221f8a4a7e666519f893b6e0 100644
+--- a/dist/core/extensions/types.d.ts
++++ b/dist/core/extensions/types.d.ts
+@@ -747,7 +747,9 @@ export interface AgentStartEvent {
+ /** Fired when an agent loop ends */
+ export interface AgentEndEvent {
+     type: "agent_end";
++    /** Full aggregate by default; last turn only when runHistory.mode is last-turn. */
+     messages: AgentMessage[];
++    runHistory?: { mode: "last-turn"; omittedMessages: number };
+ }
+ export type AgentActivityOutcome = "completed" | "aborted" | "error";
+ export interface CustomEntryDraft {
+@@ -1754,4 +1756,3 @@ export interface ExtensionError {
+     error: string;
+     stack?: string;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=types.d.ts.map
+\ No newline at end of file
+diff --git a/examples/extensions/custom-provider-anthropic/package-lock.json b/examples/extensions/custom-provider-anthropic/package-lock.json
+deleted file mode 100644
+index 7a9cc69020074e9b3e2a5e0d3487c8927124fb82..0000000000000000000000000000000000000000
+diff --git a/examples/extensions/gondolin/package-lock.json b/examples/extensions/gondolin/package-lock.json
+deleted file mode 100644
+index 9ad047db2d7513c92cd204c2ccddb17799c05813..0000000000000000000000000000000000000000
+diff --git a/examples/extensions/sandbox/package-lock.json b/examples/extensions/sandbox/package-lock.json
+deleted file mode 100644
+index fbe7ec7c6885abfd3124b31e87267700226438ba..0000000000000000000000000000000000000000
+diff --git a/examples/extensions/with-deps/package-lock.json b/examples/extensions/with-deps/package-lock.json
+deleted file mode 100644
+index ba9a0ce5131a0bf8f6aa6491183740985778ffff..0000000000000000000000000000000000000000

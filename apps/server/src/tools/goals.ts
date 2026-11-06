@@ -1,4 +1,4 @@
-import {goalsBootstrap,saveBootstrapGoals,activeBootstrap,type GoalSubmission} from '../db/goals-bootstrap.js';
+import {goalsBootstrap,saveBootstrapGoals,activeBootstrap,SERIES_GOALS_POLICY,type GoalSubmission} from '../db/goals-bootstrap.js';
 // 目标与约束工具：set_goals（目标分解/mainagent 追加）、set_constraints（操作边界）、
 // register_user_target（显式授权登记）。
 
@@ -14,7 +14,7 @@ export function setGoalsTool(ctx: ToolRunContext) {
     {
       name: "set_goals",
       description:
-        "登记任务的可验证最终目标（主 Agent 追加；新任务分阶段幂等保存，旧任务保持兼容）。目标 = 可独立核验的交付物（拿到什么权限/证明什么漏洞/" +
+        "登记任务的可验证最终目标（主 Agent 追加；新任务按初始化策略幂等保存，旧任务保持兼容）。目标 = 可独立核验的交付物（拿到什么权限/证明什么漏洞/" +
         "覆盖什么范围）；信息收集、漏洞验证过程、攻击步骤都不是目标。每个目标给漏洞类别便于归类。",
       promptSnippet: "保存目标栏要求的最终结果",
       parameters: {
@@ -28,10 +28,10 @@ export function setGoalsTool(ctx: ToolRunContext) {
               type: "object",
               properties: {
                 text: { type: "string", description: "目标描述（自包含、可验证）" },
-                ...(ctx.goalsPhase==='objectives'?{source_quote:{type:"string",description:"逐字引用目标栏原文；不能引用描述或背景"}}:{}),
+                ...((ctx.goalsPhase==='objectives'||ctx.goalsPhase==='combined')?{source_quote:{type:"string",description:"逐字引用目标栏原文；不能引用描述或背景"}}:{}),
                 vulnclass: { type: "string", description: "关联漏洞类别（可选）" },
               },
-              required: ctx.goalsPhase==='objectives'?["text","source_quote"]:["text"],
+              required: (ctx.goalsPhase==='objectives'||ctx.goalsPhase==='combined')?["text","source_quote"]:["text"],
             },
           },
         },
@@ -79,8 +79,8 @@ export function setConstraintsTool(ctx: ToolRunContext) {
               type: "object",
               properties: {
                 kind: { type: "string", enum: ["allow", "deny"] },
-                text: { type: "string", description: "完整原文段落，不改写；保留列表及例外" },
-                source_quote: { type: "string", description: "与 text 相同的用户原文段落；旧调用可省略，但 text 仍须通过原文核对" },
+                text: { type: "string", description: "逐条自包含的操作要求；将唯一明确的当前目标/端口替换为具体值，歧义不猜测；不强化语气，保留否定及例外" },
+                source_quote: { type: "string", description: "支持本条要求的逐字原文，包含适用的条件和例外；text 可整理，省略时以 text 校验" },
               },
               required: ["kind", "text"],
             },
@@ -97,7 +97,7 @@ export function setConstraintsTool(ctx: ToolRunContext) {
           await tx.query("SELECT pg_advisory_xact_lock($1)", [c.expID]);
           const task=await tx.tasks().getTask(c.taskID);
           if(!task||task.exploration_id!==c.expID)throw new Error('约束所属任务不匹配');
-          if(c.role==='goals'&&await goalsBootstrap(tx,c.taskID)){const state=await activeBootstrap(c,tx);if(c.goalsPhase!=='constraints'||state.phase!=='constraints')throw new Error('当前阶段不能写入约束');}
+          if(c.role==='goals'&&await goalsBootstrap(tx,c.taskID)){const state=await activeBootstrap(c,tx);if(!(c.goalsPhase==='constraints'||c.goalsPhase==='combined'&&state.policy===SERIES_GOALS_POLICY)||state.phase!=='constraints')throw new Error('当前阶段不能写入约束');}
           const sources=c.role==='goals'?{goal:task.goal,description:task.description}:{user_message:c.userMessage};
           // Validate the whole batch before replacement; an invalid call leaves existing rules intact.
           const grounded=args.constraints.map(k=>groundConstraint(k,sources));
@@ -148,7 +148,7 @@ export function registerUserTargetTool(ctx: ToolRunContext) {
         required: ["kind", "value", "evidence"],
       },
       async run(args, c) {
-        if(c.role==='goals'&&await goalsBootstrap(c.db,c.taskID)){const state=await activeBootstrap(c,c.db);if(c.goalsPhase!=='constraints'||state.phase!=='constraints')throw new Error('当前阶段不能登记资产');}
+        if(c.role==='goals'&&await goalsBootstrap(c.db,c.taskID)){const state=await activeBootstrap(c,c.db);if(!(c.goalsPhase==='constraints'||c.goalsPhase==='combined'&&state.policy===SERIES_GOALS_POLICY)||state.phase!=='constraints')throw new Error('当前阶段不能登记资产');}
         if (!args.evidence.trim()) throw new Error("必须提供任务描述中的授权语句原文");
         await c.db.taskScope().addAgentScope(c.taskID, args.kind, args.value, args.evidence, "manual");
         return { registered: true, kind: args.kind, value: args.value };

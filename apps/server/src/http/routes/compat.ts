@@ -1,11 +1,13 @@
+import {readCoverageGraphPage} from '../../db/coverage-graph.js';
 import {activityControlFields} from '../../engine/activity-presentation.js';
+import {readActivityPage,readActivityContent,readSnapshotContent} from '../../db/activity-content.js';
 import {aggregateUsage,unverifiedUsageHistory} from '../../db/usage-ledger.js';
-import {coverageGraph,queryAssets} from '../../db/asset-query.js';
 import {READABLE_FINDINGS} from "./finding-projection.js";
 import {modelTokenUsage} from '../model-token-usage.js';
 import {executionSnapshot} from '../../engine/coordinator.js';
 import { resolveModelProfiles } from "../../pi/modelResolver.js";
 import {authorizedNodes,resolveGraphNode,TASK_GRAPH_CTE} from '../../db/graph_view.js';
+import {readGraphPage,readGraphNodePage,readBroadcastPage,readLegacyNodePage} from '../../db/graph-browse.js';
 // 前端（Go 版契约）兼容层：task 寻址的探索端点 + findings 族 + goals/constraints/
 // coverage-graph + 意图控制别名 + stats/audit。响应形状对齐 web/src/lib/types.ts。
 // 高级端点（findings 分组/资产树/导出、traffic 绑定、retests）返回可渲染的空态。
@@ -51,6 +53,7 @@ function mapActivity(row: Record<string, unknown>): Record<string, unknown> {
     kind: String(row["kind"] ?? ""),
     summary: String(row["summary"] ?? ""),
     is_error: row["is_error"] === true,
+    ...Object.fromEntries(['detail','detail_total_chars','detail_truncated','detail_version','summary_truncated','metadata_truncated'].filter(k=>row[k]!==undefined).map(k=>[k,row[k]])),
   };
   if (row["node_id"] !== null && row["node_id"] !== undefined) out["intent_id"] = String(row["node_id"]);
   if (row["tool"]) out["tool"] = row["tool"];
@@ -74,6 +77,7 @@ function mapFinding(row: Record<string, unknown>, task?: Record<string, unknown>
     evidence: String(row["evidence"] ?? ""),
     ts: row["created_at"] instanceof Date ? (row["created_at"] as Date).toISOString() : String(row["created_at"] ?? ""),
     traffic_count: Number(row["traffic_count"] ?? 0),
+    image_count: Number(row["image_count"] ?? 0),
     evidence_version: Number(row["evidence_version"] ?? 0),
     report_evidence_version: Number(row["report_evidence_version"] ?? 0),
     report_stale: Number(row["evidence_version"] ?? 0) > Number(row["report_evidence_version"] ?? 0),
@@ -115,89 +119,23 @@ export function registerCompatRoutes(app: FastifyInstance): void {
 
   app.get("/api/exploration/graph", async (req) => {
     const q = req.query as Record<string, string>;
-    const taskID=q2n(q["task"],0);await expOf(taskID);
-    const nodes = await db().query(`WITH ${TASK_GRAPH_CTE} SELECT ${NODE_COLS},source_task_id,inherited FROM visible ORDER BY inherited,id LIMIT 2001`, [taskID]);
-    const page=nodes.rows.slice(0,2000),ids=page.map(n=>Number(n.id));
-    const edges = await db().query(`SELECT src_id::text AS src, dst_id::text AS dst, rel FROM exploration_edges WHERE src_id=ANY($1::bigint[]) AND dst_id=ANY($1::bigint[]) ORDER BY id LIMIT 4001`, [ids]);
-    return { nodes: page.map(mapNode), edges: edges.rows.slice(0,4000), has_more:nodes.rows.length>2000||edges.rows.length>4000, continuation:'/api/exploration/nodes?task='+taskID };
+    const taskID=q2n(q["task"],0);
+    if(q.view==='page')return readGraphPage(db(),taskID,q);
+    const result=await readGraphPage(db(),taskID,q);
+    return {...result,...(!result.unchanged?{has_more:result.has_more||result.edges_has_more}:{}),continuation:'/api/exploration/graph?task='+taskID+'&view=page'};
   });
 
   app.get("/api/exploration/nodes", async (req) => {
     const q = req.query as Record<string, string>;
-    const taskID=q2n(q["task"],0);await expOf(taskID);
-    const page = Math.max(q2n(q["page"], 1), 1);
-    const size = Math.min(Math.max(q2n(q["size"], 20), 1), 100);
-    const params: unknown[] = [taskID];
-    let where = `true`;
-    if (q["kind"]) {
-      params.push(q["kind"].split(","));
-      where += ` AND kind=ANY($${params.length}::text[])`;
-    }
-    if (q["state"]) {
-      params.push(q["state"].split(","));
-      where += ` AND state=ANY($${params.length}::text[])`;
-    }
-    if (q["q"]) {
-      params.push(`%${q["q"]}%`);
-      where += ` AND payload::text ILIKE $${params.length}`;
-    }
-    const order = q["order"] === "asc" ? "ASC" : "DESC";
-    if (q["count_only"]) {
-      const c = await db().query<{ n: string }>(`WITH ${TASK_GRAPH_CTE} SELECT count(*) AS n FROM visible WHERE ${where}`, params);
-      return { items: [], total: Number(c.rows[0]?.n ?? 0), page, size, edges: [], refs: {} };
-    }
-    const rows = await db().query(
-      `WITH ${TASK_GRAPH_CTE} SELECT ${NODE_COLS},source_task_id,inherited FROM visible WHERE ${where} ORDER BY id ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, size, (page - 1) * size],
-    );
-    const total = await db().query<{ n: string }>(`WITH ${TASK_GRAPH_CTE} SELECT count(*) AS n FROM visible WHERE ${where}`, params);
-    const ids = rows.rows.map((r) => Number(r["id"]));
-    const edges =
-      ids.length > 0
-        ? await db().query(
-            `WITH ${TASK_GRAPH_CTE} SELECT e.src_id::text AS src,e.dst_id::text AS dst,e.rel FROM exploration_edges e JOIN visible s ON s.id=e.src_id JOIN visible d ON d.id=e.dst_id WHERE e.src_id=ANY($2::bigint[]) OR e.dst_id=ANY($2::bigint[]) ORDER BY e.id`,
-            [taskID, ids],
-          )
-        : { rows: [] };
-    return {
-      items: rows.rows.map(mapNode),
-      total: Number(total.rows[0]?.n ?? 0),
-      page,
-      size,
-      edges: edges.rows,
-      refs: {},
-    };
+    return readBroadcastPage(db(),q2n(q.task,0),q);
   });
 
   app.get("/api/exploration/nodes/:id", async (req) => {
     const q = req.query as Record<string, string>;
     const p = req.params as Record<string, string>;
-    const taskID=q2n(q["task"],0),localExp=await expOf(taskID);
-    let resolved;
-    try{resolved=await resolveGraphNode(db(),taskID,localExp,Number(p.id));}catch{throw Object.assign(new Error('节点不存在或未获授权'),{statusCode:404});}
-    const expID=resolved.expID;
-    const res = await db().query(`SELECT ${NODE_COLS} FROM exploration_nodes WHERE exploration_id=$1 AND id=$2`, [expID, Number(p["id"])]);
-    const node = res.rows[0];
-    if (!node) throw Object.assign(new Error("节点不存在"), { statusCode: 404 });
-    const edges = await db().query(
-      `SELECT src_id::text AS src, dst_id::text AS dst, rel FROM exploration_edges WHERE exploration_id=$1 AND exploration_node_readable($1,src_id) AND exploration_node_readable($1,dst_id) AND (src_id=$2 OR dst_id=$2) LIMIT 200 OFFSET $3`,
-      [expID, Number(p["id"]), q2n(q["edge_offset"], 0)],
-    );
-    const payload = typeof node.payload==='string'?node.payload:JSON.stringify(node.payload??{});
-    const bodyOffset = q2n(q["body_offset"], 0);
-    const WINDOW = 8000;
-    const body = payload.slice(bodyOffset, bodyOffset + WINDOW);
-    const anchorIDs=(await db().query('SELECT asset_id FROM exploration_anchors WHERE node_id=$1 ORDER BY asset_id',[Number(p.id)])).rows.map(r=>Number(r.asset_id));
-    const assets=await queryAssets(db(),{taskID,ids:anchorIDs,limit:50,offset:q2n(q.asset_offset,0),summary:true});
-    return {
-      assets:assets.assets,assets_total:assets.total,assets_next_offset:assets.next_offset,
-      node: mapNode({...node,...(resolved.inherited?{source_task_id:resolved.taskID,inherited:true}:{})}),
-      payload: body,
-      payload_next_offset: bodyOffset + body.length < payload.length ? bodyOffset + body.length : 0,
-      edges: edges.rows,
-      edges_next_offset: edges.rows.length >= 200 ? q2n(q["edge_offset"], 0) + 200 : 0,
-      refs: {},
-    };
+    const taskID=q2n(q["task"],0);
+    if(q.view==='page')return readGraphNodePage(db(),taskID,Number(p.id),q);
+    return readLegacyNodePage(db(),taskID,Number(p.id),q);
   });
 
   app.get("/api/exploration/frontier", async (req) => {
@@ -220,15 +158,17 @@ export function registerCompatRoutes(app: FastifyInstance): void {
       params.push(before);
       where += ` AND id < $${params.length}`;
     }
-    const rows = await db().query(`SELECT ${NODE_COLS},EXISTS(SELECT 1 FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.intent_id=exploration_nodes.id AND s.phase='running' AND l.expires_at>now()) executor_active FROM exploration_nodes WHERE ${where} ORDER BY id DESC LIMIT $2`, params);
+    const rows = await db().query(`SELECT ${NODE_COLS},EXISTS(SELECT 1 FROM engine_worker_slots s JOIN engine_task_leases l ON l.task_id=s.task_id AND l.token=s.token WHERE s.intent_id=exploration_nodes.id AND s.phase='running' AND l.expires_at>now()) executor_active,EXISTS(SELECT 1 FROM runtime_worker_resumes r WHERE r.intent_id=exploration_nodes.id AND r.status='pending') resume_pending FROM exploration_nodes WHERE ${where} ORDER BY id DESC LIMIT $2`, params);
     const total = await db().query<{ n: string }>(`SELECT count(*) AS n FROM exploration_nodes WHERE exploration_id=$1 AND kind='intent' AND exploration_node_readable($1,id)`, [expID]);
-    return { items: rows.rows.map(row=>({...mapNode(row),executor_active:row.executor_active===true})), has_more: Number(total.rows[0]?.n ?? 0) > 0 && rows.rows.length >= limit };
+    return { items: rows.rows.map(row=>({...mapNode(row),executor_active:row.executor_active===true,resume_pending:row.resume_pending===true})), has_more: Number(total.rows[0]?.n ?? 0) > 0 && rows.rows.length >= limit };
   });
 
   // ─── 活动流（列表/详情/历史/搜索）─────────────────────────────────────────
 
-  const ACT_COLS = `id, node_id, worker, kind, tool, tool_use_id, is_error, summary, created_at, main_seg, metadata,
-                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens`;
+  app.get('/api/exploration/streams/:stream',async req=>{
+    const q=req.query as Record<string,string>,expID=await expOf(Number(q.task));
+    return readSnapshotContent(db(),'task',expID,(req.params as {stream:string}).stream,q);
+  });
 
   app.get("/api/exploration/activity", async (req) => {
     const q = req.query as Record<string, string>;
@@ -243,21 +183,22 @@ export function registerCompatRoutes(app: FastifyInstance): void {
       params.push(Number(q["since"]));
       where += ` AND id > $${params.length}`;
     }
-    params.push(Math.min(q2n(q["limit"], 200), 1000));
+    const limit=Math.min(q2n(q["limit"], 200), 1000);
     const forward=q.since!==undefined;
-    const rows = await db().query(
-      `SELECT ${ACT_COLS} FROM activity WHERE ${where} ORDER BY id ${forward?'ASC':'DESC'} LIMIT $${params.length}`,
-      params,
-    );
+    const rows = await readActivityPage(db(),'task',where,params,forward?'ASC':'DESC',limit);
     const ordered=forward?rows.rows:rows.rows.reverse();
-    return { items: ordered.map(mapActivity), cursor: Number(ordered.at(-1)?.id ?? q.since ?? 0), has_more: rows.rows.length===params.at(-1) };
+    return { items: ordered.map(mapActivity), cursor: Number(ordered.at(-1)?.id ?? q.since ?? 0), has_more: rows.hasMore };
   });
 
   app.get("/api/exploration/activity/:id", async (req) => {
     const p = req.params as Record<string, string>;
-    const res = await db().query(`SELECT detail FROM activity WHERE id=$1 AND exploration_activity_readable(exploration_id,node_id,metadata)`, [Number(p["id"])]);
-    if(!res.rowCount)throw Object.assign(new Error('活动不存在或未获授权'),{statusCode:404});
-    return { detail: String(res.rows[0]?.["detail"] ?? "") };
+    const q=req.query as Record<string,string>,params:unknown[]=[Number(p.id)];
+    let where='id=$1 AND exploration_activity_readable(exploration_id,node_id,metadata)';
+    if(q.task!==undefined){
+      const taskID=Number(q.task);await expOf(taskID);params.push(taskID);
+      where+=` AND exploration_id IN (SELECT exploration_id FROM tasks WHERE deleted_at IS NULL AND (id=$2 OR id IN (SELECT source_task_id FROM task_relations WHERE task_id=$2)))`;
+    }
+    return readActivityContent(db(),'task',where,params,q);
   });
 
   app.get("/api/exploration/activity/history", async (req) => {
@@ -285,20 +226,9 @@ export function registerCompatRoutes(app: FastifyInstance): void {
     }
     if (before > 0) {
       params.push(before);
-      const rangeIdx = params.length;
-      params.push(limit);
-      var rows = await db().query(
-        `SELECT ${ACT_COLS} FROM activity WHERE exploration_id=$1 AND id <= $2 AND (kind<>'round' OR worker='planner')${sessionWhere} AND id < $${rangeIdx}
-         ORDER BY id DESC LIMIT $${params.length}`,
-        params,
-      );
+      var rows = await readActivityPage(db(),'task',`exploration_id=$1 AND id <= $2 AND (kind<>'round' OR worker='planner')${sessionWhere} AND id < $${params.length}`,params,'DESC',limit);
     } else {
-      params.push(limit);
-      var rows = await db().query(
-        `SELECT ${ACT_COLS} FROM activity WHERE exploration_id=$1 AND id <= $2 AND (kind<>'round' OR worker='planner')${sessionWhere}
-         ORDER BY id DESC LIMIT $${params.length}`,
-        params,
-      );
+      var rows = await readActivityPage(db(),'task',`exploration_id=$1 AND id <= $2 AND (kind<>'round' OR worker='planner')${sessionWhere}`,params,'DESC',limit);
     }
     const items = rows.rows.map(mapActivity).reverse();
     return {
@@ -307,7 +237,7 @@ export function registerCompatRoutes(app: FastifyInstance): void {
       earliest_cursor: items.length > 0 ? Number(rows.rows[rows.rows.length - 1]!["id"]) : 0,
       latest_cursor: items.length > 0 ? Number(rows.rows[0]!["id"]) : 0,
       has_newer: items.length > 0 ? Number(rows.rows[0]!["id"]) < snapshot : false,
-      has_more: rows.rows.length >= limit,
+      has_more: rows.hasMore,
     };
   });
 
@@ -415,7 +345,7 @@ export function registerCompatRoutes(app: FastifyInstance): void {
     if(q.vulnclass && q.vulnclass!=='all'){params.push(q.vulnclass);where+=` AND f.vulnclass=$${params.length}`;}
     const total = await db().query<{ n: string }>(`SELECT count(*) AS n FROM ${READABLE_FINDINGS} f${where}`, params);
     const rows = await db().query(
-      `SELECT f.*,(SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id) AS traffic_count FROM ${READABLE_FINDINGS} f${where} ORDER BY f.created_at ${q.direction==='asc'?'ASC':'DESC'},f.id ${q.direction==='asc'?'ASC':'DESC'} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `SELECT f.*,(SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id) AS traffic_count,(SELECT count(*) FROM finding_step_images im WHERE im.finding_id=f.id) AS image_count FROM ${READABLE_FINDINGS} f${where} ORDER BY f.created_at ${q.direction==='asc'?'ASC':'DESC'},f.id ${q.direction==='asc'?'ASC':'DESC'} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, (page - 1) * limit],
     );
     const taskCache = new Map<number, Record<string, unknown>>();
@@ -515,6 +445,7 @@ export function registerCompatRoutes(app: FastifyInstance): void {
     const context=Number((req.query as Record<string,string>).context_task);
     if(context && context!==tid){const related=await db().query('SELECT 1 FROM task_relations WHERE task_id=$1 AND source_task_id=$2',[context,tid]);if(!related.rowCount)throw Object.assign(new Error('漏洞不属于任务及直接来源任务'),{statusCode:403});out.inherited=true;out.source_task_id=String(tid);}
     out["report"] = String(row["report"] ?? "");
+    out["reproduction"]=row.reproduction??null;out["report_sections"]=row.report_sections??null;out["report_revision"]=Number(row.report_revision??0);
     const assetIDs = Array.isArray(row["asset_ids"]) ? (row["asset_ids"] as number[]) : [];
     if (assetIDs.length > 0) {
       const assets = await db().assets().getByIDs(assetIDs);
@@ -694,7 +625,7 @@ export function registerCompatRoutes(app: FastifyInstance): void {
     const p = req.params as Record<string, string>;
     const taskID = Number(p["id"]);
     await expOf(taskID);
-    return coverageGraph(db(),taskID);
+    return readCoverageGraphPage(db(),taskID,req.query as Record<string,unknown>);
   });
 
   app.post("/api/tasks/:id/intents/:iid/control", async (req, reply) => {

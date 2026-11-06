@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -14,6 +15,7 @@ import {
 import { Transcript } from "@/components/transcript";
 import { WorkspaceEmpty, WorkspaceError } from "@/components/workspace";
 import type { Activity } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export function MainConversation({
   taskId,
@@ -62,7 +64,7 @@ export function MainConversation({
                 ) : !items.length ? (
                   <WorkspaceEmpty
                     title={loading ? "正在同步对话…" : "开始任务对话"}
-                    description="向主 Agent 提问或调整任务；执行过程可在右侧查看。"
+                    description="向主 Agent 提问或调整任务；从右侧 Agent 列表选择会话查看执行过程。"
                   />
                 ) : (
                   <Transcript
@@ -92,6 +94,8 @@ export function SessionWorkspace({
   onOpenChange,
   onBack,
   showDetail,
+  primaryDetail,
+  primaryDetailKey,
 }: {
   main: React.ReactNode;
   list: React.ReactNode;
@@ -100,7 +104,10 @@ export function SessionWorkspace({
   onOpenChange: (open: boolean) => void;
   onBack: () => void;
   showDetail: boolean;
+  primaryDetail?: React.ReactNode;
+  primaryDetailKey?: string;
 }) {
+  const settingsOpen = useSearchParams().get("settings") === "true";
   const [wide, setWide] = React.useState(false),
     [expanded, setExpanded] = React.useState(false);
   React.useEffect(() => {
@@ -110,6 +117,13 @@ export function SessionWorkspace({
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+  React.useEffect(() => {
+    if (!primaryDetailKey) return;
+    setExpanded(false);
+    // Selecting a Worker reveals the main content underneath the mobile list.
+    // Do not depend on `open`: users can reopen the list to choose another one.
+    if (!window.matchMedia("(min-width:1280px)").matches) onOpenChange(false);
+  }, [primaryDetailKey, onOpenChange]);
   const panel = (
     <div className="task-process">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
@@ -143,7 +157,22 @@ export function SessionWorkspace({
     <div className="h-full min-h-0 min-w-0">
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel id="main" minSize="320px">
-          {main}
+          <div className="relative h-full min-h-0 min-w-0">
+            {/* Keep the Main scroller and composer mounted at the same size. */}
+            <div className={cn("h-full min-h-0", primaryDetail && "invisible pointer-events-none")} aria-hidden={primaryDetail ? true : undefined} inert={primaryDetail ? true : undefined}>
+              {main}
+            </div>
+            {primaryDetail && (
+              <section aria-label="Worker 会话" className="task-worker-conversation absolute inset-0 flex min-h-0 min-w-0 flex-col bg-card">
+                <div className="flex h-12 shrink-0 items-center border-b px-3">
+                  <Button variant="ghost" size="sm" onClick={onBack}>
+                    <ArrowLeft data-icon="inline-start" />返回主对话
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">{primaryDetail}</div>
+              </section>
+            )}
+          </div>
         </ResizablePanel>
         {wide && open && !expanded && (
           <>
@@ -154,9 +183,11 @@ export function SessionWorkspace({
           </>
         )}
       </ResizablePanelGroup>
-      <Sheet open={open && (!wide || expanded)} onOpenChange={onOpenChange}>
+      <Sheet open={open && !settingsOpen && (!wide || expanded)} onOpenChange={onOpenChange}>
         <SheetContent
-          className={expanded ? "w-full p-0 data-[side=right]:sm:max-w-5xl" : "w-full p-0 data-[side=right]:sm:max-w-xl"}
+          className={
+            expanded ? "w-full p-0 data-[side=right]:sm:max-w-5xl" : "w-full p-0 data-[side=right]:sm:max-w-xl"
+          }
           showCloseButton={false}
         >
           <SheetHeader className="sr-only">

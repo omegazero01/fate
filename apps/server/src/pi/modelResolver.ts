@@ -6,7 +6,8 @@ import type { LLMProfile } from '../db/platform.js';
 import type { ModelResolver } from '../engine/engine.js';
 import type { ModelSource } from '../agent/roles.js';
 import { buildModelSource } from './providerFromProfile.js';
-import {meterProvider,replayUsageOutbox} from './usage-meter.js';
+import {meterProvider} from './usage-meter.js';
+import {USAGE_STORAGE_ERROR} from './usage-outbox.js';
 import type {UsageScope} from '../db/usage-ledger.js';
 
 /** The management DTO and all role sessions use this same precedence and ordered chain. */
@@ -99,13 +100,17 @@ export function makeModelResolver(db:Database,build=buildModelSource):ModelResol
         await reserveRequest(db,profiles[index]!,request.signal);
         request.signal?.throwIfAborted();
         const source=sources[index]!;
-        return {model:source.model,thinkingLevel:source.thinkingLevel??'off'};
+        // PI's summarizer does not request reasoning. Inheriting the chat
+        // profile here can spend the entire summary allowance on hidden
+        // thinking and return no summary. Preserve chat settings separately.
+        return {model:source.model,thinkingLevel:purpose==='compaction'?'off':source.thinkingLevel??'off'};
       }});
     return {modelRuntime:runtime,model:runtime.getModel('series-router',`task-${taskID}-${role}`)!,streaming:profiles[0]?.streaming!==false,modelPolicy:{
       setRuntimeID(id){runtimeID=id;},
       setScope(value){scope={...value};},
       setPurpose(value){purpose=value;},
-      async finish(){await replayUsageOutbox(db);},
+      // Each stream persists its own receipt; the process background timer drains history.
+      async finish(){},
       async onResponse(message){
         const m=message as {provider?:string;stopReason?:string;errorMessage?:string;content?:unknown[];usage?:{totalTokens?:number}};
         // pi may emit an aborted synthetic message after a host-completed tool turn.
@@ -114,6 +119,7 @@ export function makeModelResolver(db:Database,build=buildModelSource):ModelResol
         const physical=sources.findIndex(s=>s.model.provider===m.provider);
         lastResponseIndex=physical>=0?physical:index;
         lastError=m.stopReason==='error'?cleanError(m.errorMessage??'模型调用失败',profiles):'';
+        if(lastError.startsWith(USAGE_STORAGE_ERROR))return;
         if(!lastError){
           retries=0;
           await db.query(`INSERT INTO llm_profile_health(profile_id,fails,trips,open_until,last_error,last_at) VALUES($1,0,0,NULL,'',now())
@@ -122,7 +128,7 @@ export function makeModelResolver(db:Database,build=buildModelSource):ModelResol
       },
       async retry(signal){
         signal?.throwIfAborted();
-        if(!lastError)return false;
+        if(!lastError||lastError.startsWith(USAGE_STORAGE_ERROR))return false;
         const p=profiles[lastResponseIndex]!;
         const hard=/401|403|invalid.?api.?key|unauthori|insufficient|quota|credit|balance/i.test(lastError);
         const globalRule=retryPolicy.connect??{};

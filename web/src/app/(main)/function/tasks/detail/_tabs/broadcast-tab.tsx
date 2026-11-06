@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { GraphNodeReader } from "@/components/graph-node-reader";
+import type { GraphPage } from "@/lib/graph-browse";
 
 import {
   ArrowDownIcon,
@@ -30,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { startPolling } from "@/lib/polling";
 import { api } from "@/lib/api";
 import { type Tone, toneClasses, toneDot } from "@/lib/status";
-import type { Edge, ExploreKind, TaskNode } from "@/lib/types";
+import type { ExploreKind, TaskNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZES = [20, 50, 100];
@@ -157,15 +160,6 @@ function summaryOf(n: TaskNode): string {
   return raw;
 }
 
-function prettyPayload(raw?: string): string {
-  if (!raw?.trim()) return "（无 payload）";
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
-  } catch {
-    return raw;
-  }
-}
-
 function relTime(ts: number, now: number): string {
   if (!now || !ts) return "";
   const sec = Math.max(0, (now - ts) / 1000);
@@ -209,100 +203,33 @@ function KindChip({ kind }: { kind: string }) {
 }
 
 // 一条播报涉及的上下游:上游 = 指向本节点的边,下游 = 本节点指出去的边。
-function RelatedList({
-  title,
-  rows,
-  refs,
-}: {
-  title: string;
-  rows: Array<{ rel: string; id: string }>;
-  refs: Record<string, TaskNode>;
-}) {
-  if (rows.length === 0) return null;
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</div>
-      <ul className="flex flex-col gap-1.5">
-        {rows.map((row) => {
-          const node = refs[row.id];
-          return (
-            <li key={`${row.rel}-${row.id}`} className="flex min-w-0 items-center gap-2 text-xs">
-              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-                {REL_LABEL[row.rel] ?? row.rel}
-              </span>
-              {node ? (
-                <>
-                  <KindChip kind={viewKind(node)} />
-                  <span className="truncate" title={summaryOf(node)}>
-                    {summaryOf(node) || `节点 #${node.id}`}
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">节点 #{row.id}</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
+function BroadcastRelations({taskID,nodeID}:{taskID:string;nodeID:string}) {
+ const [page,setPage]=React.useState<GraphPage>(),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false);
+ const controller=React.useRef<AbortController|null>(null);
+ const load=React.useCallback(async(before?:string,revision?:string)=>{
+  controller.current?.abort();const c=new AbortController();controller.current=c;setBusy(true);setError('');
+  try{const r=await api.graphPage(taskID,{mode:'relations',focus:nodeID,before,revision},undefined,c.signal);if(!c.signal.aborted&&!r.unchanged)setPage(r);}
+  catch(e){if(!c.signal.aborted){setPage(undefined);setError(e instanceof Error?e.message:'关联读取失败');}}
+  finally{if(!c.signal.aborted)setBusy(false);}
+ },[taskID,nodeID]);
+ React.useEffect(()=>{void load();return()=>controller.current?.abort();},[load]);
+ const refs=Object.fromEntries((page?.nodes??[]).map(n=>[n.id,n]));
+ return <section className="flex flex-col gap-2">
+  <p className="text-xs text-muted-foreground">关联关系：本页 {page?.edges.length??0} / 共 {page?.total??'…'}</p>
+  {page?.edges.map(e=>{const other=e.src===nodeID?e.dst:e.src;return <Link key={`${e.src}:${e.rel}:${e.dst}`} className="text-xs underline" href={`/function/tasks/detail?${new URLSearchParams({id:taskID,tab:'graph',node:other})}`}>{e.src===nodeID?'下游':'上游'} · {REL_LABEL[e.rel]??e.rel} · #{other} {refs[other]?summaryOf(refs[other]):''}</Link>;})}
+  <div className="flex gap-2">{(page?.before||error)&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void load()}>重新读取第一页关联</Button>}{page?.next_before&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void load(page.next_before!,page.revision)}>下一页关联</Button>}</div>
+  {busy&&<p role="status" className="text-xs text-muted-foreground">读取关联中…</p>}{error&&<p role="alert" className="text-xs text-destructive">{error}</p>}
+ </section>;
 }
 
 function BroadcastRow({ node, taskId, now, fresh }: { node: TaskNode; taskId: string; now: number; fresh: boolean }) {
   const [open, setOpen] = React.useState(false);
-  const [detail, setDetail] = React.useState<import("@/lib/types").ExplorationNodeDetail | null>(null);
-  const [error, setError] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const lastDetailPage = React.useRef<[number, number]>([0, 0]);
-  const controller = React.useRef<AbortController | null>(null);
-  const loadDetail = async (body = 0, edge = 0) => {
-    lastDetailPage.current = [body, edge];
-    controller.current?.abort();
-    const c = new AbortController();
-    controller.current = c;
-    const timer = setTimeout(() => c.abort(new Error("详情加载超时，请重试")), 15000);
-    setBusy(true);
-    setError("");
-    try {
-      const d = await api.explorationNodeDetail(taskId, node.id, body, edge, c.signal);
-      if (c.signal.aborted) return;
-      setDetail((prev) =>
-        !prev
-          ? d
-          : {
-              ...d,
-              payload: body < 0 ? prev.payload : body === 0 ? d.payload : prev.payload + d.payload,
-              payload_next_offset: body < 0 ? prev.payload_next_offset : d.payload_next_offset,
-              edges: edge < 0 ? prev.edges : edge === 0 ? d.edges : [...prev.edges, ...d.edges],
-              edges_next_offset: edge < 0 ? prev.edges_next_offset : d.edges_next_offset,
-              refs: { ...prev.refs, ...d.refs },
-            },
-      );
-    } catch (e) {
-      if (controller.current === c && (!c.signal.aborted || c.signal.reason?.message?.includes("超时")))
-        setError((e as Error).message);
-    } finally {
-      clearTimeout(timer);
-      if (controller.current === c) setBusy(false);
-    }
-  };
-  React.useEffect(() => {
-    if (open) void loadDetail();
-    return () => {
-      controller.current?.abort();
-      controller.current = null;
-    };
-    // Details are fetched on expansion, not on every list poll.
-  }, [open, taskId, node.id]);
-  const edges = detail?.edges ?? [];
-  const refs = detail?.refs ?? {};
   const kind = viewKind(node);
   const meta = KIND_META[kind] ?? KIND_META.fact;
   const Icon = meta.icon;
   const ts = Date.parse(node.ts);
   const summary = summaryOf(node);
-  const upstream = edges.filter((e) => e.dst === node.id).map((e) => ({ rel: e.rel, id: e.src }));
-  const downstream = edges.filter((e) => e.src === node.id).map((e) => ({ rel: e.rel, id: e.dst }));
+
 
   return (
     <div className={cn("relative grid grid-cols-[4.5rem_1.75rem_1fr] gap-x-2", fresh && "bg-primary/5")}>
@@ -363,37 +290,8 @@ function BroadcastRow({ node, taskId, now, fresh }: { node: TaskNode; taskId: st
               <span>来源 {node.origin || "system"}</span>
               <span>{Number.isNaN(ts) ? node.ts : new Date(ts).toLocaleString("zh-CN")}</span>
             </div>
-            {busy && <p>加载详情…</p>}
-            {error && (
-              <p role="alert">
-                {error}
-                <Button variant="ghost" onClick={() => void loadDetail(...lastDetailPage.current)}>
-                  重试
-                </Button>
-              </p>
-            )}
-            {(upstream.length > 0 || downstream.length > 0) && (
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <RelatedList title="上游 · 由此而来" rows={upstream} refs={refs} />
-                <RelatedList title="下游 · 由此产生" rows={downstream} refs={refs} />
-              </div>
-            )}
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">payload</div>
-              <pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 font-mono text-xs whitespace-pre-wrap">
-                {detail ? prettyPayload(detail.payload) : ""}
-              </pre>
-            </div>
-            {detail && detail.payload_next_offset >= 0 && (
-              <Button variant="outline" disabled={busy} onClick={() => void loadDetail(detail.payload_next_offset, -1)}>
-                加载后续正文
-              </Button>
-            )}
-            {detail && detail.edges_next_offset >= 0 && (
-              <Button variant="outline" disabled={busy} onClick={() => void loadDetail(-1, detail.edges_next_offset)}>
-                加载更多关联节点
-              </Button>
-            )}
+            <GraphNodeReader taskID={taskId} nodeID={node.id} kind={node.type} />
+            <BroadcastRelations taskID={taskId} nodeID={node.id} />
           </div>
         )}
       </div>
@@ -411,6 +309,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
   const [live, setLive] = React.useState(true);
 
   const [items, setItems] = React.useState<TaskNode[]>([]);
+  const revisionRef=React.useRef<string|undefined>(undefined);
   const [loadError, setLoadError] = React.useState("");
   const polling = React.useRef<ReturnType<typeof startPolling> | null>(null);
   const [total, setTotal] = React.useState(0);
@@ -434,34 +333,40 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
 
   // 输入防抖:打字停 300ms 才真正查询,并回到第一页。
   React.useEffect(() => {
+    if(queryInput===query)return;
     const t = setTimeout(() => {
       setQuery(queryInput);
       setPage(1);
     }, 300);
     return () => clearTimeout(t);
-  }, [queryInput]);
+  }, [queryInput,query]);
 
   React.useEffect(() => {
     let alive = true;
     let rendered = false; // 本次查询是否已经把内容渲染出来过
     // 换任务/筛选/排序 = 换了一条播报流:清掉「新」标记和未读基线。翻页不算换流,
     // 否则回到最新时就没有未读计数可算了。
-    const stream = `${taskId}|${kinds.join(",")}|${query}|${order}`;
+    const stream = `${taskId}|${kinds.join(",")}|${query}|${order}|${size}`;
     if (streamRef.current !== stream) {
       streamRef.current = stream;
+      revisionRef.current=undefined;
       seenRef.current = new Set();
       baselineRef.current = null;
       setPending(0);
     }
     const load = (signal: AbortSignal) =>
       api
-        .explorationNodes(taskId, { page, size, kinds, q: query, order, countOnly: !atLive && rendered }, signal)
+        .explorationNodes(taskId, { page, size, kinds, q: query, order, countOnly: !atLive && rendered,revision:page>1&&!rendered?revisionRef.current:undefined }, signal)
         .then((r) => {
           if (!alive || signal.aborted) return;
+          if(!atLive&&rendered&&revisionRef.current!==r.revision){
+            setItems([]);setLoadError('图谱已变化，请重新读取当前页');rendered=false;revisionRef.current=undefined;setTotal(r.total);return;
+          }
           setLoadError("");
           // 直播位每轮都刷新;其它位置只渲染第一次,之后轮询仅更新未读计数。
           if (atLive || !rendered) {
             rendered = true;
+            revisionRef.current=r.revision;
             setItems(r.items);
           }
           setTotal(r.total);
@@ -480,6 +385,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
         .catch((e: Error) => {
           if (alive && (!signal.aborted || signal.reason?.message?.includes("超时"))) {
             setLoadError(e.message);
+            setItems([]);rendered=false;revisionRef.current=undefined;
             setLoaded(true);
           }
         });
@@ -624,7 +530,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
           </div>
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            {query || kinds.length > 0 ? "没有符合条件的播报。" : "这个任务还没有产生探索节点。"}
+            {loadError ? "当前内容未加载，请重试。" : query || kinds.length > 0 ? "没有符合条件的播报。" : "这个任务还没有产生探索节点。"}
           </p>
         ) : (
           groups.map((group) => (

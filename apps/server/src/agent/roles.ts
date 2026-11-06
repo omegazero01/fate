@@ -1,12 +1,16 @@
+import {withRuntimeResources,type RuntimeResourceLease} from '../engine/runtime-resources.js';
+import {ConstraintBoundary} from './constraint-boundary.js';
 import {PLANNER_TITLE_PROTOCOL} from './planner-title.js';
 import {plannerContextPolicy} from './planner-context-policy.js';
 import {roleContextPolicy} from './context-policy.js';
 import {beginPlannerDisplayRound,finishPlannerDisplayRound} from '../db/planner-rounds.js';
-import {goalsBootstrap,activeBootstrap,saveBootstrapGoals,type GoalsPhase} from '../db/goals-bootstrap.js';
+import {goalsBootstrap,activeBootstrap,saveBootstrapGoals,noteGoalsToolResult,SERIES_GOALS_POLICY,type GoalsPhase} from '../db/goals-bootstrap.js';
 import {GOALS_STAGE_TOOLS,GOALS_STAGE_PROTOCOL,goalsStageVariables} from './goals-policy.js';
 import {legacyReadCandidates} from '../tools/legacy-reads.js';
 import {assertActiveRole} from '../agent/retired-roles.js';
-import {plannerGrounding,plannerReceipt,projectPlannerReceipts} from './planner-grounding.js';
+import {plannerGrounding,plannerGroundingContext,plannerReceipt,projectPlannerReceipts} from './planner-grounding.js';
+import {readPlannerDispatchPage} from '../db/planner-receipts.js';
+import {createPlannerStateReader} from './planner-live-state.js';
 import {WorkerOperationJournal} from '../db/operation-journal.js';
 import {journalTools} from '../pi/operation-tools.js';
 import {contextNeedBoundary,CONTEXT_RETENTION_RULES} from './context-needs.js';
@@ -14,7 +18,11 @@ import {terminalExtension,TERMINAL_TOOLS} from '../pi/terminal.js';
 import { applyToolBindings, disabledBuiltinTools } from './tool-bindings.js';
 export { applyToolBindings, disabledBuiltinTools } from './tool-bindings.js';
 import { CONTEXT_LAYOUT_VERSION } from './prompt-context.js';
-import {plannerSessionFile,validatePlannerSession,lockPlannerSession,selectPlannerDelivery,plannerCurrentState,plannerInvalidations,PLANNER_READING_RULES,PLANNER_COMPACTION_RULES} from './planner-memory.js';
+import {plannerSessionFile,lockPlannerSession,selectPlannerDelivery,selectIndexedPlannerDelivery,plannerCurrentState,plannerInvalidations,PLANNER_READING_RULES,PLANNER_COMPACTION_RULES} from './planner-memory.js';
+import {syncPlannerHistory,type PlannerHistorySnapshot} from '../db/planner-history.js';
+import {recoverPlannerActiveSession,preparePlannerActiveSession,type PlannerActiveSession} from './planner-active-session.js';
+import {prepareAgentRunSession,acquireNativeWriter,type NativeRunSession} from './native-run-session.js';
+import {plannerHostValues} from '../db/planner-host-state.js';
 import {createTrackedRunner} from '../engine/runtime-config.js';
 import {normalizeContract,basisVersion} from './intent-contract.js';
 import {workerLaunchContext} from '../tools/context-read.js';
@@ -111,6 +119,8 @@ const WORKER_SETTLEMENT_TOOLS = [
 ];
 
 export interface WorkerRunInput {
+  resourceLease?:RuntimeResourceLease;
+  nativeActivity?:import("../pi/native-activity.js").NativeActivityIdentity;
   turnID?:string;
   signal?: AbortSignal;
   db: Database;
@@ -124,7 +134,7 @@ export interface WorkerRunInput {
   maxDurationMs: number;
   hooks: EngineHooks;
   /** Drain messages received before the native runner was ready. */
-  onActivity: (activity: RunnerActivity, meta: { intentID: number; worker: string }) => void;
+  onActivity: (activity: RunnerActivity, meta: { intentID: number; worker: string }) => unknown;
   /** 引擎注入的额外 guard（执行租约与生命周期校验）。 */
   extraGuard?: ToolGuard;
   /**
@@ -164,8 +174,8 @@ export interface WorkerRunResult {
 }
 /** 包装 onActivity：累计 usage 事件（每 run 一份）。 */
 function withUsageCounter(
-  onActivity: (a: import("../pi/runner.js").RunnerActivity, meta: { intentID?: number; worker: string }) => void,
-): { wrapped: (a: import("../pi/runner.js").RunnerActivity, meta: { intentID?: number; worker: string }) => void; usage: () => RunUsage } {
+  onActivity: (a: import("../pi/runner.js").RunnerActivity, meta: { intentID?: number; worker: string }) => unknown,
+): { wrapped: (a: import("../pi/runner.js").RunnerActivity, meta: { intentID?: number; worker: string }) => unknown; usage: () => RunUsage } {
   const total: RunUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   return {
     usage: () => total,
@@ -176,7 +186,7 @@ function withUsageCounter(
         total.cacheRead += a.cacheRead;
         total.cacheWrite += a.cacheWrite;
       }
-      onActivity(a, meta);
+      return onActivity(a, meta);
     },
   };
 }
@@ -229,6 +239,15 @@ function roleExecutionGuard(ctx:ToolRunContext,extra?:ToolGuard):ToolGuard{
 }
 
 export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunResult> {
+  return withRuntimeResources(input.db,{taskID:input.taskID,role:'worker',intentID:input.intent.id},input.signal,input.resourceLease,
+    resourceLease=>runWorkerIntentAdmitted({...input,resourceLease}),
+    ()=>input.onActivity?.({kind:'host_status',phase:'resource_wait',text:'正在等待执行资源；尚未加载模型会话或连接 MCP'},{worker:input.workerName,intentID:input.intent.id}));
+}
+async function runWorkerIntentAdmitted(input: WorkerRunInput): Promise<WorkerRunResult> {
+  const active=await prepareAgentRunSession(input.db,{taskID:input.taskID,expID:input.expID,role:'worker',intentID:input.intent.id},workerSessionFile(input.dataDir,input.expID,input.intent.id),input.signal);
+  try{return await runWorkerSession(input,active);}finally{await active.close();}
+}
+async function runWorkerSession(input:WorkerRunInput,active:NativeRunSession):Promise<WorkerRunResult>{
   const { db, taskID, expID, workerName, model, dataDir } = input;
   const intent = await db.exploration(expID).getNode(input.intent.id);
   if(!intent||intent.state!=='running'||intent.owner!==workerName||intent.payload.cancelled_by_user)throw new Error('当前 Worker 不再持有运行中的意图');
@@ -242,6 +261,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     intentID: intent.id,
     hooks: input.hooks,
   });
+  const constraints=new ConstraintBoundary(db,expID,text=>input.onActivity?.({kind:'host_status',phase:'constraints',text},{worker:workerName,intentID:intent.id}));
   const tools = await applyToolBindings(db, "worker", workerTools(ctx));
   const disabledBuiltin = await disabledBuiltinTools(db);
   const rc = await agentRunConfig(db, "worker");
@@ -264,15 +284,16 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     `开始执行你的意图 #${intent.id}。`;
 
   // The native session owns progress persistence; writes go straight to the graph.
-  const counter = withUsageCounter(input.onActivity as (a: RunnerActivity, meta: { intentID?: number; worker: string }) => void);
+  const counter = withUsageCounter(input.onActivity as (a: RunnerActivity, meta: { intentID?: number; worker: string }) => unknown);
   const {maxTurns,maxDurationMs} = agentBudgets(rc,{maxTurns:input.maxTurns,maxDurationMs:input.maxDurationMs});
-  const sessionPath = workerSessionFile(dataDir, expID, intent.id);
+  ctx.agentSessionState=active.snapshot;
   // 出口网关注入的 bash（名字保持 "bash"，customTools 同名覆盖内置；allowlist 不变）。
   const execution=await executionTools(ctx,runDir,input);
   tools.push(...execution.tools);
   const journal=new WorkerOperationJournal(ctx);
   await journal.start();
   const runner = await createTrackedRunner(db,taskID,"worker",{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
     turnID:input.turnID,
     wrapExecutionTool:journalTools(journal,ctx,new Set(['bash','write','edit','http_request','shell_open','shell_send',...execution.tools.map(t=>t.name)])),
     stopOnRecoveryBlock:()=>journal.recoveryBlocked,
@@ -282,7 +303,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     compactionSettings:contextPolicy.compactionSettings,
     summaryMaxTokens:contextPolicy.summaryMaxTokens,
     reserveSettlementTurns: 2,
-    boundaryContext: async()=>constraintBlock(await loadConstraints(db,expID))+'\n'+await contextNeedBoundary(ctx),
+    boundaryContext: async()=>await constraints.context()+'\n'+await contextNeedBoundary(ctx),
     compactionInstructions:CONTEXT_RETENTION_RULES,
     loadDomainState:async()=>({context_needs:await contextNeedBoundary(ctx)}),
     intentID:intent.id,
@@ -300,7 +321,10 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     ...await roleResources(db, "worker", agentEnv.skillsDir),
     signal: input.signal, maxTurns, maxDurationMs,
     toolAllowlist: ["read", "write", "edit", "bash", "mcp__*",...execution.names, ...tools.map((t) => t.name)].filter((n) => !disabledBuiltin.has(n)),
-    resumeSessionPath: sessionPath,
+    resumeSessionPath: active.file,
+    canonicalSessionPath:active.canonical,flushNativeSession:active.flush,
+    onSessionCompacted:async manager=>{await active.compact(manager);},
+    archiveDiagnostics:active.diagnostics,
     wrapup: async ({reason}) => {
       // Natural completion ends immediately, including runs with no new observations.
       if (reason === 'settled') return undefined;
@@ -309,6 +333,8 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     maxWrapupTurns: rc.wrapupMaxTurns || 2,
     settlementTools: WORKER_SETTLEMENT_TOOLS,
     guard: async (g) => {
+      await active.flush();
+      const constraintDecision=await constraints.guard(g.toolName);if(constraintDecision)return constraintDecision;
       const current = await db.exploration(expID).getNode(intent.id);
       if (!current || current.state !== 'running' || current.owner!==workerName || current.payload.cancelled_by_user) return {block:true,reason:'当前意图已停止或归属已改变，禁止继续执行'};
       if (current.payload.execution_result) return {block:true,reason:'结果已提交，请结束当前会话'};
@@ -335,6 +361,7 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
     ctx.sessionEntries=()=>runner.sessionEntries;
     await input.onRunner?.({ abort: () => runner.abort(),steer:async message=>{await runner.steer(message);} });
     const res = await runner.prompt(firstUser);
+    await runner.acknowledgeNativeActivities();
     return { ...res, usage: counter.usage() };
   } catch (error) {
     // Preserve already-metered usage and domain writes on provider/compaction failures.
@@ -344,6 +371,8 @@ export async function runWorkerIntent(input: WorkerRunInput): Promise<WorkerRunR
 }
 
 export interface PlannerRoundInput {
+  resourceLease?:RuntimeResourceLease;
+  nativeActivity?:import("../pi/native-activity.js").NativeActivityIdentity;
   egressAddr?:string;egressScope?:string;extraGuard?:ToolGuard;
   dispatchCapacity?: number;
   planningRoundID?:string;
@@ -364,10 +393,11 @@ export interface PlannerRoundInput {
   triggersText: string;
   maxTurns: number;
   wrapupPromptOverride?: string;
-  onActivity: (activity: RunnerActivity, meta: { worker: string }) => void;
+  onActivity: (activity: RunnerActivity, meta: { worker: string }) => unknown;
 }
 
 export interface PlannerRoundResult {
+  sessionRestore?:{projected:boolean;sourceEntries:number;activeEntries:number};
   planningTitle?:string|null;
   aborted: boolean;
   stopReason?: "completed" | "aborted" | "budget";
@@ -380,27 +410,39 @@ export interface PlannerRoundResult {
 
 /** Native file session survives rounds. The lock covers writes, tools and disposal. */
 export async function runPlannerRound(input: PlannerRoundInput): Promise<PlannerRoundResult> {
+  return withRuntimeResources(input.db,{taskID:input.taskID,role:'planner'},input.signal,input.resourceLease,
+    resourceLease=>runPlannerRoundAdmitted({...input,resourceLease}),
+    ()=>input.onActivity?.({kind:'host_status',phase:'resource_wait',text:'正在等待执行资源；尚未加载模型会话或连接 MCP'},{worker:'planner'}));
+}
+async function runPlannerRoundAdmitted(input: PlannerRoundInput): Promise<PlannerRoundResult> {
   const unlock=await lockPlannerSession(input.db,input.expID,input.signal);
+  let releaseWriter:(()=>Promise<void>)|undefined;
   try{
     await input.hooks.assertOwnership?.(input.db);
-    await validatePlannerSession(plannerSessionFile(input.dataDir,input.expID));
+    const original=plannerSessionFile(input.dataDir,input.expID);
+    releaseWriter=await acquireNativeWriter(input.db,original,unlock.signal);
+    await recoverPlannerActiveSession(original);
+    const history=await syncPlannerHistory(input.db,input.taskID,input.expID,original,unlock.signal);
+    const active=await preparePlannerActiveSession(input.db,history,original);
     const planningRoundID=input.planningRoundID??randomUUID();
-    await beginPlannerDisplayRound(input.db,input.expID,planningRoundID);
     try {
-      const result=await runPlannerSession({...input,planningRoundID,signal:unlock.signal});
+      await beginPlannerDisplayRound(input.db,input.expID,planningRoundID);
+      const result=await runPlannerSession({...input,planningRoundID,signal:unlock.signal},history,active);
       await finishPlannerDisplayRound(input.db,input.expID,planningRoundID,result.planningTitle??null);
-      return result;
+      return {...result,sessionRestore:{projected:active.projected,sourceEntries:active.sourceEntries,activeEntries:active.activeEntries}};
     } catch(error) {
       await finishPlannerDisplayRound(input.db,input.expID,planningRoundID,null);
       throw error;
-    }
-  }finally{await unlock();}
+    }finally{await active.close();}
+  }finally{try{await releaseWriter?.();}finally{await unlock();}}
 }
 
-async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundResult>{
+async function runPlannerSession(input:PlannerRoundInput,history?:PlannerHistorySnapshot,active?:PlannerActiveSession):Promise<PlannerRoundResult>{
   const { db, taskID, expID, goal, model, dataDir, todos } = input;
   const planningRoundID=input.planningRoundID??randomUUID();
   const ctx: ToolRunContext = runContext(db, taskID, expID, "planner", { todos, hooks: input.hooks,planningRoundID });
+  const constraints=new ConstraintBoundary(db,expID,text=>input.onActivity?.({kind:'host_status',phase:'constraints',text},{worker:'planner'}));
+  const executionGuard=roleExecutionGuard(ctx,input.extraGuard);
   const tools = await applyToolBindings(db, "planner", plannerTools(ctx).filter((t) => !input.terminalOnly || !["add_intent", "add_task_scope", "steer_work", "kill_work"].includes(t.name)));
   const disabled = await disabledBuiltinTools(db, "planner");
   const prc = await agentRunConfig(db, "planner");
@@ -426,19 +468,20 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
   let sessionEntries:()=>readonly import('@earendil-works/pi-coding-agent').SessionEntry[]=()=>[];
   let finalActivity:Extract<RunnerActivity,{kind:'assistant_message_end'}>|undefined;
   const runner = await createTrackedRunner(db,taskID,"planner",{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
     turnID:input.planningRoundID,
     contextLayout: CONTEXT_LAYOUT_VERSION,
     cwd: workDir,
     extensionFactories:input.terminalOnly?[]:execution.extensions,
-    projectMessages:messages=>projectPlannerReceipts(messages,sessionEntries()),
-    guard:roleExecutionGuard(ctx,input.extraGuard),
+    projectMessages:messages=>projectPlannerReceipts(messages,sessionEntries(),sessionEntries),
+    guard:async g=>{await active?.flush();return (await constraints.guard(g.toolName))??await executionGuard(g);},
     settlementTools:[...GUARD_SKIP_TOOLS,"read","read_tool_output","read_attachment","traffic_body","shell_read","shell_list","shell_close"],
     boundaryContext:async()=>{
       await input.hooks.assertOwnership?.(db);
       const task=await db.tasks().getTask(taskID);
       if(!task||task.exploration_id!==expID)throw new Error('Planner 任务已删除或归属变化');
-      const state=plannerCurrentState(await buildGraphOverview(ctx),todos.get(expID));
-      return constraintBlock(await loadConstraints(db,expID))+'\n【宿主当前状态，优先于历史摘要】\n'+JSON.stringify({task_status:task.status,paused:task.paused,...state,grounding:await plannerGrounding(ctx,sessionEntries())})+'\n'+await contextNeedBoundary(ctx);
+      const state=plannerCurrentState(await buildGraphOverview(ctx,{currentOnly:true}),todos.get(expID));
+      return await constraints.context()+'\n【宿主当前状态，优先于历史摘要】\n'+JSON.stringify({task_status:task.status,paused:task.paused,...state,grounding:plannerGroundingContext(await plannerGrounding(ctx,sessionEntries()))})+'\n'+await contextNeedBoundary(ctx);
     },
     agentDir: path.join(dataDir, "pi-agent"),
     modelRuntime: model.modelRuntime,
@@ -452,7 +495,10 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
     ...await roleResources(db, "planner", agentEnv.skillsDir),
     signal: input.signal, ...plannerBudget,
     toolAllowlist: ["read",...(!input.terminalOnly?["write","edit","bash","mcp__*",...execution.names]:[]), ...tools.map((t) => t.name)].filter((name) => !disabled.has(name)),
-    resumeSessionPath:plannerSessionFile(dataDir,expID),
+    resumeSessionPath:active?.file??plannerSessionFile(dataDir,expID),
+    canonicalSessionPath:plannerSessionFile(dataDir,expID),flushNativeSession:active?.flush,
+    onSessionCompacted:async manager=>{await active?.rebase(manager,()=>syncPlannerHistory(db,taskID,expID,plannerSessionFile(dataDir,expID),input.signal));},
+    archiveDiagnostics:active?.diagnostics,
     contextPolicy,
     compactionSettings:contextPolicy.compactionSettings,
     summaryMaxTokens:contextPolicy.summaryMaxTokens,
@@ -464,46 +510,59 @@ async function runPlannerSession(input:PlannerRoundInput):Promise<PlannerRoundRe
       // Buffer visible prose until the host can publish a deterministic receipt.
       if(a.kind==='assistant_delta'&&!a.isThinking)return;
       if(a.kind==='assistant_message_end'&&!a.isThinking){finalActivity=a;return;}
-      plannerCounter.wrapped(a, { worker: "planner" });
+      return plannerCounter.wrapped(a, { worker: "planner" });
     },
   });
   try {
     sessionEntries=()=>runner.sessionEntries;
     ctx.sessionEntries=sessionEntries;
+    ctx.plannerLeaf=()=>runner.sessionLeafId;
+    ctx.plannerState=createPlannerStateReader(()=>({count:runner.sessionEntries.length,leaf:runner.sessionLeafId}),async()=>{
+      await active?.flush();return syncPlannerHistory(db,taskID,expID,plannerSessionFile(dataDir,expID),input.signal);
+    });
     // Historical recall uses the transcript at runner start. The current query,
     // delivery and its tool output must not become their own search results.
-    const historyUpper=runner.sessionEntries.length;
-    ctx.plannerSession={identity:()=>`${taskID}:${expID}:${runner.sessionId}`,entries:()=>runner.sessionEntries.slice(0,historyUpper)};
+    if(history&&history.sessionID!==runner.sessionId)throw new Error('Planner 原始会话与历史索引身份不一致');
+    const historyEntries=history?undefined:runner.sessionEntries;
+    ctx.plannerSession={identity:()=>`${taskID}:${expID}:${runner.sessionId}`,...(history?{index:history}:{entries:()=>historyEntries!})};
     const changes=input.changes??[],contextIDs=input.contextEventIDs??[];
     const invalidations=await plannerInvalidations(db,expID,contextIDs,changes);
-    const {delivery,recovered}=selectPlannerDelivery(runner,{taskID,expID,overview,todos:todos.get(expID),
-      changes:[...changes,...invalidations],events:input.events??[],contextIDs,triggers:input.triggersText});
+    const deliveryArgs={taskID,expID,overview,todos:todos.get(expID),changes:[...changes,...invalidations],events:input.events??[],contextIDs,triggers:input.triggersText};
+    const {delivery,recovered}=history?await selectIndexedPlannerDelivery(db,history,runner,deliveryArgs):selectPlannerDelivery(runner,deliveryArgs);
+    ctx.plannerDelivery={sessionID:runner.sessionId,deliveryID:delivery.id};
     const moreContext=(input.contextEventIDs??[]).some(id=>!delivery.contextIDs.includes(id))||
       (input.events??[]).some(e=>!delivery.wakeupIDs.includes(Number((e as {id:number}).id)));
     const receipt={deliveredContextIDs:delivery.contextIDs,deliveredWakeupIDs:delivery.wakeupIDs,moreContext};
     if(recovered){
+      const indexed=history?(await plannerHostValues<Awaited<ReturnType<typeof plannerReceipt>>>(db,history,'result',[delivery.id])).get(delivery.id):undefined;
       const prior=runner.sessionEntries.findLast(e=>e.type==='custom'&&e.customType==='planner_grounded_result'&&
         (e.data as {delivery_id?:string}).delivery_id===delivery.id);
-      const saved=prior?.type==='custom'?prior.data as Awaited<ReturnType<typeof plannerReceipt>>:
-        await plannerReceipt(ctx,runner.sessionEntries,delivery.id,recovered.stopReason??'completed');
-      if(!prior)runner.appendSessionEntry('planner_grounded_result',saved);
+      const saved=indexed??(prior?.type==='custom'?prior.data as Awaited<ReturnType<typeof plannerReceipt>>:
+        await plannerReceipt(ctx,runner.sessionEntries,delivery.id,recovered.stopReason??'completed'));
+      if(!prior&&!indexed)runner.appendSessionEntry('planner_grounded_result',saved);
+      await runner.acknowledgeNativeActivities();
       return {...recovered,lastAssistantText:saved.summary,planningTitle:saved.planning_title??null,...receipt,usage:plannerCounter.usage()};
     }
-    await runner.appendContextOnce(`planner:${delivery.id}`,delivery.input);
+    const savedInput=await ctx.plannerState();
+    if(!savedInput||!(await readPlannerDispatchPage(db,savedInput,delivery.id,{leafID:runner.sessionLeafId})).input_saved)
+      await runner.appendContextOnce(`planner:${delivery.id}`,delivery.input);
     const res = await runner.prompt('处理本轮已交付的变化。以宿主当前状态为准，需要时读取图谱和历史原文，完成规划后直接总结。');
     const checked=await plannerReceipt(ctx,runner.sessionEntries,delivery.id,res.stopReason??'completed');
     runner.appendSessionEntry('planner_grounded_result',checked);
     res.lastAssistantText=checked.summary;
-    plannerCounter.wrapped({...finalActivity,kind:'assistant_message_end',text:checked.summary,final:true}, {worker:'planner'});
+    await plannerCounter.wrapped({...finalActivity,kind:'assistant_message_end',text:checked.summary,final:true}, {worker:'planner'});
     if(!res.aborted&&res.stopReason==='completed'){
       await input.hooks.assertOwnership?.(db);
       runner.appendSessionEntry('planner_delivery_completed',{deliveryID:delivery.id,result:{aborted:res.aborted,stopReason:res.stopReason,lastAssistantText:res.lastAssistantText}});
     }
+    await runner.acknowledgeNativeActivities();
     return { ...res,...receipt,planningTitle:checked.planning_title??null,usage: plannerCounter.usage() };
   } finally { await runner.dispose(); }
 }
 
 export interface MainChatInput {
+  resourceLease?:RuntimeResourceLease;
+  nativeActivity?:import("../pi/native-activity.js").NativeActivityIdentity;
   turnID?:string;
   egressAddr?:string;egressScope?:string;extraGuard?:ToolGuard;
   images?: import("../evidence/attachments.js").ChatImage[];
@@ -518,11 +577,20 @@ export interface MainChatInput {
   hooks: EngineHooks;
   message: string;
   maxTurns: number;
-  onActivity: (activity: RunnerActivity, meta: { worker: string }) => void;
+  onActivity: (activity: RunnerActivity, meta: { worker: string }) => unknown;
 }
 
 /** mainagent：可恢复文件会话（exp<id>-main），人的每条消息驱动一轮。 */
 export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult> {
+  return withRuntimeResources(input.db,{taskID:input.taskID,role:'mainagent',mainSegment:input.segment??0},input.signal,input.resourceLease,
+    resourceLease=>runMainChatAdmitted({...input,resourceLease}),
+    ()=>input.onActivity?.({kind:'host_status',phase:'resource_wait',text:'正在等待执行资源；尚未加载模型会话或连接 MCP'},{worker:'mainagent'}));
+}
+async function runMainChatAdmitted(input: MainChatInput): Promise<WorkerRunResult> {
+  const active=await prepareAgentRunSession(input.db,{taskID:input.taskID,expID:input.expID,role:'mainagent',mainSeg:input.segment??0},mainSessionFile(input.dataDir,input.expID,input.segment),input.signal);
+  try{return await runMainSession(input,active);}finally{await active.close();}
+}
+async function runMainSession(input:MainChatInput,active:NativeRunSession):Promise<WorkerRunResult>{
   const { db, taskID, expID, goal, model, dataDir } = input;
   const receipts:unknown[]=[];
   const hooks:EngineHooks={...input.hooks,dispatchIntent:input.hooks.dispatchIntent?async(exp,id)=>{const receipt=await input.hooks.dispatchIntent!(exp,id);receipts.push(receipt??{intent_id:id,status:'submitted'});return receipt;}:undefined};
@@ -532,15 +600,16 @@ export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult
   const system = await systemRolePrompt(db, "mainagent", { Goal: goal });
   const workDir = path.resolve(dataDir, "tasks", String(taskID));
   mkdirSync(workDir, { recursive: true });
-  const sessionPath = mainSessionFile(dataDir, expID, input.segment);
+  ctx.agentSessionState=active.snapshot;
   const mainCounter = withUsageCounter(input.onActivity);
   const rc = await agentRunConfig(db, "mainagent");
   const execution=await executionTools(ctx,workDir,input);
   tools.push(...execution.tools);
   const runner = await createTrackedRunner(db,taskID,"mainagent",{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
     turnID:input.turnID,mainSegment:input.segment??0,
     stopWhen:async()=>receipts.length>0,
-    guard:roleExecutionGuard(ctx,input.extraGuard),
+    guard:async g=>{await active.flush();return roleExecutionGuard(ctx,input.extraGuard)(g);},
     extensionFactories:execution.extensions,
     boundaryContext:async()=>{
       // A restored Main transcript can contain an old overview. Supply current
@@ -564,7 +633,10 @@ export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult
     ...await roleResources(db, "mainagent", agentEnv.skillsDir),
     signal: input.signal, ...agentBudgets(rc,{maxTurns:input.maxTurns,maxDurationMs:120_000}),
     toolAllowlist: ["read","write","edit","bash","mcp__*",...execution.names, ...tools.map((t) => t.name)].filter((name) => !disabled.has(name)),
-    resumeSessionPath: sessionPath,
+    resumeSessionPath: active.file,
+    canonicalSessionPath:active.canonical,flushNativeSession:active.flush,
+    onSessionCompacted:async manager=>{await active.compact(manager);},
+    archiveDiagnostics:active.diagnostics,
     sessionDir: path.join(dataDir, "sessions"),
     wrapup: ({reason}) => (reason !== 'settled' ? { prompt: rc.wrapupPrompt || MAIN_WRAPUP } : undefined),
     maxWrapupTurns: rc.wrapupMaxTurns || 1,
@@ -572,22 +644,27 @@ export async function runMainChat(input: MainChatInput): Promise<WorkerRunResult
   });
   try {
     const feedback=(await db.query("SELECT a.id,a.node_id,a.detail,a.summary,a.metadata FROM activity a WHERE a.exploration_id=$1 AND a.main_seg=$2 AND a.metadata ? 'worker_feedback' AND CASE WHEN a.node_id IS NOT NULL THEN exploration_node_readable(a.exploration_id,a.node_id) WHEN (a.metadata->'worker_feedback'->>'intent_id') ~ '^[0-9]+$' THEN exploration_node_readable(a.exploration_id,(a.metadata->'worker_feedback'->>'intent_id')::bigint) ELSE false END ORDER BY a.id DESC LIMIT 20",[expID,input.segment??0])).rows.reverse();
-    for(const entry of feedback)await runner.appendContextOnce(`worker-feedback:${entry.id}`,`【Worker 回传摘要，完整结果按 node:${entry.node_id??(entry.metadata as {worker_feedback?:{intent_id?:number}})?.worker_feedback?.intent_id??"未知"} 的 output 视图续读】\n${Array.from(String(entry.detail??entry.summary)).slice(0,180).join('')}`);
+    const delivered=await active.deliveredContextKeys(feedback.map(e=>`worker-feedback:${e.id}`));
+    for(const entry of feedback)if(!delivered.has(`worker-feedback:${entry.id}`))await runner.appendContextOnce(`worker-feedback:${entry.id}`,`【Worker 回传摘要，完整结果按 node:${entry.node_id??(entry.metadata as {worker_feedback?:{intent_id?:number}})?.worker_feedback?.intent_id??"未知"} 的 output 视图续读】\n${Array.from(String(entry.detail??entry.summary)).slice(0,180).join('')}`);
     const res = await runner.prompt(input.message,input.images);
     if(receipts.length){
       const text=`已提交工作：${JSON.stringify(receipts)}。后续结果将回传本会话。`;
       await runner.appendContextOnce(`dispatch-receipt:${randomUUID()}`,text);
-      input.onActivity({kind:'assistant_message_end',text,final:true},{worker:'main'});
+      await input.onActivity({kind:'assistant_message_end',text,final:true},{worker:'main'});
+      await runner.acknowledgeNativeActivities();
       return {...res,aborted:false,stopReason:'completed',lastAssistantText:text,usage:mainCounter.usage()};
     }
+    await runner.acknowledgeNativeActivities();
     return { ...res, usage: mainCounter.usage() };
   } finally { await runner.dispose(); }
 }
 
 export interface GoalsRunInput {
+  resourceLease?:RuntimeResourceLease;
+  nativeActivity?:import("../pi/native-activity.js").NativeActivityIdentity;
   turnID?:string;
   hooks?: EngineHooks;
-  onActivity?: (activity: RunnerActivity, meta: {worker:string})=>void;
+  onActivity?: (activity: RunnerActivity, meta: {worker:string})=>unknown;
   signal?: AbortSignal;
   db: Database;
   taskID: number;
@@ -600,7 +677,14 @@ export interface GoalsRunInput {
 
 /** goals：任务创建时的一次性目标分解；内存会话，仅缺少目标提交时提醒保存。 */
 export async function runGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunResult> {
-  if(await goalsBootstrap(input.db,input.taskID))return runIsolatedGoals(input);
+  return withRuntimeResources(input.db,{taskID:input.taskID,role:'goals'},input.signal,input.resourceLease,
+    resourceLease=>runGoalsDecomposeAdmitted({...input,resourceLease}),
+    ()=>input.onActivity?.({kind:'host_status',phase:'resource_wait',text:'正在等待执行资源；尚未加载模型会话或连接 MCP'},{worker:'goals'}));
+}
+async function runGoalsDecomposeAdmitted(input: GoalsRunInput): Promise<WorkerRunResult> {
+  const bootstrap=await goalsBootstrap(input.db,input.taskID);
+  if(bootstrap?.policy===SERIES_GOALS_POLICY)return runCombinedGoals(input);
+  if(bootstrap)return runIsolatedGoals(input);
   return runLegacyGoalsDecompose(input);
 }
 async function runLegacyGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunResult> {
@@ -616,6 +700,7 @@ async function runLegacyGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunR
   let turns = 0;
   let goalsSaved = false;
   const runner = await createTrackedRunner(db,taskID,"goals",{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
     turnID:input.turnID,
     stopWhen:async()=>goalsSaved,
     cwd: workDir,
@@ -634,7 +719,7 @@ async function runLegacyGoalsDecompose(input: GoalsRunInput): Promise<WorkerRunR
     inMemory: true,
     wrapup: () => goalsSaved ? undefined : {prompt:gc.wrapupPrompt||hostProtocol('goals')},
     maxWrapupTurns: gc.wrapupMaxTurns||1,
-    onActivity:a=>{if(a.kind==='tool_end'&&a.toolName==='set_goals'&&!a.isError)goalsSaved=true;goalCounter.wrapped(a,{worker:"goals"});},
+    onActivity:a=>{if(a.kind==='tool_end'&&a.toolName==='set_goals'&&!a.isError)goalsSaved=true;return goalCounter.wrapped(a,{worker:"goals"});},
     onRawEvent: (ev) => {
       if (ev.type === "turn_end") turns++;
     },
@@ -664,8 +749,9 @@ async function runIsolatedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
   const tools=(await applyToolBindings(db,'goals',goalsTools(phaseCtx))).filter(t=>(GOALS_STAGE_TOOLS[phase] as readonly string[]).includes(t.name));
   const cwd=path.resolve(dataDir,'tasks',String(taskID),'goals',phase);mkdirSync(cwd,{recursive:true});
   const errors=new Set<string>();
-  input.onActivity?.({kind:'host_status',phase,text:phase==='constraints'?'阶段一：提取原文约束与目标资产':'阶段二：仅拆解目标栏'}, {worker:'goals'});
+  await input.onActivity?.({kind:'host_status',phase,text:phase==='constraints'?'阶段一：提取原文约束与目标资产':'阶段二：仅拆解目标栏'}, {worker:'goals'});
   const runner=await createTrackedRunner(db,taskID,'goals',{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
    turnID:input.turnID,
    ...model,cwd,agentDir:path.join(dataDir,'pi-agent'),inMemory:true,goalsPhase:phase,
    systemPrompt:await systemRolePrompt(db,'goals',goalsStageVariables(state.goal,state.description,phase),false,hostProtocol('goals')+'\n'+GOALS_STAGE_PROTOCOL[phase]),
@@ -676,7 +762,7 @@ async function runIsolatedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
    onRequestSize:async()=>{await db.transaction(tx=>activeBootstrap(phaseCtx,tx));await agentRunConfig(db,'goals');if(phase==='objectives'&&!(await applyToolBindings(db,'goals',goalsTools(phaseCtx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');},
    loadDomainState:async()=>({phase,goal:state.goal,...(phase==='constraints'?{description:state.description}:{})}),
    guard:async()=>{await db.transaction(tx=>activeBootstrap(phaseCtx,tx));return undefined;},
-   onActivity:a=>{if(a.kind==='tool_end'){if(a.isError)errors.add(a.toolName);else errors.delete(a.toolName);}counter.wrapped(a,{worker:'goals'});},
+   onActivity:a=>{if(a.kind==='tool_end'){if(a.isError)errors.add(a.toolName);else errors.delete(a.toolName);}return counter.wrapped(a,{worker:'goals'});},
   });
   try{
    const result=await runner.prompt(phase==='constraints'?`【目标栏原文】\n${state.goal}\n\n【描述原文；仅供约束与资产提取】\n${state.description}`:`【目标栏原文】\n${state.goal}`);
@@ -696,13 +782,78 @@ async function runIsolatedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
   // A role/tool disable is configuration, not permission to bypass the disabled writer.
   await agentRunConfig(db,'goals');
   if(!(await applyToolBindings(db,'goals',goalsTools(ctx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
-  input.onActivity?.({kind:'host_status',text:'目标阶段未完成；回退保存目标栏原文为单一目标。'}, {worker:'goals'});
+  await input.onActivity?.({kind:'host_status',text:'目标阶段未完成；回退保存目标栏原文为单一目标。'}, {worker:'goals'});
  }
  if((await goalsBootstrap(db,taskID))?.phase!=='completed'){
   await agentRunConfig(db,'goals');
   if(!(await applyToolBindings(db,'goals',goalsTools(ctx))).some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
   await saveBootstrapGoals({...ctx,goalsPhase:'objectives'},[{text:state.goal,source_quote:state.goal}],true);
-  input.onActivity?.({kind:'host_status',text:'已回退为原始目标单目标；未使用任务描述。'}, {worker:'goals'});
+  await input.onActivity?.({kind:'host_status',text:'已回退为原始目标单目标；未使用任务描述。'}, {worker:'goals'});
  }
  return completed();
+}
+
+/** SERIES semantics on a single native pi session; legacy bootstrap policies stay isolated. */
+async function runCombinedGoals(input:GoalsRunInput):Promise<WorkerRunResult>{
+ const {db,taskID,expID,model,dataDir}=input;
+ const counter=withUsageCounter(input.onActivity??(()=>{}));
+ const done=():WorkerRunResult=>({aborted:false,stopReason:'completed',lastAssistantText:undefined,usage:counter.usage()});
+ const state=(await goalsBootstrap(db,taskID))!;
+ if(state.phase==='completed')return done();
+ const ctx=runContext(db,taskID,expID,'goals',{hooks:input.hooks??{},signal:input.signal,goalsPhase:'combined'});
+ await db.transaction(tx=>activeBootstrap(ctx,tx));
+ const requireWriter=async()=>{
+  await agentRunConfig(db,'goals');
+  const tools=await applyToolBindings(db,'goals',goalsTools(ctx));
+  if(!tools.some(t=>t.name==='set_goals'))throw new Error('Goals 的 set_goals 已禁用，初始化暂停');
+  return tools.filter(t=>(GOALS_STAGE_TOOLS.combined as readonly string[]).includes(t.name));
+ };
+ const tools=await requireWriter(),config=await agentRunConfig(db,'goals');
+ const cwd=path.resolve(dataDir,'tasks',String(taskID),'goals','combined');mkdirSync(cwd,{recursive:true});
+ const file=path.join(cwd,'session.jsonl');
+ const protocol=GOALS_STAGE_PROTOCOL.combined;
+ const prematureGoalCalls=new Set<string>();
+ await input.onActivity?.({kind:'host_status',phase:'combined',text:'目标初始化：同一会话提取约束、登记资产，再保存目标'}, {worker:'goals'});
+ const runner=await createTrackedRunner(db,taskID,'goals',{
+    resourceLease:input.resourceLease,nativeActivity:input.nativeActivity,
+  turnID:input.turnID,...model,cwd,agentDir:path.join(dataDir,'pi-agent'),goalsPhase:'combined',
+  systemPrompt:await systemRolePrompt(db,'goals',goalsStageVariables(state.goal,state.description,'combined'),false,hostProtocol('goals')+'\n'+protocol),
+  customTools:tools,toolAllowlist:tools.map(t=>t.name),signal:input.signal,resumeSessionPath:file,
+  extensionFactories:[pi=>{
+   pi.on('message_end',async event=>{
+    if(event.message.role==='toolResult'&&(GOALS_STAGE_TOOLS.combined as readonly string[]).includes(event.message.toolName)){
+     await noteGoalsToolResult(ctx,event.message.toolName,event.message.isError?'工具保存未成功，请核对工具返回后纠正':undefined);
+     return;
+    }
+    if(event.message.role!=='assistant')return;
+    const calls=event.message.content.filter(c=>c.type==='toolCall');
+    for(const call of calls.slice(0,-1))if(call.name==='set_goals')prematureGoalCalls.add(call.id);
+   });}],
+  ...agentBudgets(config,{maxTurns:input.maxTurns??8,maxDurationMs:120_000}),
+  stopWhen:async()=>(await goalsBootstrap(db,taskID))?.phase==='completed',
+  onRequestSize:async()=>{await db.transaction(tx=>activeBootstrap(ctx,tx));await requireWriter();},
+  boundaryContext:async()=>{const current=await goalsBootstrap(db,taskID);return '【初始化持久状态；已成功保存的不重复写入】\n'+JSON.stringify({policy:state.policy,pending_errors:current?.pending_errors,constraints:await loadConstraints(db,expID)});},
+  loadDomainState:async()=>({policy:state.policy,goal:state.goal,description:state.description}),
+  guard:async event=>{
+   await db.transaction(tx=>activeBootstrap(ctx,tx));
+   if(event.toolName==='set_goals'&&prematureGoalCalls.has(event.toolCallId)){
+    const reason='set_goals 必须是本轮最后一次工具提交；先完成约束和资产保存，再提交目标。';
+    await noteGoalsToolResult(ctx,'set_goals',reason);return {block:true,reason};
+   }
+   return undefined;
+  },
+  onActivity:a=>counter.wrapped(a,{worker:'goals'}),
+ });
+ try{
+  const result=await runner.prompt(`【目标栏原文；最终验收结果唯一来源】\n${state.goal}\n\n【任务描述；背景、约束及资产】\n${state.description}\n\n${protocol}`);
+  input.signal?.throwIfAborted();await db.transaction(tx=>activeBootstrap(ctx,tx));
+  if((await goalsBootstrap(db,taskID))?.phase==='completed')return {...result,usage:counter.usage()};
+  if(result.aborted||result.stopReason==='aborted')throw new Error('Goals 初始化已中断，保持暂停');
+  await requireWriter();
+  const current=(await goalsBootstrap(db,taskID))!;
+  if(Object.keys(current.pending_errors??{}).length)throw new Error('Goals 保存错误未解决，初始化暂停：'+Object.keys(current.pending_errors).join(','));
+  await saveBootstrapGoals(ctx,[{text:state.goal,source_quote:state.goal}],true);
+  await input.onActivity?.({kind:'host_status',text:'目标拆解无产出；以目标栏原文保存为单一目标。'}, {worker:'goals'});
+  return done();
+ }finally{await runner.dispose();}
 }
