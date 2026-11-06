@@ -28,7 +28,10 @@ export function mergeTurnSummaries(old:Record<string,TurnSummary>,batch:TurnSumm
 }
 export function notifyTurnSummaries(scope:string,batch:TurnSummaryBatch){window.dispatchEvent(new CustomEvent('series:turn-summary',{detail:{scope,...batch}}));}
 export function turnParts(steps:Activity[],summary?:TurnSummary){
- const visible=steps.filter(s=>s.kind!=='usage'&&!['turn_start','runner_settled'].includes(s.metadata?.event_type??'')&&!(s.metadata?.response&&!s.summary&&!s.detail));
+ // Older recovery rows added a display prefix even to an empty native response.
+ // Keep that audit row stored, but do not present it as recovered prose.
+ const emptyRecovered=(s:Activity)=>s.metadata?.native_recovered&&s.metadata?.raw_source_only&&s.metadata?.response&&s.summary==='恢复的原始记录（非最终结论）：'&&!s.detail&&!s.detail_truncated&&!s.detail_total_chars;
+ const visible=steps.filter(s=>!emptyRecovered(s)&&s.kind!=='usage'&&!['turn_start','runner_settled'].includes(s.metadata?.event_type??'')&&!(s.metadata?.response&&!s.summary&&!s.detail));
  const candidate=summary?.final_activity?steps.find(s=>s.seq===summary.final_activity!.seq)??summary.final_activity:undefined;
  const final=candidate&&!isSteering(candidate)?candidate:undefined;
  const finalStream=final?.stream_id??final?.metadata?.stream_id;

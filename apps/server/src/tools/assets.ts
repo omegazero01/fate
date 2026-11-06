@@ -1,4 +1,5 @@
 import { domainTool } from "./define.js";
+import { ToolResultError } from "./errors.js";
 import type { ToolRunContext } from "./context.js";
 import { writeAssets } from "../db/asset-write.js";
 import { ASSET_TYPES, queryAssets, type AssetRow } from "../db/asset-query.js";
@@ -6,9 +7,26 @@ import {unicodeLength,unicodeSlice} from '../unicode.js';
 const string = { type: "string" },
 	strings = { type: "array", items: string },
 	objects = { type: "array", items: { type: "object" } };
+const nonBlank = {type:"string",pattern:"\\S"};
+const requiredAssetFields = (...fields: string[]) => ({
+  required: fields,
+  properties: Object.fromEntries(fields.map(field => [field, nonBlank])),
+});
 export const assetInputSchema = {
 	type: "object",
 	required: ["type"],
+  oneOf: [
+    {properties:{type:{enum:["root_domain","subdomain"]},domain:nonBlank},required:["domain"]},
+    {properties:{type:{const:"ip"},ip:nonBlank},required:["ip"]},
+    {properties:{type:{const:"app"}},anyOf:[requiredAssetFields("app_name"),requiredAssetFields("name")]},
+    {properties:{type:{const:"endpoint"},url:nonBlank,method:nonBlank},required:["url","method"]},
+    {properties:{type:{const:"service"}},anyOf:[
+      requiredAssetFields("url"),{
+        required:["port","service_name"],properties:{service_name:nonBlank},
+        anyOf:[requiredAssetFields("domain"),requiredAssetFields("ip")],
+      },
+    ]},
+  ],
 	properties: {
 		type: { type: "string", enum: ASSET_TYPES },
 		domain: string,
@@ -38,7 +56,7 @@ export const assetInputSchema = {
 		description: string,
 		app_icp: string,
 		company_id: { type: "integer", minimum: 1 },
-		url: string,
+		url: nonBlank,
 		service_ip: string,
 		service_name: string,
 		port: { type: "integer", minimum: 1, maximum: 65535 },
@@ -71,6 +89,7 @@ export function insertAssetsTool(ctx: ToolRunContext) {
 				"发现资产时立即写入资产图。assets 按 type 填写原始观察：root_domain/subdomain 用 domain；ip 用 ip；HTTP service 用 url；其他 service 用 domain/ip、port、service_name；endpoint 必须 url、method；app 用 app_name。record_value 是数组，params/auth/technologies 追加合并。返回逐项 results/errors，成功记录立即可读。探索结论用 record_fact。",
 			parameters: {
 				type: "object",
+				additionalProperties: false,
 				properties: {
 					assets: { type: "array", minItems: 1, items: assetInputSchema },
 					items: {
@@ -80,7 +99,7 @@ export function insertAssetsTool(ctx: ToolRunContext) {
 						description: "历史 assets 别名；不能同时提供",
 					},
 				},
-				anyOf: [{ required: ["assets"] }, { required: ["items"] }],
+				oneOf: [{ required: ["assets"] }, { required: ["items"] }],
 			},
 			transactional: false,
 			async run(args, c) {
@@ -89,7 +108,7 @@ export function insertAssetsTool(ctx: ToolRunContext) {
 				const items = args.assets ?? args.items;
 				if (!Array.isArray(items) || !items.length)
 					throw new Error("assets 必须是非空数组");
-				return writeAssets(c.db, items, {
+				const receipt = await writeAssets(c.db, items, {
 					taskID: c.taskID,
 					intentID: c.intentID,
 					agent: c.workerName ?? c.role,
@@ -98,6 +117,8 @@ export function insertAssetsTool(ctx: ToolRunContext) {
 					signal: c.signal,
 					assertOwnership: c.hooks.assertOwnership,
 				});
+        if (!receipt.inserted) throw new ToolResultError("本批资产均未保存；请按 errors 中的错误修正", receipt);
+        return receipt;
 			},
 		},
 		ctx,

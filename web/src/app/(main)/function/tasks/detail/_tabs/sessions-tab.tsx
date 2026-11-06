@@ -506,7 +506,7 @@ export function SessionsTab({
   onOpenSettings?:()=>void;
 }) {
   const [relatedSession,setRelatedSession]=React.useState<import("@/lib/types").Conversation|null>(null);
-  const [selectedSessionId, setActiveId] = React.useState(MAIN_ID);
+  const [selectedSessionId, setActiveId] = React.useState(PLANNER_ID);
   const [sourceIntent, setSourceIntent] = React.useState<TaskNode | null>(null);
   const [sourceSession, setSourceSession] = React.useState<Session | null>(null);
   const route = useRouter();
@@ -927,7 +927,7 @@ export function SessionsTab({
     setSessionTokens({});
     setLLMResolutions(null);
     setSseLive(false);
-    setActiveId(MAIN_ID); // a stale worker id from the previous task must not leak in
+    setActiveId(PLANNER_ID); // a stale worker id from the previous task must not leak in
     setMainSegs([{ seq: 0, created_at: "" }]);
     setCurrentSeg(0);
     snapshotRef.current = 0;
@@ -1966,7 +1966,7 @@ export function SessionsTab({
                             if (focused || invalidFocus) clearFocus();
                             setRelatedSession(null);
                             setActiveId(s.id);
-                            onProcessOpenChange(s.role !== "worker" || window.matchMedia("(min-width:1280px)").matches);
+                            onProcessOpenChange(window.matchMedia("(min-width:1280px)").matches);
                           }}
                           controlling={controllingIntent !== null}
                           selected={selectedWorkers.has(s.intent_id ?? "")}
@@ -2237,11 +2237,11 @@ export function SessionsTab({
 
   );
   const mainItems=withLiveStreams(mainState?.items??[],streaming.filter(stream=>sessionKeyOf({...stream,seq:-1,kind:stream.channel,summary:stream.text})===mainKey));
-  const workerInMain=active.role==='worker'&&!relatedSession;
+  const sessionInMain=!isMain||!!relatedSession;
   return <TooltipProvider delayDuration={300}>
-    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={(!isMain&&!workerInMain)||!!relatedSession} onBack={()=>{setRelatedSession(null);clearFocus();setActiveId(mainSessionId(mainSeg));}}
-      primaryDetail={workerInMain?processDetail:undefined} primaryDetailKey={workerInMain?`${taskId}:${activeKey}`:undefined}
-      list={agentList} detail={relatedSession?<RelatedSessionDetail key={relatedSession.id} row={relatedSession}/>:isMain||workerInMain?null:processDetail} main={<MainConversation key={mainKey} taskId={taskId} items={mainItems} live={!!mainBusy} stopping={stopping} loading={mainState?.loading} error={mainState?.error} hasMore={mainState?.hasMore}
+    <SessionWorkspace open={processOpen} onOpenChange={onProcessOpenChange} showDetail={false} onBack={()=>{setRelatedSession(null);clearFocus();setActiveId(mainSessionId(mainSeg));}}
+      primaryDetail={relatedSession?<RelatedSessionDetail key={relatedSession.id} row={relatedSession}/>:sessionInMain?processDetail:undefined} primaryDetailKey={sessionInMain?`${taskId}:${relatedSession?.id??activeKey}`:undefined} primaryDetailLabel={active.role==='worker'?'Worker 会话':active.role==='planner'?'Planner 会话':'执行会话'}
+      list={agentList} detail={null} main={<MainConversation key={mainKey} taskId={taskId} items={mainItems} live={!!mainBusy} stopping={stopping} loading={mainState?.loading} error={mainState?.error} hasMore={mainState?.hasMore}
         onEarlier={()=>loadEarlier(mainKey,()=>null)} onRetry={()=>loadSession(mainKey)} composer={composer}
         heading={<><span>主 Agent · {mainSeg===currentSeg?'当前会话':`历史会话 ${mainSeg}`}</span><span className="text-xs">{sseLive?'实时连接':'正在重连，已保留内容'}</span></>}
         focused={isMain&&(focused||invalidFocus)?processDetail:undefined}/>} />

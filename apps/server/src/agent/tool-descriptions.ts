@@ -1,4 +1,4 @@
-import {recognizedHistoricalDescription} from './tool-description-policy.js';
+import {describeToolContract,recognizedHistoricalDescription} from './tool-description-policy.js';
 import {CONSTRAINT_TOOL_DESCRIPTION} from './constraint-policy.js';
 import { LEGACY_TOOL_DESCRIPTIONS } from './prompt-legacy.js';
 import type {Database} from '../db/index.js';
@@ -53,9 +53,10 @@ export function effectiveToolDescription(name: string, code: string, stored?: un
   const blackboardDefaults:Record<string,string>={record_fact:'Worker 暂存本意图的新事实或负面观察，最终 complete_intent 集中发布：summary 简述结论，evidence 保存真实证据，confidence 区分直接观察与推断。',report_finding:'提交本次已验证且可复现的漏洞和证据，Worker 先暂存，complete_intent 集中发布到探索图并连接资产。先 context_search 按 finding 类型 查重；疑似问题用事实记录。',checkpoint_intent:'阶段变化、连续操作或阻塞时保存当前意图进度、已尝试方法和下一步；进度不等于事实或完成。',complete_intent:'结束当前意图前保存逐项验收结果。criteria.index 从零开始，事实引用必须属于本意图；完整回答并有证据才 complete，否则 partial/blocked 并写 remaining。成功后停止操作。'};
   const retiredApprovalDefaults:Record<string,string>={"dispatch_intents": "请求宿主下发已有待执行意图，仅 Main 可用；不能绕过封禁或授权检查。", "insert_assets": "登记新资产及关系到资产图；登记不等于获准访问。探索结论使用 record_fact。", "set_constraints": "保存用户明确的允许或禁止约束，写明具体目标；约束不替代资产授权。"};
   const previous = stored===DIRECTION_PREVIOUS_TOOL_DESCRIPTIONS[name] || stored===PLANNER_RECALL_PREVIOUS[name] || name==='asset_search' && stored==='检索任务资产摘要，按 DSL 或未测条件分页' || name==='asset_get' && stored==='按资产 ID 和字段组读取详情' || name==='insert_assets' && stored==='登记新资产及关系到资产图，登记后可直接继续探索。探索结论使用 record_fact。' || stored===retiredApprovalDefaults[name] || name==='context_get' && stored===priorPagedDefault || stored===ARTEX_PREVIOUS_TOOL_DESCRIPTIONS[name] || stored===DIRECT_WRITE_PREVIOUS[name] || stored===priorDefaults[name] || stored===blackboardDefaults[name] || name === 'prove_goal' && stored === '用仍获授权的事实或漏洞证明目标；证据必须支持该目标，量化条件须核对实测值。';
-  if (typeof stored === 'string' && stored.trim() && stored !== LEGACY_TOOL_DESCRIPTIONS[name] && stored !== TOOL_DESCRIPTIONS[name] && !previous)
+  const description = describeToolContract(name, TOOL_DESCRIPTIONS[name] ?? code);
+  if (typeof stored === 'string' && stored.trim() && stored !== description && stored !== LEGACY_TOOL_DESCRIPTIONS[name] && stored !== TOOL_DESCRIPTIONS[name] && !previous)
     return { description: stored, source: 'custom' };
-  return { description: TOOL_DESCRIPTIONS[name] ?? code, source: 'builtin' };
+  return { description, source: 'builtin' };
 }
 
 const DIRECT_WRITE_PREVIOUS:Record<string,string> = {"record_fact": "结束前汇总本意图最新结论：summary 简述，detail 写细节，evidence 保留真实证据。Worker 先存私有稿，replace_node_id 可修订；complete_intent 最终选定后才发布，暂存不唤醒 Planner。", "report_finding": "保存本次已验证且可复现的漏洞证据。Worker 先存私有稿，replace_node_id 可更新；结束时经 complete_intent 选定发布，运行中不唤醒 Planner。先 context_search 按 finding 类型 查重，疑似问题用事实记录。"};

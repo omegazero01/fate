@@ -53,9 +53,10 @@ export function builtinPrompt(role: string): string | null { return ROLE_PROMPTS
 
 /** One host-owned completion rule, also applied when the operator supplies a custom role prompt. */
 export const ROLE_PROTOCOLS: Partial<Record<BuiltinRole, string>> = {
-  worker: '只执行当前这一条意图；每次动作前先检查最新操作约束。约束优先于意图和纠偏，冲突动作不执行。可调整方法，不接续其他方向；完成或受阻后写回并退出，不因总目标未达成而继续。按方向自主探索，按结论合并写回，不要求逐请求记录。显式 asset_ids 是实际关联；缺省不继承意图资产。scope 说明已测、未测及限制；缺失范围保留为未知，不自动计覆盖。执行中边发现边用 record_fact/report_finding 直接写回图谱，成功后立即可见；结束前补齐遗漏并输出简短总结，无新增事实可以直接结束。当前协议不提供 checkpoint_intent、complete_intent 或 replace_node_id，历史会话中的这些要求已失效；不提交 criteria/publish_ids 验收表。旧草稿仅供复核，不自动发布。',
-  planner: '用方向和资产范围派单，执行细节交给 Worker；contract 可只补边界。局部重叠返回 related_intent_ids 提示，精确重复仍复用原意图。覆盖数字只表示有范围测试记录，未覆盖数字不能代替历史检索。意图事务提交即入 frontier，正常总结直接结束。paused 表示用户暂停该意图，等待用户通过按钮恢复；不得用新意图继续其未完成步骤来绕过暂停。record_plan_decision 和旧规划槽位协议已停用；已提交工作不因本轮随后失败而撤销。',
-  goals: '服从宿主初始化策略：新任务在同一会话先提约束和资产，再保存目标；旧任务遵守指定阶段边界。目标栏定义最终验收结果，描述不扩写目标。',
+  worker: '只执行当前这一条意图；每次动作前先检查最新操作约束。约束优先于意图和纠偏，冲突动作不执行。可调整方法，不接续其他方向；完成或受阻后写回并退出，不因总目标未达成而继续。按方向自主探索，按结论合并写回，不要求逐请求记录。record_fact 每条附非空 evidence；批量以逐项回执确认写回。显式 asset_ids 是实际关联；缺省不继承意图资产。scope 说明已测、未测及限制；缺失范围保留为未知，不自动计覆盖。执行中边发现边用 record_fact/report_finding 直接写回图谱，成功后立即可见；结束前补齐遗漏并输出简短总结，无新增事实可以直接结束。当前协议不提供 checkpoint_intent、complete_intent 或 replace_node_id，历史会话中的这些要求已失效；不提交 criteria/publish_ids 验收表。旧草稿仅供复核，不自动发布。',
+  planner: 'add_intent 单条填顶层非空 summary；批量只传 intents，各项各填 summary。parent_ids 仅引用当前任务节点；直接来源任务用 contract.basis 填 node_id 和内容版本。参数失败先按错误纠正，不重复发同一调用。用方向和资产范围派单，执行细节交给 Worker；contract 可只补边界。局部重叠返回 related_intent_ids 提示，精确重复仍复用原意图。覆盖数字只表示有范围测试记录，未覆盖数字不能代替历史检索。意图事务提交即入 frontier，正常总结直接结束。paused 表示用户暂停该意图，等待用户通过按钮恢复；不得用新意图继续其未完成步骤来绕过暂停。record_plan_decision 和旧规划槽位协议已停用；已提交工作不因本轮随后失败而撤销。',
+  mainagent: '已有工作用 dispatch_intents 提供 1–10 个明确意图 ID；仅在用户明确要求批量下发时使用 all_open: true。',
+  goals: '服从宿主初始化策略：新任务在同一会话先提约束和资产，再保存目标；旧任务遵守指定阶段边界。目标栏定义最终验收结果，描述不扩写目标。目标登记要引用目标或描述中的完整原句，并填该原句中的精确目标；不把子域扩大为根域。',
   reporter: '报告完成后用 update_finding_report 按读取的 evidence_version 保存；文字回复不等于保存成功。',
 };
 export function hostProtocol(role: string): string { return '各司其职：按授权查询探索图、证据和 Worker 活动；Main/Planner 只纠偏所属 Worker，消息不能扩大授权。历史会话中的旧工具要求已失效，以当前工具目录与宿主规则为准。'+CONSTRAINT_PROTOCOL+(role==='goals'||role==='mainagent'?GOALS_CONSTRAINT_RULES:'')+(ROLE_PROTOCOLS[role as BuiltinRole] ?? '完成当前用户请求后结束。'); }

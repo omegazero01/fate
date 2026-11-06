@@ -345,7 +345,7 @@ export class TaskScopeStore {
    * 解析 (kind,value) 并记录任务范围。LLM 工具传 source='agent'，UI 传 'manual'。
    * company：企业名或 id（须已存在）。root_domain/subdomain：域名。ip/cidr：裸 IP
    */
-  async addAgentScope(taskID: number, kind: string, value: string, reason: string, source: string): Promise<TaskScope> {
+  async addAgentScope(taskID: number, kind: string, value: string, reason: string, source: string, linkExistingAssets = source === "manual"): Promise<TaskScope> {
     if (source === "") source = "agent";
     const ts: TaskScope = { task_id: taskID, kind, source, reason };
     if (taskID <= 0) throw new Error("需要 task_id");
@@ -403,7 +403,7 @@ export class TaskScopeStore {
       default:
         throw new Error(`不支持的 kind: ${kind}（company/root_domain/subdomain/ip/cidr/icp/keyword）`);
     }
-    if (source !== "manual") {
+    if (!linkExistingAssets) {
       await this.upsertTaskScope(ts);
       return ts;
     }
@@ -413,7 +413,7 @@ export class TaskScopeStore {
       await this.linkScopeAssets(this.tx, ts);
       return ts;
     }
-    // 操作者登记的范围与资产关联在同一事务提交。
+    // 明确登记的范围与已有资产关联在同一事务提交。
     const client = await this.db.pool.connect();
     try {
       await client.query("BEGIN");
@@ -447,7 +447,7 @@ export class TaskScopeStore {
   }
 
   /**
-   * 关联 source='manual' 范围内已有的资产。
+   * 关联手工或由用户原文核验的范围内已有的资产。
    */
   private async linkScopeAssets(client: PoolClient, scope: TaskScope): Promise<void> {
     if (scope.task_id <= 0) return;
@@ -480,34 +480,23 @@ OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g'))=$1)`;
       default:
         return;
     }
-    const rows = await client.query<Record<string, unknown>>(
-      `SELECT a.id,a.type,COALESCE(a.domain,'') AS domain,COALESCE(a.root_domain,'') AS root_domain,COALESCE(a.ip,'') AS ip,COALESCE(a.url,'') AS url,COALESCE(a.method,'') AS method,COALESCE(a.service_name,'') AS service_name,COALESCE(a.port,0) AS port FROM assets a WHERE (${where})`,
+    const rows = await client.query<{id: string}>(
+      `SELECT a.id FROM assets a WHERE (${where})`,
       [arg],
     );
-    const summary = "用户在测试资产页手工新增";
-    let reason = String(scope.reason ?? "").trim();
-    if (reason === "") reason = "手动范围登记";
+    const source = scope.source === "manual" ? "manual" : "agent";
+    const summary = source === "manual" ? "用户在测试资产页手工新增" : "Goals 从用户原文核验并登记";
     for (const row of rows.rows) {
-      const a: AssetIdentity = {
-        id: Number(row["id"]),
-        type: String(row["type"]),
-        domain: row["domain"] as string,
-        root_domain: (row["root_domain"] as string) || null,
-        ip: row["ip"] as string,
-        url: row["url"] as string,
-        method: row["method"] as string,
-        service_name: row["service_name"] as string,
-        port: Number(row["port"] ?? 0),
-      };
       await client.query(
         `UPDATE assets SET task_ids=CASE WHEN $1=ANY(task_ids) THEN task_ids ELSE array_append(task_ids,$1) END WHERE id=$2`,
-        [scope.task_id, a.id],
+        [scope.task_id, row.id],
       );
       await client.query(
         `INSERT INTO task_asset_links(task_id,asset_id,source,source_summary)
-         VALUES($1,$2,'manual',$3) ON CONFLICT(task_id,asset_id) DO UPDATE
-         SET source='manual',source_summary=EXCLUDED.source_summary,source_node_id=NULL`,
-        [scope.task_id,a.id,summary],
+         VALUES($1,$2,$3,$4) ON CONFLICT(task_id,asset_id) DO UPDATE
+         SET source=EXCLUDED.source,source_summary=EXCLUDED.source_summary,source_node_id=NULL
+         WHERE EXCLUDED.source='manual' OR task_asset_links.source='system'`,
+        [scope.task_id,row.id,source,summary],
       );
     }
   }

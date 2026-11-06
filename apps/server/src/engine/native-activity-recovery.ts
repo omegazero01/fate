@@ -39,7 +39,7 @@ function recoveredActivity(a:RunnerActivity,identity:NativeActivityIdentity,crea
  if(!['assistant_message_end','usage','tool_start','tool_end'].includes(a.kind))return;
  const detail=a.kind==='tool_start'?JSON.stringify(a.args):'text' in a?a.text??'':'';
  const kind=a.kind==='tool_start'?'tool_use':a.kind==='tool_end'?'tool_result':a.kind==='usage'?'usage':a.kind==='assistant_message_end'&&a.isThinking?'thinking':identity.source.scope==='conversation'?'assistant':detail?'text':'status';
- return {worker:identity.worker,node_id:identity.node_id,main_seg:identity.main_seg,kind,detail,summary:'恢复的原始记录（非最终结论）：'+detail.slice(0,960),created_at:created,
+ return {worker:identity.worker,node_id:identity.node_id,main_seg:identity.main_seg,kind,detail,summary:detail?'恢复的原始记录（非最终结论）：'+detail.slice(0,960):'',created_at:created,
   tool:'toolName' in a?a.toolName:undefined,tool_use_id:'toolCallId' in a?a.toolCallId:undefined,is_error:'isError' in a?a.isError:false,
   input_tokens:a.kind==='usage'?a.input:0,output_tokens:a.kind==='usage'?a.output:0,cache_read_tokens:a.kind==='usage'?a.cacheRead:0,cache_write_tokens:a.kind==='usage'?a.cacheWrite:0,
   metadata:{turn_id:identity.turn_id,...runnerActivityMetadata(a),native_recovered:true,raw_source_only:true,final_answer:false}};

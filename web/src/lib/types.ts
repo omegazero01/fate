@@ -726,6 +726,8 @@ export interface Activity {
     llm_transition?: LLMTransition;
     source?: string;
     steering?: { id?: string; source?: string; intent_id?: number | string; target_turn_id?: string; status?: string };
+    native_recovered?: boolean;
+    raw_source_only?: boolean;
     worker_feedback?: { id: number; intent_id: number; state: string; source_activity_id?: number };
   };
   source_task_id?: string;

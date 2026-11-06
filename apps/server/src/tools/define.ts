@@ -5,7 +5,7 @@ import {roleToolDescription,roleToolParameters} from '../agent/tool-description-
 // 统一负责：输出 clamp（有界 JSON）、错误 → isError 工具结果（模型可消化）、
 // 只读/幂等标注。完整结果持久保存，超长 JSON 返回有界分片和续读引用。
 
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolRunContext } from "./context.js";
 import {saveToolOutput} from '../evidence/tool-outputs.js';
 import {ToolResultError} from './errors.js';
@@ -70,6 +70,7 @@ export interface DomainToolSpec<T> {
   promptSnippet?: string;
   /** JSON Schema（对象类型，properties/required）。 */
   parameters: Record<string, unknown>;
+  prepareArguments?: (args: unknown) => T;
   readOnly?: boolean;
   transactional?: boolean;
   idempotent?: boolean;
@@ -87,7 +88,8 @@ export function domainTool<T>(spec: DomainToolSpec<T>, ctx: ToolRunContext) {
     // Domain writes must preserve model order: evidence -> finding -> summary.
     // A sequential tool serializes its entire native batch, including MCP/bash.
     executionMode: spec.readOnly === true ? 'parallel' : 'sequential',
-    parameters: roleToolParameters(spec.name,spec.parameters,ctx.role) as never,
+    parameters: roleToolParameters(spec.name,spec.parameters,ctx.role) as ToolDefinition["parameters"],
+    ...(spec.prepareArguments ? { prepareArguments: spec.prepareArguments } : {}),
     annotations: {
       readOnlyHint: spec.readOnly === true,
       idempotentHint: spec.idempotent === true,

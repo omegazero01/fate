@@ -64,7 +64,7 @@ export function MainConversation({
                 ) : !items.length ? (
                   <WorkspaceEmpty
                     title={loading ? "正在同步对话…" : "开始任务对话"}
-                    description="向主 Agent 提问或调整任务；从右侧 Agent 列表选择会话查看执行过程。"
+                    description="向主 Agent 提问或调整任务；从左侧 Agent 列表选择会话查看执行过程。"
                   />
                 ) : (
                   <Transcript
@@ -96,6 +96,7 @@ export function SessionWorkspace({
   showDetail,
   primaryDetail,
   primaryDetailKey,
+  primaryDetailLabel = "Worker 会话",
 }: {
   main: React.ReactNode;
   list: React.ReactNode;
@@ -106,6 +107,7 @@ export function SessionWorkspace({
   showDetail: boolean;
   primaryDetail?: React.ReactNode;
   primaryDetailKey?: string;
+  primaryDetailLabel?: string;
 }) {
   const settingsOpen = useSearchParams().get("settings") === "true";
   const [wide, setWide] = React.useState(false),
@@ -156,6 +158,15 @@ export function SessionWorkspace({
   return (
     <div className="h-full min-h-0 min-w-0">
       <ResizablePanelGroup orientation="horizontal">
+        {wide && open && !expanded && (
+          <>
+            <ResizablePanel id="process" defaultSize="360px" minSize="300px" maxSize="65%">
+              {panel}
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+          </>
+        )}
+
         <ResizablePanel id="main" minSize="320px">
           <div className="relative h-full min-h-0 min-w-0">
             {/* Keep the Main scroller and composer mounted at the same size. */}
@@ -163,7 +174,7 @@ export function SessionWorkspace({
               {main}
             </div>
             {primaryDetail && (
-              <section aria-label="Worker 会话" className="task-worker-conversation absolute inset-0 flex min-h-0 min-w-0 flex-col bg-card">
+              <section aria-label={primaryDetailLabel} className="task-worker-conversation absolute inset-0 flex min-h-0 min-w-0 flex-col bg-card">
                 <div className="flex h-12 shrink-0 items-center border-b px-3">
                   <Button variant="ghost" size="sm" onClick={onBack}>
                     <ArrowLeft data-icon="inline-start" />返回主对话
@@ -174,19 +185,12 @@ export function SessionWorkspace({
             )}
           </div>
         </ResizablePanel>
-        {wide && open && !expanded && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel id="process" defaultSize="360px" minSize="300px" maxSize="65%">
-              {panel}
-            </ResizablePanel>
-          </>
-        )}
       </ResizablePanelGroup>
       <Sheet open={open && !settingsOpen && (!wide || expanded)} onOpenChange={onOpenChange}>
         <SheetContent
+          side="left"
           className={
-            expanded ? "w-full p-0 data-[side=right]:sm:max-w-5xl" : "w-full p-0 data-[side=right]:sm:max-w-xl"
+            expanded ? "w-full p-0 data-[side=left]:sm:max-w-5xl" : "max-w-sm p-0"
           }
           showCloseButton={false}
         >

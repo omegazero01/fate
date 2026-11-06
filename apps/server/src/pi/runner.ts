@@ -140,8 +140,8 @@ export interface AgentRunnerOptions {
   mainSegment?:number;
   compactionSettings?: {reserveTokens?:number;keepRecentTokens?:number};
   contextPolicy?: ReturnType<typeof import('../agent/context-policy.js').roleContextPolicy>;
-  /** Independent of compaction reserve/headroom, which can be very large. */
-  summaryMaxTokens?:number;
+  /** Soft summary length target; never a provider output limit. */
+  summaryTargetTokens?:number;
   /** Adds role-specific retention requirements to native SDK compaction. */
   compactionInstructions?: string;
   /** Platform storage at the awaited native compaction boundary. Never another model loop. */
@@ -415,8 +415,10 @@ export class AgentRunner {
 			: undefined;
 
     let budgetAnnounced = false;
+    let rejectedIntentTurns = 0;
 		const budgetExtension: ExtensionFactory = (pi) => {
       enterClosing=()=>{closing.active=true;if(opts.settlementTools)pi.setActiveTools(pi.getActiveTools().filter(name=>opts.settlementTools!.includes(name)));};
+      pi.on('agent_start', () => { rejectedIntentTurns = 0; });
       pi.on('turn_start',(_event,context)=>{
         if(turns+compactionHealth.requests>=requestLimit()){
           if(!closing.control)closing.reason='turn_limit';context.abort();
@@ -426,6 +428,17 @@ export class AgentRunner {
 				turns++;
         if(opts.stopOnRecoveryBlock?.()){context.abort();return;}
         if(await opts.stopWhen?.()){domainCompletion.done=true;context.abort();return;}
+        const intentResults = _event.toolResults.filter(result => result.toolName === 'add_intent');
+        rejectedIntentTurns = intentResults.length && intentResults.every(result => result.isError)
+          ? rejectedIntentTurns + 1 : 0;
+        if (rejectedIntentTurns >= 3) {
+          activityDelivery.emit(() => opts.onActivity?.({
+            kind: 'host_status', phase: 'tool_retries_exhausted',
+            text: '连续 3 个模型回合的 add_intent 均未成功，本轮已停止。请查看最后的工具错误并修正参数或依据。',
+          }));
+          context.abort();
+          return;
+        }
         if(closing.active)enterClosing();
         if(closing.control){
           if(turns+compactionHealth.requests>=requestLimit()){

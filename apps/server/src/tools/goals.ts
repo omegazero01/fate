@@ -4,6 +4,7 @@ import {goalsBootstrap,saveBootstrapGoals,activeBootstrap,SERIES_GOALS_POLICY,ty
 
 import { domainTool } from "./define.js";
 import type { ToolRunContext } from "./context.js";
+import {groundUserTarget,type UserTargetInput} from '../agent/target-grounding.js';
 import { RelSpawns } from "../db/exploration.js";
 import {CONSTRAINT_TOOL_DESCRIPTION,groundConstraint,type ConstraintInput} from '../agent/constraint-policy.js';
 
@@ -128,30 +129,37 @@ export async function loadConstraints(db: ToolRunContext["db"], expID: number): 
   return res.rows;
 }
 
-interface RegisterTargetArgs { kind: "root_domain" | "subdomain" | "ip" | "cidr"; value: string; evidence: string; }
-
 export function registerUserTargetTool(ctx: ToolRunContext) {
-  return domainTool<RegisterTargetArgs>(
+  return domainTool<UserTargetInput>(
     {
       name: "register_user_target",
       description:
-        "登记用户明确授权的测试目标（显式授权边界）。只登记原文明确授权的资产：要求任务描述中有完整授权语句" +
+        "登记用户明确授权的测试目标（显式授权边界）。只登记原文明确授权的资产：要求任务目标或描述中有完整授权语句" +
         "作为 evidence；只登记精确主机或原文明示的通配域/CIDR；不把子域缩成根域；示例/参考/禁止目标一律不登记。",
       promptSnippet: "登记用户明确授权的目标",
       parameters: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["root_domain", "subdomain", "ip", "cidr"], description: "目标类型" },
-          value: { type: "string", description: "授权的目标值（原文出现的形式）" },
-          evidence: { type: "string", description: "任务描述中的完整授权语句原文" },
+          kind: { type: "string", enum: ["root_domain", "subdomain", "ip", "cidr"], description: "精确域名用 subdomain（含裸根域）；root_domain 仅用于原文明确的 *.根域" },
+          value: { type: "string", pattern: "\\S", description: "原文中的精确主机、CIDR 或明确的通配根域" },
+          evidence: { type: "string", pattern: "\\S", description: "逐字引用任务目标或描述中明确授权该目标的完整原句，保留条件及例外" },
         },
         required: ["kind", "value", "evidence"],
       },
+      transactional: false,
       async run(args, c) {
-        if(c.role==='goals'&&await goalsBootstrap(c.db,c.taskID)){const state=await activeBootstrap(c,c.db);if(!(c.goalsPhase==='constraints'||c.goalsPhase==='combined'&&state.policy===SERIES_GOALS_POLICY)||state.phase!=='constraints')throw new Error('当前阶段不能登记资产');}
-        if (!args.evidence.trim()) throw new Error("必须提供任务描述中的授权语句原文");
-        await c.db.taskScope().addAgentScope(c.taskID, args.kind, args.value, args.evidence, "manual");
-        return { registered: true, kind: args.kind, value: args.value };
+        if (c.role !== 'goals') throw new Error('只有 Goals 可登记用户明确目标');
+        return c.db.transaction(async db => {
+          const bootstrap = await goalsBootstrap(db, c.taskID) ? await activeBootstrap(c, db) : undefined;
+          const task = bootstrap ?? await db.tasks().getTask(c.taskID);
+          if (!task || ('exploration_id' in task && task.exploration_id !== c.expID))
+            throw new Error('目标所属任务不匹配');
+          if (bootstrap && (!(c.goalsPhase === 'constraints' || c.goalsPhase === 'combined' && bootstrap.policy === SERIES_GOALS_POLICY) || bootstrap.phase !== 'constraints'))
+            throw new Error('当前阶段不能登记资产');
+          const target = groundUserTarget(args, [task.goal, task.description]);
+          await db.taskScope().addAgentScope(c.taskID, target.kind, target.value, target.evidence, 'agent', true);
+          return { registered: true, kind: target.kind, value: target.value, source_verified: true };
+        });
       },
     },
     ctx,

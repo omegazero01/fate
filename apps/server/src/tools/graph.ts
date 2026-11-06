@@ -4,47 +4,53 @@ import { resolveGraphNode, authorizedNodes } from "../db/graph_view.js";
 // search_worker_traces / get_worker_trace（worker 间过程级信息交换）。
 
 import { domainTool } from "./define.js";
+import {ToolResultError} from "./errors.js";
 import type { ToolRunContext } from "./context.js";
 import { KindFact, RelYields } from "../db/exploration.js";
 import {normalizeWritebackScope,writebackReceipt,savedWritebackReceipt,writebackScopeSchema,type WritebackScope} from './writeback-scope.js';
 
 // ─── record_fact：worker 写回事实（intent --yields--> fact）─────────────────
 
-interface RecordFactArgs { facts?:RecordFactArgs[]; summary: string; evidence?: string; detail?:string; scope?:WritebackScope; observation_type?:'observed'|'inferred'|'negative'|'unknown';confidence?: "low" | "medium" | "high"; asset_ids?: number[]; }
+interface FactInput { summary: string; evidence?: string; detail?:string; scope?:WritebackScope; observation_type?:'observed'|'inferred'|'negative'|'unknown';confidence?: "low" | "medium" | "high"; asset_ids?: number[]; }
+
+interface RecordFactArgs extends Partial<FactInput> { facts?: FactInput[]; }
 
 export function recordFactTool(ctx: ToolRunContext) {
   const singleProperties = {
-    summary:{type:"string"},evidence:{type:"string"},detail:{type:"string"},scope:writebackScopeSchema,observation_type:{type:"string",enum:["observed","inferred","negative","unknown"]},confidence:{type:"string",enum:["low","medium","high"]},asset_ids:{type:"array",items:{type:"integer"}}
+    summary: {type:'string', pattern:'\\S', description:'一句话自包含事实结论'},
+    evidence: {type:'string', pattern:'\\S', description:ctx.role==='worker'?'Worker 必填：支撑结论的证据原文':'支撑结论的证据原文'},
+    detail: {type:'string', description:'方法或限制，不重复摘要或证据'},
+    scope: writebackScopeSchema,
+    observation_type: {type:'string', enum:['observed','inferred','negative','unknown'], description:'区分实测、推断、负面或未知'},
+    confidence: {type:'string', enum:['low','medium','high'], description:'默认 medium'},
+    asset_ids: {type:'array', items:{type:'integer',minimum:1}, description:'本结论实际涉及的资产 ID；缺省不继承意图资产'},
   };
+  const required = ctx.role === 'worker' ? ['summary', 'evidence'] : ['summary'];
   return domainTool<RecordFactArgs>(
     {
       name: "record_fact",
-      description:
-        "把本意图的探索结论写成一条事实节点（fact）。只写增量：合并多个观察为一条、只记录新信息。" +
-        "负面结果（不存在/不可利用）同样有价值。必须附证据与置信度。",
+      description: "将增量结论写入探索图；Worker 必须附证据。单条使用顶层字段，批量只传 facts；核对逐项回执。",
       promptSnippet: "写回探索事实（正面/负面结论都要，带证据）",
       parameters: {
-        type: "object",
+        type: 'object',
+        additionalProperties: false,
         properties: {
-          facts:{type:"array",minItems:1,maxItems:20,items:{type:"object",properties:singleProperties,required:["summary"]},description:"独立结论批量提交，每项事务独立；返回同序 ID 与错误"},
-          summary: { type: "string", description: "一句话事实结论（自包含，不引用'上文'）" },
-          evidence: { type: "string", description: "支撑该结论的关键证据原文（命令输出/响应片段）" },
-          detail:{type:'string',description:'复现所需且 summary/evidence 未覆盖的方法或限制；无额外信息时省略，不重复摘要或证据'},
-          scope:writebackScopeSchema,
-          observation_type:{type:'string',enum:['observed','inferred','negative','unknown'],description:'区分实测观察、推断、负面结果和未知；confirmed 表示记录已提交，不表示所有推断为真'},
-          confidence: { type: "string", enum: ["low", "medium", "high"], description: "置信度，默认 medium" },
-          asset_ids: {
-            type: "array",
-            items: { type: "integer" },
-            description: "仅填写本条结论实际涉及的资产 ID，可含多个相关资产；缺省或空数组不继承意图资产，记录保留但不计覆盖",
+          ...singleProperties,
+          facts: {
+            type: 'array', minItems: 1, maxItems: 20,
+            items: {type:'object', properties:singleProperties, required, additionalProperties:false},
+            description: '每项独立保存；整批失败返回工具错误，部分成功按同序结果处理',
           },
         },
-        anyOf:[{required:["summary"]},{required:["facts"]}],
+        oneOf: [
+          {required, not:{required:['facts']}},
+          {required:['facts'], not:{anyOf:Object.keys(singleProperties).map(key=>({required:[key]}))}},
+        ],
       },
       transactional:false,
       async run(args, ctx) {
         assertDirectWrite(args);
-        const save=(args:RecordFactArgs,ctx:ToolRunContext)=>ctx.db.transaction(async db=>{
+        const save=(args:Partial<FactInput>,ctx:ToolRunContext)=>ctx.db.transaction(async db=>{
         await ctx.hooks.assertOwnership?.(db);
         assertDirectWrite(args);
         if (!args.summary?.trim()) throw new Error('summary 不能为空');
@@ -80,15 +86,17 @@ export function recordFactTool(ctx: ToolRunContext) {
         await s.link(origin.id, RelYields, factID);
         return { fact_id: factID,ref:`node:${factID}`,version:Number(saved.rows[0]!.content_version), anchored_assets: anchors.length,asset_ids:anchors,writeback:payload.writeback };
       });
-        if(!args.facts)return save(args,ctx);
-        if(args.summary||!args.facts.length||args.facts.length>20)throw new Error('使用 summary 单条或 facts 批量输入，不能混用');
+        if(args.facts===undefined)return save(args,ctx);
+        if(!Array.isArray(args.facts)||!args.facts.length||args.facts.length>20||Object.keys(args).some(key=>key!=='facts'))throw new Error('使用 summary 单条或 facts 批量输入，不能混用');
         const results=[];
         for(let i=0;i<args.facts.length;i++){
           ctx.signal?.throwIfAborted();
           try{results.push(await save(args.facts[i]!,{...ctx,toolCallID:ctx.toolCallID?`${ctx.toolCallID}:item:${i}`:undefined}));}
           catch(error){results.push({fact_id:0,error:error instanceof Error?error.message:String(error)});}
         }
-        return {fact_ids:results.map(r=>r.fact_id),results};
+        const receipt={fact_ids:results.map(r=>r.fact_id),results};
+        if(results.every(r=>!r.fact_id))throw new ToolResultError('本批事实均未写回；请按 results 中的错误修正',receipt);
+        return receipt;
       },
     },
     ctx,

@@ -11,6 +11,6 @@ export function roleContextPolicy(role:ContextRole,contextWindow:number,configur
   const threshold=Math.max(1,Math.min(requested,contextWindow-Math.min(16_384,Math.floor(contextWindow/4))));
   const keepRecentTokens=Math.max(1,Math.min(role==='planner'?12_000:20_000,Math.floor(threshold/4)));
   return {version,mode:'working_set' as const,thresholdTokens:threshold,
-    summaryMaxTokens:role==='planner'?2048:4096,
+    summaryTargetTokens:role==='planner'?2048:4096,
     compactionSettings:{reserveTokens:contextWindow-threshold,keepRecentTokens}};
 }

@@ -21,7 +21,8 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
       try{
         signal.throwIfAborted();
         const model=ctx.model??opts.model;
-        const request=async(context:Parameters<typeof opts.modelRuntime.completeSimple>[1],maxTokens:number)=>{
+        const request=async(context:Parameters<typeof opts.modelRuntime.completeSimple>[1])=>{
+        if(opts.summaryTargetTokens)context={...context,messages:[{role:'system',content:`摘要尽量控制在约 ${opts.summaryTargetTokens} token 内；优先保留必要依据、未完成事项和可召回引用，不复制长篇原文。`,timestamp:Date.now()},...context.messages]};
         // Native split-turn summaries do not inherit compact() customInstructions.
         // Apply retention requirements to every physical summary request as well.
         if(opts.compactionInstructions&&!JSON.stringify(context.messages).includes(opts.compactionInstructions))
@@ -32,7 +33,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
           health.requests++;
           let response;
           try{
-            response=await opts.modelRuntime.completeSimple(model,context,{signal,maxTokens:Math.min(maxTokens,model.maxTokens>0?model.maxTokens:Infinity,opts.summaryMaxTokens??Infinity),cacheRetention:'none',
+            response=await opts.modelRuntime.completeSimple(model,context,{signal,reasoning:opts.thinkingLevel==='off'?undefined:opts.thinkingLevel,cacheRetention:'none',
               onPayload:async payload=>{await opts.onRequestSize?.(requestSize(payload),'compaction');}});
           }catch{
             await opts.modelPolicy?.onResponse({stopReason:signal.aborted?'aborted':'error',errorMessage:'摘要模型请求失败'});
@@ -52,7 +53,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
           if(response.stopReason==='aborted'||response.stopReason==='length'||response.content.some(b=>b.type==='toolCall'))
             throw new Error(`摘要未完整生成（${response.content.some(b=>b.type==='toolCall')?'unexpected_tool_call':response.stopReason}），原始会话已保留`);
           const summary=response.content.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
-          if(!summary||Buffer.byteLength(summary)>16*1024)throw new Error('摘要为空或超过上限');
+          if(!summary)throw new Error('摘要为空，原始会话已保留');
           return response;
         }
           throw new Error('摘要重试耗尽');
@@ -70,7 +71,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
           }
           const instructions=[event.customInstructions,opts.compactionInstructions].filter(Boolean).join('\n\n')||undefined;
           const result=await compact(p,model,undefined,undefined,instructions,signal,undefined,
-            async(_model,context,options)=>{const response=await request(context,options?.maxTokens??2048);const stream=createAssistantMessageEventStream();stream.end(response);return stream;},
+            async(_model,context)=>{const response=await request(context);const stream=createAssistantMessageEventStream();stream.end(response);return stream;},
             undefined,{enabled:false,maxRetries:0,baseDelayMs:0});
           return {compaction:{...result,details:{...result.details as object,policy:'native',version:opts.platform?.policy.version}}};
         }
@@ -80,7 +81,7 @@ export function domainCompactionExtension(opts:AgentRunnerOptions,health:Compact
         const history=serializeConversation(convertToLlm([...p.messagesToSummarize,...p.turnPrefixMessages]));
         const content=`<host_snapshot>${stateJSON}</host_snapshot>\n<previous_summary>${p.previousSummary??''}</previous_summary>\n<conversation>${history}</conversation>`;
         const response=await request({messages:[{role:'system',content:INSTRUCTIONS,timestamp:Date.now()},
-          {role:'user',content:(opts.compactionInstructions?opts.compactionInstructions+'\n\n':'')+content,timestamp:Date.now()}]},2048);
+          {role:'user',content:(opts.compactionInstructions?opts.compactionInstructions+'\n\n':'')+content,timestamp:Date.now()}]});
         const summary=response.content.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim(),usage=response.usage;
         if(!summary)throw new Error('摘要未生成');
         signal.throwIfAborted();

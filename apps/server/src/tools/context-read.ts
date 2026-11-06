@@ -14,7 +14,14 @@ import {progressSummary,resultSummary,stopSummary} from '../agent/context-projec
 import {searchPlannerHistory,getPlannerHistory,getPlannerHistoryContent,getPlannerDispatchOutput,PLANNER_HISTORY_ROLES} from './planner-history.js';
 
 interface Search {source?:'graph'|'planner_session'|'operations'|'needs';q?:string;types?:string[];roles?:string[];include_content?:boolean;state?:string;asset_id?:number;intent_id?:number;task_id?:number;limit?:number;cursor?:string;}
+const graphOnlySearchFields = ['q', 'types', 'state', 'asset_id'] as const;
+
 export async function searchContext(c:ToolRunContext,args:Search) {
+  if (args.source === 'needs' || args.source === 'operations') {
+    const unsupported = graphOnlySearchFields.filter(key => Object.hasOwn(args, key));
+    if (unsupported.length)
+      throw new Error('source=' + args.source + ' 不支持 ' + unsupported.join(', ') + '；只使用 intent_id、task_id、limit 和 cursor');
+  }
   await recallPermission(c,'context_search');
   if(args.roles!==undefined&&args.source!=='planner_session')throw new Error('roles 仅适用于 source=planner_session；图节点类型使用 types');
   if(args.include_content!==undefined&&args.source!=='planner_session')throw new Error('include_content 仅适用于 source=planner_session');
@@ -81,7 +88,13 @@ export async function searchContext(c:ToolRunContext,args:Search) {
 }
 
 export function contextSearchTool(c:ToolRunContext){return domainTool<Search>({name:'context_search',description:'按全文、类型、资产、意图和状态检索授权探索图，包含冷图原始节点。节点按新到旧返回；默认 fact/finding/intent。返回命中片段、Unicode match_offset 和可直接交给 context_get 的 read。has_more=true 时保留查询参数用 next_cursor 续页；第一页无结果不能证明方向未测试，优先按 asset_id 核对。来源任务只读。',readOnly:true,
-  parameters:{type:'object',properties:{source:{type:'string',enum:c.role==='planner'?['graph','planner_session','operations','needs']:['graph','operations','needs'],description:'默认 graph；needs 返回按优先级排序的依赖缺口、未读区间和直接读取参数；operations 查询本任务工具执行记录，Worker 仅能读取自己的记录；planner_session 召回规划历史'},...(c.role==='planner'?{include_content:{type:'boolean',description:'仅 planner_session：同时读取可完整容纳的短原文，最多3条、每条3000字符且总输出有界。original=true 且有 content/read_receipt 才是已返回原文；其他项按 read 用 context_get 续读。'},roles:{type:'array',minItems:1,maxItems:6,items:{type:'string',enum:PLANNER_HISTORY_ROLES},description:'仅 planner_session：按原始条目角色筛选。查规划结论可选 assistant；未指定保留所有角色。'}}:{}),q:{type:'string',maxLength:200,description:'不区分大小写的字面关键词；多个词按完整短语匹配，不是语义搜索。空值按筛选条件列出。'},types:{type:'array',items:{type:'string',enum:['fact','finding','intent','goal','hint','digest','activity']}},state:{type:'string'},asset_id:{type:'integer',minimum:1},intent_id:{type:'integer',minimum:1},task_id:{type:'integer',minimum:1},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:'string'}}},run:(args,ctx)=>searchContext(ctx,args)},c);}
+  parameters:{type:'object',properties:{source:{type:'string',enum:c.role==='planner'?['graph','planner_session','operations','needs']:['worker','mainagent'].includes(c.role)?['graph','operations','needs']:['graph','needs'],description:'默认 graph。needs/operations 仅支持 intent_id、task_id、limit、cursor；operations 查询本任务工具执行记录，Worker 仅能读取自己的记录；planner_session 召回规划历史'},...(c.role==='planner'?{include_content:{type:'boolean',description:'仅 planner_session：同时读取可完整容纳的短原文，最多3条、每条3000字符且总输出有界。original=true 且有 content/read_receipt 才是已返回原文；其他项按 read 用 context_get 续读。'},roles:{type:'array',minItems:1,maxItems:6,items:{type:'string',enum:PLANNER_HISTORY_ROLES},description:'仅 planner_session：按原始条目角色筛选。查规划结论可选 assistant；未指定保留所有角色。'}}:{}),q:{type:'string',maxLength:200,description:'不区分大小写的字面关键词；多个词按完整短语匹配，不是语义搜索。空值按筛选条件列出。'},types:{type:'array',items:{type:'string',enum:['fact','finding','intent','goal','hint','digest','activity']}},state:{type:'string'},asset_id:{type:'integer',minimum:1},intent_id:{type:'integer',minimum:1},task_id:{type:'integer',minimum:1},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:'string'}},
+    allOf:[
+      {not:{required:['source'],properties:{source:{enum:['operations','needs']}},anyOf:graphOnlySearchFields.map(key=>({required:[key]}))}},
+      {not:{anyOf:[{required:['roles']},{required:['include_content']}],not:{required:['source'],properties:{source:{const:'planner_session'}}}}},
+      {not:{required:['source'],properties:{source:{const:'planner_session'}},anyOf:[{required:['types']},{required:['state']},{required:['asset_id']},{required:['intent_id']}]}},
+    ],
+  },run:(args,ctx)=>searchContext(ctx,args)},c);}
 
 function legacyContextGetTool(c:ToolRunContext){return domainTool<{ref:string;version?:number;offset?:number;after_edge?:number;anchor_offset?:number}>({name:'context_get',description:'读取 node:ID 的详情、证据和图关系。超过单页时继续 offset/after_edge/anchor_offset；version 可拒绝读取过程中被修改的节点。',readOnly:true,
   parameters:{type:'object',properties:{ref:{type:'string',pattern:'^node:[1-9][0-9]*$'},version:{type:'integer',minimum:0},offset:{type:'integer',minimum:0},after_edge:{type:'integer',minimum:0},anchor_offset:{type:'integer',minimum:0}},required:['ref']},

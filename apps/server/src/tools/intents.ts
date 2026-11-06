@@ -21,19 +21,37 @@ function intentIDs(values:unknown,field:string):number[]{
 
 
 const intentFields = {
-                summary: { type: "string", description: "用一两句话给出有价值的探索方向；具体接口、步骤和方法由 Worker 在范围内自主决定，不列逐项测试清单" },
-                parent_ids: {type:"array",maxItems:20,items:{anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}]},description:"依据的事实或漏洞节点，宿主记录实际版本"},
-                parent_id: { anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}], description: "依据的 fact/finding 节点 id（顶层可省略，自动连任务根）" },
+                summary: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S", description: "用一两句话给出有价值的探索方向；具体接口、步骤和方法由 Worker 在范围内自主决定，不列逐项测试清单" },
+                parent_ids: {type:"array",maxItems:20,items:{anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}]},description:"仅当前任务的事实或漏洞节点；来源任务证据用 contract.basis"},
+                parent_id: { anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}], description: "当前任务单个 fact/finding ID；与 parent_ids 二选一，省略则连任务根" },
                 asset_ids: { type: "array", items: { anyOf:[{type:"integer",minimum:1},{type:"string",pattern:"^[0-9]+$"}] }, description: "业务范围或入口资产 ID，不要求预先枚举所有待发现接口；写回时再精确关联实际资产" },
                 priority: { type: "integer", minimum: 0, maximum: 10, description: "省略或 0 按 5 处理" },
                 contract: {type:'object',description:'可选边界补充，不要求填写细化验收表。objective/acceptance 省略时沿用 summary；work 仅在已有稳定方向标识时使用。',properties:{
                   objective:{type:'string'},acceptance:{type:'array',minItems:1,maxItems:10,items:{type:'string'}},out_of_scope:{type:'array',maxItems:20,items:{type:'string'}},
-                  basis:{type:'array',description:'可省略：parent_ids 由宿主绑定实际版本。显式填写时仅用已读取 fact/finding 的顶层 version/content_version，可为 0；read_receipt.version、writeback.version 是格式版本，不能作为依据版本。goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer'},version:{type:'integer',minimum:0,description:'节点内容版本，不是读取回执或写回格式版本'}},required:['node_id','version']}},
+                  basis:{type:'array',description:'直接来源任务的证据放在此处，不放 parent_ids。填写已读取 fact/finding 的顶层 version/content_version，可为 0；read_receipt.version、writeback.version 是格式版本，不能作为依据版本。goal、intent 不是事实依据。',maxItems:20,items:{type:'object',properties:{node_id:{type:'integer',minimum:1},version:{type:'integer',minimum:0,description:'节点内容版本，不是读取回执或写回格式版本'}},required:['node_id','version']}},
                   work:{type:'object',properties:{resource:{type:'string'},question_key:{type:'string'},method_class:{type:'string'},identity:{type:'string'}},required:['resource','question_key','method_class','identity']},
                   allowed_tools:{type:'array',items:{type:'string'},maxItems:50,description:'精确工具名，见 graph_overview.worker_capabilities；HTTP GET 使用 http_request，不能编造 http_get 等别名。内部事实/进度/结果写回不受此执行工具清单限制。'},
                 }},
                 retry_of:{type:'integer',minimum:1},retry_kind:{type:'string',enum:['new_evidence','transient_failure']},retry_reason:{type:'string',maxLength:2000},
               };
+
+function readIntentItems(args: AddIntentArgs): IntentItem[] {
+  const batch = Object.hasOwn(args, 'intents');
+  if (batch && (!Array.isArray(args.intents) || args.intents.length < 1 || args.intents.length > 4))
+    throw new Error('Invalid arguments for tool "add_intent": intents 必须包含 1–4 项');
+  if (batch && Object.keys(args).some(key => key !== 'intents'))
+    throw new Error('Invalid arguments for tool "add_intent": 批量只允许顶层 intents，其他字段放入各项');
+  const items = batch ? args.intents! : [args as IntentItem];
+  for (const [index, item] of items.entries()) {
+    const path = batch ? 'intents[' + index + '].' : '';
+    if (typeof item?.summary !== 'string' || !item.summary.trim() || item.summary.length > 2000) {
+      throw new Error('Invalid arguments for tool "add_intent": ' + path + 'summary 必须是 1–2000 字符的非空方向说明');
+    }
+    if (item.parent_ids !== undefined && item.parent_id !== undefined)
+      throw new Error('Invalid arguments for tool "add_intent": ' + path + 'parent_id 与 parent_ids 只能传一种');
+  }
+  return items;
+}
 
 export function addIntentTool(ctx: ToolRunContext) {
   return domainTool<AddIntentArgs>(
@@ -46,19 +64,31 @@ export function addIntentTool(ctx: ToolRunContext) {
       promptSnippet: "派发探索意图（先查重）",
       parameters: {
         type: "object", additionalProperties:false,
-        properties: {...intentFields,intents:{type:"array",maxItems:4,description:"批量 1~4 项，每项独立填写 summary、asset_ids、parent_ids、priority；不要同时提供顶层单条字段。空数组时使用顶层单条。",items:{type:"object",properties:intentFields,required:["summary"],additionalProperties:false}}},
-        anyOf:[{required:["summary"]},{required:["intents"]}],
+        properties: {
+          ...intentFields,
+          intents: {
+            type: "array", minItems: 1, maxItems: 4,
+            description: "批量仅传 intents，每项必填非空 summary，其他单条字段按需填写；任一项无效整批不提交",
+            items: { type: "object", properties: intentFields, required: ["summary"], additionalProperties: false },
+          },
+        },
+        oneOf: [
+          { required: ["summary"], not: { required: ["intents"] } },
+          { required: ["intents"], not: { anyOf: Object.keys(intentFields).map(key => ({ required: [key] })) } },
+        ],
+      },
+      prepareArguments(input) {
+        if (!input || typeof input !== 'object' || Array.isArray(input))
+          throw new Error('Invalid arguments for tool "add_intent": 入参必须为对象');
+        const args = input as AddIntentArgs;
+        readIntentItems(args);
+        return args;
       },
       // Main's direct-intent grant must run after the intent transaction commits;
       // otherwise the host admission transaction cannot see the uncommitted node.
       transactional: false,
       async run(args, c) {
-        if(args.intents!==undefined&&!Array.isArray(args.intents))throw new Error('intents 必须为数组');
-        const batch=!!args.intents?.length;
-        if(batch&&Object.keys(args).some(k=>k!=='intents'&&args[k as keyof AddIntentArgs]!==undefined))
-          throw new Error('不能混合单条与批量参数；请把 summary/asset_ids/parent_ids/priority 等全部放入对应 intents 项，避免丢失事实依据');
-        const items=batch?args.intents!:[args as IntentItem];
-        if(items.length>4)throw new Error('一轮最多新增 4 条意图');
+        const items = readIntentItems(args);
         const committed = await c.db.transaction(async db => {
           await c.hooks.assertOwnership?.(db);
           const receipt=await priorPlannerDispatch(db,c,args);
@@ -75,7 +105,7 @@ export function addIntentTool(ctx: ToolRunContext) {
             validateWorkerToolNames(contract.allowed_tools, capabilities);
             for(const parentID of parentIDs){
               const parent=await s.getNode(parentID);
-              if(!parent||!['fact','finding'].includes(parent.kind)||!['confirmed','origin'].includes(parent.state))throw new Error(`parent #${parentID} 必须是已提交的事实或漏洞`);
+              if(!parent||!['fact','finding'].includes(parent.kind)||!['confirmed','origin'].includes(parent.state))throw new Error(`parent #${parentID} 必须是当前任务已提交的事实或漏洞；直接来源任务的证据请使用 contract.basis（node_id 和内容 version）`);
               const ref=contract.basis.find(ref=>ref.node_id===parentID);
               if(!ref)contract.basis.push({node_id:parentID,version:parent.content_version??0});
             }
@@ -114,7 +144,17 @@ export function addIntentTool(ctx: ToolRunContext) {
   );
 }
 
-interface DispatchIntentsArgs { intent_ids?: number[]; }
+interface DispatchIntentsArgs { intent_ids?: number[]; all_open?: true; }
+
+function validateDispatchArgs(args: DispatchIntentsArgs): void {
+  if (args && typeof args === 'object' && !Array.isArray(args) && Object.keys(args).length === 1) {
+    if (args.all_open === true && !Object.hasOwn(args, 'intent_ids')) return;
+    if (!Object.hasOwn(args, 'all_open') && Array.isArray(args.intent_ids) &&
+        args.intent_ids.length >= 1 && args.intent_ids.length <= 10 &&
+        args.intent_ids.every(id => Number.isSafeInteger(id) && id > 0)) return;
+  }
+  throw new Error('请提供 1–10 个正整数 intent_ids，或在用户明确要求批量下发时仅传 all_open: true');
+}
 
 export function dispatchIntentsTool(ctx: ToolRunContext) {
   return domainTool<DispatchIntentsArgs>(
@@ -129,21 +169,29 @@ export function dispatchIntentsTool(ctx: ToolRunContext) {
         properties: {
           intent_ids: {
             type: "array",
-            items: { type: "integer" },
-            maxItems: 10,
-            description: "要下发或订阅的意图 id；省略则下发全部 open 意图",
+            items: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+            minItems: 1, maxItems: 10,
+            description: "要下发或订阅的 1–10 个意图 ID；与 all_open 二选一",
           },
+          all_open: { type: "boolean", const: true, description: "仅在用户明确要求批量下发时传 true；最多取 50 条可下发的 open 意图" },
         },
+        additionalProperties: false,
+        oneOf: [{ required: ["intent_ids"] }, { required: ["all_open"] }],
+      },
+      prepareArguments(input) {
+        // Check before PI can coerce booleans/numbers or drop optional null fields.
+        const args = input as DispatchIntentsArgs;
+        validateDispatchArgs(args);
+        return args;
       },
       transactional:false,
       async run(args, c) {
+        validateDispatchArgs(args);
         if (c.role !== "mainagent") throw new Error("仅任务主 Agent 可以下发意图");
         const s = c.db.exploration(c.expID);
-        let ids = args.intent_ids ?? [];
-        if (ids.length === 0) {
-          const open = await s.frontier(50);
-          ids = open.map((n) => n.id);
-        }
+        const ids = args.all_open
+          ? (await s.frontier(50)).map(node => node.id)
+          : [...new Set(args.intent_ids!)];
         let dispatched = 0;
         for (const id of ids) {
           const n = await s.getNode(id);

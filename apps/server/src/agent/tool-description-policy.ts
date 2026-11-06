@@ -15,10 +15,26 @@ export function recognizedHistoricalDescription(name:string,stored:unknown):unkn
 
 /** These are built-in capability hints, not edits to the user's prompt or text. */
 export function roleToolDescription(name:string,resolved:{description:string;source:string},role:string):string {
-  if(role==='planner'||resolved.source!=='builtin')return resolved.description;
-  if(name==='context_search')return resolved.description.replace(' Planner 可用 source=planner_session 检索本任务历史规划原文；历史不能代替实时图查询。','');
-  if(name==='context_get')return resolved.description.replace(' Planner 可读本任务 session: 条目，field=/content 续读历史原文。','');
-  return resolved.description;
+  if (resolved.source !== 'builtin') return resolved.description;
+  let description = resolved.description;
+  if (role !== 'planner' && name === 'context_search')
+    description = description.replace(' Planner 可用 source=planner_session 检索本任务历史规划原文；历史不能代替实时图查询。','');
+  if (role !== 'planner' && name === 'context_get')
+    description = description.replace(' Planner 可读本任务 session: 条目，field=/content 续读历史原文。','');
+  return description;
+}
+
+/** Shared by the tool catalog and role-specific declarations. */
+export function describeToolContract(name: string, description: string): string {
+  if (name === 'add_intent') return description + ' 单条传顶层非空 summary；批量仅传 1–4 项 intents，每项各填 summary。parent_ids 仅限本任务；直接来源任务用 contract.basis 的 node_id 和实际内容版本。';
+  if (name === 'dispatch_intents') return description + ' 提交非空 intent_ids；仅用户明确要求批量下发时传 all_open: true。';
+  if (name === 'record_fact') return description.replace('缺项仍保存但不计覆盖','缺少资产或 scope 时仍保存但不计覆盖')
+    + ' Worker 每条事实必填非空 evidence；批量逐项核对结果，整批失败返回工具错误。';
+  if (name === 'insert_assets') return description + ' 整批失败返回工具错误，部分成功只重试失败项。';
+  if (name === 'register_user_target') return description + ' evidence 引用目标或描述中的完整原句。精确域名用 subdomain；root_domain 仅用于原文明确的通配根域。';
+  if (name === 'context_search') return description + ' source=operations/needs 不支持图谱筛选 q/types/state/asset_id。';
+  if (name === 'update_finding_report') return description + ' 提交 report_sections 或兼容的非空 report。';
+  return description;
 }
 
 export function roleToolParameters(name:string,parameters:Record<string,unknown>,role:string):Record<string,unknown> {

@@ -369,13 +369,7 @@ body { --font-mono: var(--font-geist-mono, ui-monospace), monospace; }
 .task-findings { min-height: 100%; }
 /* Sidebar reference rhythm: 30px rows, 14/20px text, 16px line icons.
    Scoped to the app navigation; settings and other Sidebar consumers are unaffected. */
-.app-sidebar-header { height: 48px; min-height: 48px; flex-direction: row; align-items: center; gap: 8px; padding: 8px 16px; }
-.app-sidebar-brand { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; border-radius: 6px; }
-.app-sidebar-brand:focus-visible { outline: 2px solid var(--sidebar-ring); outline-offset: 4px; }
-.app-sidebar-brand img { width: 24px; height: 24px; flex-shrink: 0; }
-.app-sidebar-brand span { font-size: var(--text-xl); line-height: 28px; font-weight: 600; letter-spacing: -.04em; }
 .app-sidebar-settings .lucide { width: 20px; height: 20px; }
-.app-sidebar-toggle { width: 28px; height: 28px; flex-shrink: 0; color: var(--sidebar-foreground); }
 .app-sidebar-content { padding: 8px; gap: 0; }
 .app-sidebar-content [data-slot="sidebar-group"] { padding: 0; }
 .app-sidebar-content [data-slot="sidebar-menu"] { gap: 0; }
@@ -384,13 +378,6 @@ body { --font-mono: var(--font-geist-mono, ui-monospace), monospace; }
 .app-sidebar-content [data-sidebar="menu-button"] > .lucide,
 .app-sidebar-content [data-sidebar="menu-sub-button"] > .lucide { width: 18px; height: 18px; stroke-width: 1.5; }
 .app-sidebar-content [data-slot="sidebar-group-label"] { height: 32px; padding: 0 8px; font-size: var(--text-xs); line-height: 20px; font-weight: 400; color: var(--muted-foreground); }
-.app-sidebar-content .app-sidebar-recents { margin-top: 16px; }
-.app-sidebar-recents [data-slot="sidebar-group-action"] { top: 6px; right: 8px; color: var(--muted-foreground); }
-.app-sidebar-recents [data-slot="sidebar-menu"] { margin-top: 4px; }
-[data-collapsible="icon"] .app-sidebar-header { padding: 8px 12px; }
-[data-collapsible="icon"] .app-sidebar-brand { flex: none; }
-[data-collapsible="icon"] .app-sidebar-brand span,
-[data-collapsible="icon"] .app-sidebar-toggle { display: none; }
 
 
 /* Neo settings: keep custom theme tokens and existing interaction contracts. */
@@ -516,7 +503,7 @@ body { --font-mono: var(--font-geist-mono, ui-monospace), monospace; }
 .process-glyph[data-active=true] circle { animation: process-dot 1.4s ease-in-out infinite alternate; }
 .execution-thought-detail { margin-left: 8px; border-left: 1px solid var(--border); padding: 12px 0 12px 24px; color: var(--muted-foreground); font-size: var(--text-base); line-height: 1.8; }
 .execution-process-content { padding-left: 8px; }
-.execution-group-trigger { font-size: var(--text-base); gap: 10px; }
+.execution-group-trigger { font-size: var(--text-sm); gap: 8px; }
 .execution-tool .execution-process-trigger { color: var(--foreground); }
 .execution-tool .execution-process-trigger > span:last-child { font-size: var(--text-xs); }
 .execution-tool-detail { margin: 2px 0 12px 8px; padding-left: 24px; border-left: 1px solid var(--border); }
@@ -546,3 +533,36 @@ body { --font-mono: var(--font-geist-mono, ui-monospace), monospace; }
 @keyframes process-dot { from { opacity: .25; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .process-glyph circle, .execution-working-dots i { animation: none !important; } }
 @media (max-width: 640px) { .execution-body { gap: 18px; } .execution-process-trigger { gap: 8px; font-size: var(--text-base); } .execution-tool-detail { padding-left: 14px; } }
+
+/* Shared prose: clear hierarchy without enlarging the application typography. */
+.transcript-markdown { line-height: 1.8; overflow-wrap: anywhere; }
+.transcript-markdown strong { font-weight: 650; color: var(--foreground); }
+.transcript-markdown li { padding-left: .2rem; margin-block: .4rem; }
+.transcript-markdown li::marker { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.transcript-markdown li > p + p { margin-top: .5rem; }
+.transcript-markdown :not(pre) > code { border: 1px solid var(--border); border-radius: 5px; background: var(--muted); padding: .1em .35em; font-family: var(--font-mono),monospace; font-size: .93em; box-decoration-break: clone; }
+.markdown-code-block { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); }
+.markdown-code-heading { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: var(--text-xs); }
+.markdown-code-block pre { margin: 0; max-height: 480px; overflow: auto; padding: 14px; font-family: var(--font-mono),monospace; font-size: var(--text-sm); line-height: 1.7; white-space: pre; }
+.markdown-code-block code { border: 0; padding: 0; background: transparent; }
+.markdown-code-block .hljs-keyword, .markdown-code-block .hljs-selector-tag { color: var(--chart-1); font-weight: 600; }
+.markdown-code-block .hljs-string, .markdown-code-block .hljs-attr { color: var(--chart-2); }
+.markdown-code-block .hljs-number, .markdown-code-block .hljs-literal, .markdown-code-block .hljs-title { color: var(--chart-3); }
+.markdown-code-block .hljs-comment { color: var(--muted-foreground); font-style: italic; }
+
+/* Task launcher: description and always-visible goal confirmation. */
+.task-launcher { min-height: 100%; padding: clamp(32px,8vh,88px) 24px 48px; background: color-mix(in oklch,var(--muted) 48%,var(--background)); }
+.task-launcher-inner { width: 100%; max-width: 960px; margin-inline: auto; display: flex; flex-direction: column; gap: 32px; }
+.task-launcher header { text-align: center; margin-bottom: 4px; }
+.task-launcher h1 { font-size: 28px; font-weight: 600; line-height: 1.4; letter-spacing: -.025em; }
+.task-launcher header p { margin-top: 12px; color: var(--muted-foreground); font-size: var(--text-base); }
+.task-launcher-form, .task-launcher-fields { min-width: 0; display: flex; flex-direction: column; gap: 28px; }
+.task-launcher-card { min-width: 0; border: 1px solid var(--border); border-radius: 24px; background: var(--card); box-shadow: 0 12px 36px color-mix(in oklch,var(--foreground) 5%,transparent); overflow: hidden; }
+.task-launcher-field { padding: 22px 24px 14px; }
+.task-launcher-field textarea { min-height: 150px; max-height: 360px; resize: vertical; border: 0; border-radius: 4px; padding: 4px 0; box-shadow: none; background: transparent; font-size: var(--text-base); line-height: 1.8; }
+.task-launcher-field textarea:focus-visible { box-shadow: none; outline: none; }
+.task-launcher-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 16px 14px; color: var(--muted-foreground); }
+.task-launcher-toolbar span { font-size: var(--text-sm); margin-left: 4px; }
+.task-launcher-confirmation { --card-spacing: 24px; }
+.task-launcher-confirmation textarea { min-height: 110px; max-height: 360px; resize: vertical; line-height: 1.8; }
+@media (max-width:640px) { .task-launcher { padding: 32px 16px; } .task-launcher h1 { font-size: 22px; } .task-launcher-field { padding-inline: 18px; } .task-launcher-toolbar { padding-inline: 12px; } .task-launcher-confirmation { --card-spacing: 18px; } .task-launcher-inner, .task-launcher-fields { gap: 24px; } }

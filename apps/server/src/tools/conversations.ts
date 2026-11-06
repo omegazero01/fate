@@ -32,7 +32,27 @@ export function conversationDomainTools(ctx:ToolRunContext,engine:Pick<Engine,'a
      const read=prior&&prior.evidence===Number(f.evidence_version)&&prior.revision===Number(f.report_revision)?prior:{evidence:Number(f.evidence_version),revision:Number(f.report_revision),ranges:[] as Array<[number,number]>,total:body.length,complete:false};
      read.ranges.push([Math.min(off,body.length),end]);read.ranges.sort((x,y)=>x[0]-y[0]);let covered=0;for(const [start,stop] of read.ranges){if(start>covered)break;covered=Math.max(covered,stop);}read.complete=covered>=body.length;reads.set(Number(f.id),read);
      return {finding_id:Number(f.id),evidence_version:Number(f.evidence_version),report_revision:Number(f.report_revision),read_complete:read.complete,content:body.slice(off,off+1500).join(''),next_offset:off+1500<body.length?off+1500:null,evidence:await findingEvidence(c.db,a.finding_id)};
-    }},ctx) as never,domainTool<{finding_id:number;evidence_version:number;report?:string;report_revision?:number;report_sections?:unknown;reproduction?:unknown}>({name:'update_finding_report',transactional:false,description:'仅在证据版本一致时更新漏洞报告；冲突后重新读取证据。',parameters:{type:'object',properties:{finding_id:{type:'integer'},evidence_version:{type:'integer'},report:{type:'string',description:'仅兼容旧报告'},report_revision:{type:'integer'},report_sections:{type:'object',properties:{description:{type:'string'},impact:{type:'array',items:{type:'string'}},remediation:{type:'array',items:{type:'string'}}},required:['description','impact','remediation'],additionalProperties:false},reproduction:reproductionSchema},required:['finding_id','evidence_version']},async run(a,c){
+    }},ctx) as never,domainTool<{finding_id:number;evidence_version:number;report?:string;report_revision?:number;report_sections?:unknown;reproduction?:unknown}>({name:'update_finding_report',transactional:false,description:'先读完漏洞证据，再带版本提交 report_sections 或兼容的非空 report。',parameters:{
+      type:'object',
+      properties:{
+        finding_id:{type:'integer',minimum:1},
+        evidence_version:{type:'integer',minimum:0},
+        report:{type:'string',pattern:'\\S',description:'仅兼容旧报告；优先提交 report_sections'},
+        report_revision:{type:'integer',minimum:0,description:'get_finding 返回的报告版本；旧调用省略时使用本会话读取的版本'},
+        report_sections:{
+          type:'object',
+          properties:{description:{type:'string',pattern:'\\S'},impact:{type:'array',items:{type:'string'}},remediation:{type:'array',items:{type:'string'}}},
+          required:['description','impact','remediation'],
+          additionalProperties:false,
+        },
+        reproduction:reproductionSchema,
+      },
+      required:['finding_id','evidence_version'],
+      anyOf:[{required:['report_sections']},{required:['report']}],
+    },async run(a,c){
+     const sections=a.report_sections?reportSections(a.report_sections):null;
+     if(sections ? !sections.description.trim() : !a.report?.trim())
+       throw new Error('需要非空 report_sections.description 或兼容的非空 report');
      const saved=await c.db.transaction(async db=>{await c.hooks.assertOwnership?.(db);c={...c,db};
      const seen=reads.get(a.finding_id);
      if(!seen)throw new Error('必须先 get_finding 读取证据及报告版本');
@@ -40,11 +60,9 @@ export function conversationDomainTools(ctx:ToolRunContext,engine:Pick<Engine,'a
      const f=(await c.db.query('SELECT * FROM findings WHERE id=$1 AND ($2::bigint=0 OR task_id=$2) AND finding_readable(id) FOR UPDATE',[a.finding_id,taskID])).rows[0];
      if(!f||Number(f.evidence_version)!==a.evidence_version||Number(f.report_revision)!==(a.report_revision??seen.revision)||seen.evidence!==a.evidence_version)throw new Error('证据或报告版本已变化，请重新读取');
      await archiveReport(c.db,f);
-     const sections=a.report_sections?reportSections(a.report_sections):null;
      const repro=a.reproduction===undefined?(f.reproduction as import('../evidence/reproduction.js').Reproduction|null):await prepareReproduction(c.db,a.reproduction,{taskID:Number(f.task_id),evidence:String(f.evidence),findingNodeID:Number(f.node_id)},true);
      if(a.reproduction!==undefined)await attachStepTraffic(c.db,a.finding_id,Number(f.task_id),repro);
      const version=Number((await c.db.query('SELECT evidence_version FROM findings WHERE id=$1',[a.finding_id])).rows[0]!.evidence_version);
-     if(!sections&&!a.report?.trim())throw new Error('报告正文不能为空');
      const report=sections?assembleReport({...f,report_sections:sections,reproduction:repro,report_evidence_version:version,evidence_version:version}):a.report!;
      await c.db.query('UPDATE findings SET report=$2,report_sections=$3,reproduction=$4,report_evidence_version=$5,report_revision=report_revision+1 WHERE id=$1',[a.finding_id,report,sections,repro,version]);
      return {saved:true};
